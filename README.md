@@ -8,6 +8,10 @@ framing for each turn — fully editable before export.
 Not a screen recorder or capture tool. Post-production only: bring your own
 recording, this handles the edit.
 
+📖 **[Full documentation](docs/ARCHITECTURE.md)** — the plan, what's built,
+architecture, every dependency and why, setup, limitations, and roadmap, all
+in one place.
+
 ## Status
 
 **Working end-to-end:** upload a video → local service transcribes it,
