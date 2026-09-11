@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 export function UploadScreen({
 	onFileSelected,
 	error,
@@ -5,6 +7,15 @@ export function UploadScreen({
 	onFileSelected: (file: File) => void;
 	error?: string;
 }) {
+	const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+	function handleDrop(e: React.DragEvent<HTMLLabelElement>) {
+		e.preventDefault();
+		setIsDraggingOver(false);
+		const file = e.dataTransfer.files?.[0];
+		if (file) onFileSelected(file);
+	}
+
 	return (
 		<div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
 			<h1 className="text-3xl font-semibold">Podcast Editor</h1>
@@ -13,8 +24,20 @@ export function UploadScreen({
 				speaker turns, and suggest zoom/split-screen framing for each one —
 				you can override anything before exporting.
 			</p>
-			<label className="mt-2 cursor-pointer rounded-lg border border-dashed border-neutral-400 px-6 py-10 text-sm text-neutral-500 hover:border-neutral-600">
-				Choose a video or audio file
+			<label
+				onDragOver={(e) => {
+					e.preventDefault();
+					setIsDraggingOver(true);
+				}}
+				onDragLeave={() => setIsDraggingOver(false)}
+				onDrop={handleDrop}
+				className={`mt-2 cursor-pointer rounded-lg border border-dashed px-6 py-10 text-sm transition-colors ${
+					isDraggingOver
+						? "border-neutral-700 bg-neutral-100 text-neutral-700 dark:border-neutral-300 dark:bg-neutral-800 dark:text-neutral-300"
+						: "border-neutral-400 text-neutral-500 hover:border-neutral-600"
+				}`}
+			>
+				{isDraggingOver ? "Drop it here" : "Drop a file here, or choose a video or audio file"}
 				<input
 					type="file"
 					accept="video/*,audio/*"

@@ -9,4 +9,9 @@ export default defineConfig({
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },
+  server: {
+    // Must stay in sync with server/main.py's CORS allow_origins -- README
+    // and ARCHITECTURE.md both document this as the frontend's port.
+    port: 3460,
+  },
 })

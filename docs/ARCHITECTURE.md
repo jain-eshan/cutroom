@@ -73,9 +73,10 @@ timeline and an export step was used as a reference point.
 | Phase | Status | What it does |
 |---|---|---|
 | **1 — Transcript + speaker turns** | ✅ Done | Upload a video → get a speaker-labeled, timestamped, turn-by-turn transcript |
-| **2 — Face detection + labeling** | ✅ Done | Detects and tracks faces in the video; one-time UI to label which face is which speaker; live zoom-to-speaker preview computed from real face positions |
-| **3 — Editor shell** | 🟡 Scaffolded | Per-turn layout override (Original / Zoom / Split). Original and Zoom are fully real. Split, annotations, and export are clearly-labeled placeholders — they need a real render/compositor pipeline that doesn't exist yet |
-| **4 — Stretch goals** | ⬜ Not started | Automatic speaker-to-face matching (no manual labeling step), multi-camera-angle support, desktop packaging |
+| **2 — Face *recognition* + cast setup** | ✅ Done | Detects faces, embeds them (SFace) and clusters identities (DBSCAN) so one person is one person rather than one track per head-turn; one-time "cast" screen to name everyone and match each voice to a person using audio evidence |
+| **3 — Editor shell** | ✅ Done | Per-turn layout override (Original / Zoom / Split). All three are real, including a live multi-speaker composite preview for Split. Annotations remain a stub |
+| **4 — Real export + multi-speaker framing** | ✅ Done | `POST /export` renders an actual MP4: hard cuts at turn boundaries, bust-shot zoom, a real up-to-3-pane composite for overlapping/forced-split turns, gapless duration-complete timeline, original audio preserved. See [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md) and [UX_PRD.md](UX_PRD.md) for the full design |
+| **5 — Stretch goals** | ⬜ Not started | Automatic speaker-to-face matching (no manual labeling step), multi-camera-angle support, desktop packaging, captions, jargon annotations |
 
 Nothing here is faked to look more finished than it is — every placeholder
 in the UI says so explicitly (e.g. "Split-screen preview — coming in a
@@ -89,27 +90,32 @@ Two pieces: a browser-based frontend, and a local processing service it
 talks to over HTTP. No cloud, no database, no accounts.
 
 ```
-┌─────────────────────────────┐        HTTP (localhost:8787)        ┌──────────────────────────────────┐
-│   Frontend (React + Vite)    │ ───────────────────────────────────▶│  Processing service (FastAPI)    │
-│   localhost:3460             │◀─────────────────────────────────── │  Python, runs locally             │
-│                               │         JSON responses               │                                   │
-│  1. UploadScreen              │                                      │  POST /transcribe                │
-│     — pick a video file       │                                      │    extract audio (ffmpeg)         │
-│                               │                                      │    → transcribe (faster-whisper)  │
-│  2. (processing state)        │                                      │    → diarize (resemblyzer)        │
-│     — calls both endpoints    │                                      │    → merge into turns             │
-│       in parallel             │                                      │                                   │
-│                               │                                      │  POST /detect-faces               │
-│  3. SpeakerLabelingScreen      │                                      │    sample frames (ffmpeg/OpenCV)  │
-│     — assign detected faces   │                                      │    → detect faces (YuNet)         │
-│       to speaker IDs          │                                      │    → track across frames (IOU)    │
-│                               │                                      │    → crop thumbnails              │
-│  4. EditorView                │                                      │                                   │
-│     — turn list, per-turn      │                                      └──────────────────────────────────┘
-│       layout override,        │
-│       live CSS zoom preview   │
-└─────────────────────────────┘
+┌──────────────────────────────┐     HTTP (localhost:8787)    ┌───────────────────────────────────┐
+│   Frontend (React + Vite)     │ ───────────────────────────▶│  Processing service (FastAPI)     │
+│   localhost:3460              │◀─────────────────────────── │  Python, runs locally             │
+│                               │        JSON responses        │                                   │
+│  1. UploadScreen              │                              │  POST /process   (ONE upload)     │
+│     — pick / drop a file      │                              │    extract audio (ffmpeg)         │
+│                               │                              │    ├─ transcribe (faster-whisper) │
+│  2. ProcessingScreen          │ ──── GET /progress/{id} ───▶ │    │  + diarize (resemblyzer)     │
+│     — real upload bytes,      │                              │    │  + overlap (pyannote, opt.)  │
+│       per-stage progress      │                              │    └─ faces: detect (YuNet)       │
+│                               │                              │         → track (IOU)             │
+│  3. CastScreen                │                              │         → embed (SFace)           │
+│     — name each person        │                              │         → cluster ids (DBSCAN)    │
+│     — match each VOICE to a   │                              │                                   │
+│       person, with audio      │                              │  POST /export                     │
+│                               │                              │    build gapless segments         │
+│  4. EditorView                │                              │    → frame each person (framing)  │
+│     — turn list w/ names      │                              │    → one ffmpeg filter_complex    │
+│     — per-turn person fix     │                              │    → mux original audio (copy)    │
+│     — live preview = export   │                              │                                   │
+└──────────────────────────────┘                              └───────────────────────────────────┘
 ```
+
+The frontend resolves *who is on screen* (diarisation suggests it, the user
+corrects any turn) and sends **person ids** to `/export`. The render
+pipeline never sees a diarisation speaker.
 
 **Why a separate local service instead of doing everything in the
 browser:** transcription, diarization, and face detection all need real
@@ -210,6 +216,44 @@ CSS `transform-origin`. `id` is a per-request track identity (not stable
 across separate uploads of the same video). `keyframes` is one entry per
 sampled frame the track appeared in (~1/sec by default).
 
+### `POST /process`
+
+**Request:** `multipart/form-data` with `file`, optional `num_speakers`, and
+optional `jobId` (enables progress reporting).
+
+**Response:** `{ turns, overlapWindows, faces }` — transcript with speaker
+turns, detected overlapping-speech windows, and the recognised people.
+
+This replaced separate `/transcribe` and `/detect-faces` endpoints that the
+frontend called in parallel. Because both took the file, the browser
+uploaded the same recording **twice** — 10GB of transfer for a 5GB file.
+One upload now feeds both, which run concurrently in threads (OpenCV and
+CTranslate2 both release the GIL, so they genuinely overlap: 13s vs 16s
+sequential on a 60s clip).
+
+### `GET /progress/{job_id}`
+
+Per-stage progress for a running job, polled by the UI. Returns
+`{transcribe: {stage, fraction, done}, faces: {...}}`. In-memory and
+process-local — this is a single-user local tool, so a dict is the whole
+requirement.
+
+### `POST /export`
+
+**Request:** `multipart/form-data` — `file` (the source video, re-uploaded)
+plus four JSON-encoded form fields: `layoutChoices` (per-turn layout
+decisions, each carrying its own `start`/`end`), `overlapWindows` (from
+`/transcribe`, `[]` if overlap detection isn't configured), `faces` (the
+`/detect-faces` response, re-sent so the server doesn't re-run detection),
+and `speakerToTrack` (`Record<speakerId, trackId>`). Optional `sessionId`
+form field triggers `decisions.jsonl` logging on success.
+
+**Response:** `video/mp4`, streamed from disk (`FileResponse`, not buffered
+in memory — exports can be large), `Content-Disposition: attachment`.
+
+Full design, including the render pipeline, crop math, and every decision
+behind it: [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md).
+
 ---
 
 ## Frontend Structure
@@ -218,14 +262,16 @@ sampled frame the track appeared in (~1/sec by default).
 src/
 ├── App.tsx                          # top-level state machine (see below)
 ├── lib/
-│   ├── api.ts                       # typed fetch wrappers for both endpoints
-│   └── faceCrop.ts                  # bbox → CSS zoom transform math
+│   ├── api.ts                       # typed fetch wrappers for all three endpoints
+│   └── faceCrop.ts                  # bbox → CSS zoom transform math + pixel-space crop math
 ├── features/
-│   ├── upload/UploadScreen.tsx      # file picker (idle / error states)
-│   ├── faces/SpeakerLabelingScreen.tsx  # face-thumbnail → speaker-ID mapping UI
+│   ├── upload/UploadScreen.tsx      # file picker + real drag-and-drop (idle / error states)
+│   ├── upload/ProcessingScreen.tsx  # upload bytes + per-stage progress
+│   ├── faces/CastScreen.tsx         # name each person; match each voice to a person (with audio)
 │   └── timeline/
-│       ├── EditorView.tsx           # video preview + turn list + layout controls
-│       ├── ExportButton.tsx         # stub — disabled, explains why
+│       ├── EditorView.tsx           # video preview + turn list + layout controls +
+│       │                            # multi-speaker composite live preview + overlap indicator
+│       ├── ExportButton.tsx         # real export flow (idle/exporting/done/error)
 │       └── types.ts                 # `Layout` type (original/zoom/split)
 ```
 
@@ -260,19 +306,40 @@ actually left assigned to `<video>` was never revoked. This produces one
 `oxlint` warning (`react/set-state-in-effect`) that's correct to ignore
 here — see the comment in `EditorView.tsx`.
 
+**The multi-speaker composite preview** (`EditorView.tsx`'s `CompositePane`)
+renders N separate `<video>` elements (same `src`, one per visible speaker)
+rather than compositing crops of a single element — a browser can't show two
+different crops of the same `<video>` at once. Two things worth knowing if
+you touch this: (1) the pane container is measured with a callback ref, not
+a plain `useRef` + `useEffect([])`, because the composite only mounts
+conditionally (once a turn is set to Split) — a plain ref/effect pair only
+ever fires for what exists at the *component's own* mount time and silently
+never re-attaches later (see `ARCHITECTURE.md`'s bugs log, #10). (2) Keeping
+the panes in sync with the primary "driver" video is one idempotent
+`sync()` function reacting to `timeupdate`/`seeked`/`play`/`pause` on the
+driver, not separate handlers per concern — splitting time-correction and
+play/pause into separate listeners let them race each other (#11).
+
 ---
 
 ## Backend Structure
 
 ```
 server/
-├── main.py                    # FastAPI app, the two HTTP endpoints
+├── main.py                    # FastAPI app, all HTTP endpoints
 ├── pipeline/
 │   ├── audio.py                # ffmpeg: extract mono 16kHz WAV from any video/audio file
 │   ├── transcribe.py           # faster-whisper: word-level timestamped transcript
-│   ├── diarize.py              # resemblyzer + clustering: "who's talking when"
+│   ├── diarize.py              # resemblyzer + clustering ("who's talking when") +
+│   │                            # pyannote.audio overlap detection (needs HF_TOKEN)
 │   ├── turns.py                # merge transcript + diarization into dialogue turns
-│   └── faces.py                 # OpenCV YuNet + IOU tracking: face detection/tracking
+│   ├── faces.py                 # OpenCV YuNet + IOU tracking: face detection/tracking
+│   └── render.py                # /export's render pipeline: segment construction,
+│                                 # bust-shot/composite crop math, ffmpeg orchestration
+├── tests/
+│   └── test_render.py           # render.py's crop-math parity + segment-construction edge cases
+├── logs/
+│   └── <session_id>/decisions.jsonl  # written by /export on success, gitignored
 └── .models/
     └── face_detection_yunet.onnx   # committed directly (232KB — small enough, avoids a download step)
 ```
@@ -292,17 +359,38 @@ the same speaker into a turn. A turn also breaks on a pause longer than
 `max_gap` (default 2s) even from the same speaker, so a long monologue with
 pauses doesn't become one unreadable multi-minute block.
 
+**`framing.py`** — how a person is framed inside a pane. The constants are
+measured, not guessed: frames from three professional podcast edits, run
+through this project's own face detector, put a single-speaker shot at
+**3.5x face height with the face 0.32-0.39 down the frame**. The original
+implementation cropped at ~2.5x and centred the face vertically, which is
+what made zoomed shots look like tight head shots rather than edits —
+especially for seated subjects, where the chair and body are part of the
+composition. Looser framing also crops a bigger region, so upscale dropped
+from 3.5x to 2.6x: the "weird framing" and the "soft picture" complaints had
+a single cause.
+
 **`faces.py`** — samples frames at a fixed interval (default 1/sec, via
 OpenCV's `VideoCapture`), runs `cv2.FaceDetectorYN` (the YuNet model) on
 each sampled frame, and links detections into tracks with simple greedy
-IOU matching: a detection matches an existing track if its bounding box
-overlaps that track's last-seen box above a threshold (default 0.3);
+IOU matching, then **recognises identities** so fragments of one person
+collapse into one person. A detection matches an existing track if its
+bounding box overlaps that track's last-seen box above a threshold (0.3);
 otherwise it starts a new track. A track closes out if unmatched for more
 than `max_gap_s` (default 3s) — handles someone leaving frame without
 merging them into whoever enters later. No face-recognition/identity model
 is used anywhere in this pipeline, deliberately: that would be solving a
 harder problem than the one 30-second manual labeling step already solves
 well enough.
+
+**`render.py`** — builds a gapless, duration-complete list of `RenderSegment`s
+covering the entire source video (turns, overlap windows, *and* the pauses
+between turns, so the output stays time-aligned with the untouched source
+audio), then renders it as one `ffmpeg` invocation: one `filter_complex`
+graph with a `trim`+`crop`+`scale` chain per segment, concatenated, muxed
+with the source audio. The multi-speaker composite is N per-pane crops
+`hstack`ed together, capped at 3 panes. Full design, including why each
+piece works the way it does: [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md).
 
 ---
 
@@ -329,12 +417,28 @@ no UI component library yet (plain Tailwind classes).
 | `fastapi` + `uvicorn[standard]` | the HTTP service itself | |
 | `python-multipart` | required by FastAPI for `UploadFile` form parsing | |
 | `faster-whisper` | transcription with word-level timestamps | CTranslate2-based, not the original `openai-whisper` — much lighter (no PyTorch dependency for the transcription path itself) |
-| `resemblyzer` | speaker diarization via voice embeddings | chosen over `pyannote.audio` specifically to avoid HuggingFace's gated-model flow (an account + accepting a license + a token) — this needs zero setup beyond `uv sync`. `pyannote` is noted as a future higher-accuracy upgrade path if needed |
+| `resemblyzer` | speaker diarization via voice embeddings | needs zero setup beyond `uv sync` — no HuggingFace account. Still used for the base speaker-segment clustering; `pyannote.audio` (below) is additive, for overlap detection only |
+| `pyannote.audio` | overlapped-speech detection, for the multi-speaker composite's trigger signal | gated on a Hugging Face account + token (see Setup above) — the one place this project's zero-setup story has an opt-in exception, accepted because the composite feature has no other honest trigger signal (see `TECHNICAL_ARCHITECTURE.md` §1) |
+| `python-dotenv` | loads `server/.env` for `HF_TOKEN` | |
 | `scikit-learn` | clustering (`AgglomerativeClustering`, `silhouette_score`) for diarization | |
 | `opencv-python-headless` | face detection (`FaceDetectorYN`/YuNet) and video frame sampling | **pinned `>=4.9,<5`** — see below, this bit us |
 | `numpy` | array plumbing between the above | |
 | `pillow` | image handling | pulled in for the face-detection work; not load-bearing beyond that |
 | `setuptools<81` | **pinned** to keep `pkg_resources` available | `resemblyzer`'s dependency `webrtcvad` still does `import pkg_resources` at import time; recent `setuptools` (≥81) dropped it. Without this pin, the server fails to start with `ModuleNotFoundError: No module named 'pkg_resources'` |
+| `pytest` (dev) | backend test suite (`server/tests/`) | |
+
+**Face recognition model.** `cv2.FaceRecognizerSF` (SFace) ships inside the
+`opencv-python-headless` already installed, so identity recognition needed no
+new dependency — only the ~38MB ONNX weights, which download on first run
+(gitignored, same pattern as the Whisper model). Chosen over InsightFace
+`buffalo_l`, which is what Immich uses: 99.6% vs ~99.8% LFW accuracy is
+irrelevant for telling apart four people in fixed chairs, while InsightFace
+would add `insightface` + `onnxruntime`, 166-326MB of weights, and a
+**non-commercial-research-only** model licence that conflicts with this
+project being MIT and intended for public release. The transferable idea from
+Immich — embed every face, then DBSCAN the embeddings into people — is what
+was actually adopted; `scikit-learn` was already a dependency, so DBSCAN came
+free.
 
 **Not used, deliberately, despite being an obvious first choice:**
 
@@ -345,8 +449,23 @@ no UI component library yet (plain Tailwind classes).
   is a native library issue unrelated to this project's code. Switched to
   OpenCV's YuNet detector instead, which has no such problem, needs no
   separate GPU service, and needed only a small (232KB) `.onnx` model file.
-- **`pyannote.audio`** — see `resemblyzer` above.
 - **`openai-whisper`** — see `faster-whisper` above.
+- **`ffmpeg-python` (or similar filter-graph wrapper)** — the export render
+  pipeline builds `ffmpeg` `filter_complex` graphs as plain strings via
+  `subprocess`, matching the existing pattern in `pipeline/audio.py`, rather
+  than adding a wrapper dependency for something a plain string-building
+  function handles fine.
+
+**Known-benign runtime warning:** `pyannote.audio` pulls in `av` (PyAV),
+which bundles its own `libavdevice`, and `opencv-python-headless` bundles
+its own separate copy — both loading in the same process prints an
+`objc[...] Class AVFFrameReceiver is implemented in both ...` warning on
+macOS on startup. Tested directly (`cv2` face detection and `av` container
+opens in the same process, back to back) and confirmed it does **not**
+crash — different shape of collision than the earlier `mediapipe`/
+`opencv-contrib-python` one below, which did corrupt the `cv2` namespace.
+Noise, not a landmine, but worth knowing if it shows up in a stack trace
+someday.
 
 ---
 
@@ -367,7 +486,19 @@ uv run uvicorn main:app --port 8787
 
 First run of the processing service downloads the Whisper model (`small`
 by default, ~500MB) and the voice-embedding model (small, bundled via
-`resemblyzer`) — both public, no account needed anywhere in this setup.
+`resemblyzer`) — both public, no account needed for transcription/diarization.
+
+**Optional: overlap detection.** The multi-speaker composite needs to know
+when two people are talking at once, which needs `pyannote.audio`'s
+overlapped-speech-detection model — gated on Hugging Face. Without it,
+export and the live preview still work, they just never trigger the
+composite from a *real* overlap (a manually-forced Split still works via its
+own fallback — see `TECHNICAL_ARCHITECTURE.md` §3.4). To enable it:
+
+1. Create a token at https://huggingface.co/settings/tokens
+2. Accept the model license at https://huggingface.co/pyannote/overlapped-speech-detection
+3. Add `HF_TOKEN=<your token>` to `server/.env` (create the file — it's
+   gitignored) and restart the service
 
 ---
 
@@ -380,23 +511,30 @@ by default, ~500MB) and the voice-embedding model (small, bundled via
   two people's faces swap positions between sampled frames (unlikely in a
   static podcast shot, but possible with a moving camera), tracks could in
   theory get confused. Not observed in testing, but no face-recognition
-  safety net exists to catch it.
-- **Split-screen is a visual placeholder** — no code composites two
-  different crops of one video side by side yet. This needs either two
-  synchronized `<video>` elements (browser-preview-achievable) or, for
-  real export, an actual compositor.
-- **Annotations (text/bubbles) and Export are both stubs** — disabled
-  buttons that explain what's missing. Export specifically needs a
-  render/compositor pipeline (burn the per-turn layout choices into an
-  actual output file via `ffmpeg`) that doesn't exist yet.
-- **No automated test suite** — every piece of this was verified manually
-  during development (direct function calls, raw `curl` requests, and real
-  browser sessions with a synthetic test video), but none of that is
-  captured as a repeatable test suite yet.
+  safety net exists to catch it. In practice, a track also fragments (splits
+  into several short tracks for the same person) when detection misses a
+  few consecutive frames — e.g. a hand near the face, a head turn. Cosmetic
+  in the labeling UI (a few extra thumbnails to skip), not a correctness bug.
+- **Overlap detection needs an optional Hugging Face token** — see Setup
+  above. Everything else works without it.
+- **No automated *frontend* test suite** — the backend now has one
+  (`server/tests/`, `pytest`, covers the render pipeline's segment
+  construction and crop-math parity with the frontend). The frontend is
+  still verified manually (typecheck + build + real browser sessions against
+  a real recording).
 - **Track IDs aren't stable across separate uploads** — re-uploading the
   same video reruns detection from scratch; there's no caching or
   project-file concept yet (Recordly-style `.recordly` project persistence
   was noted as a nice-to-have, not built).
+- **Zooming into a wide shot is inherently soft.** Framing now matches
+  professional practice (3.5x face height), which needs ~2.6x upscale on a
+  1080p wide shot of four people — sharper than the 3.5x the old cap forced,
+  but still upscaling. The real fix is source resolution: shooting 4K and
+  delivering 1080p makes punch-ins genuinely sharp, because the crop then
+  contains more real pixels than the output needs.
+- **No pre-flight disk-space check for large exports** — a multi-GB upload
+  plus its extracted audio plus a same-or-larger rendered output can
+  transiently need significant temp disk space. Not guarded against.
 
 ---
 
@@ -440,6 +578,54 @@ re-discovers them the hard way.
    needs an interactive login) — worth checking `gh auth status` before
    any future `gh repo create` in a session with multiple logged-in
    accounts.
+8. **`vite.config.ts` had no port set.** `npm run dev`, exactly as this
+   README instructs, started Vite on its default `5173` — but the backend's
+   CORS is hardcoded to `3460`, which every other doc assumed was automatic.
+   Anyone following setup literally would've hit a silent CORS failure.
+   Fixed by setting `server.port: 3460` in `vite.config.ts`.
+9. **ffmpeg `concat` filter rejected segments with mismatched SAR.**
+   Cropping a region whose dimensions aren't proportional to the source
+   produces a slightly different sample aspect ratio per segment (even
+   though all segments are `scale`d to the same pixel dimensions) — `concat`
+   refuses to join video streams with different SAR. Fixed by appending
+   `setsar=1` after every segment's final `scale` filter in `render.py`, so
+   every segment normalizes to the same SAR before concatenation. Caught
+   only by actually running the render on real crop data with a real
+   overlap window, not by any unit test of the segment-construction logic.
+10. **A `ResizeObserver` never attached because of a conditional-mount ref
+    bug.** `EditorView`'s multi-speaker composite pane sizing used a plain
+    `useRef` + `useEffect(() => {...}, [])` to measure its container —
+    correct for an element that exists at first mount, wrong here, because
+    the composite `<div>` only renders once a turn is set to Split. At the
+    component's actual mount time the ref was `null`, the effect bailed
+    immediately, and — since the dependency array never changes — never ran
+    again once the div appeared later. Fixed with a callback ref (`useState`
+    holding the DOM node, effect keyed on that state), which fires on every
+    attach/detach rather than only at initial mount. Symptom before the fix:
+    a solid black composite preview, no error, no console warning.
+11. **Composite pane video sync raced itself.** Keeping N separate `<video>`
+    elements in sync with a "driver" video used two independent mechanisms —
+    a `timeupdate`-driven `currentTime` correction, and separate `play`/
+    `pause` event listeners each calling `pane.play()`/`pane.pause()`. A
+    `currentTime` write can itself interrupt an in-flight `play()`, so the
+    two could race: a play-triggered `play()` call could lose to the very
+    next timeupdate-triggered seek, leaving a pane stuck reporting `paused`
+    while its time value kept getting corrected by seeks alone (visually
+    close to working — updating every ~250ms instead of true 30fps — but not
+    actually playing). Fixed by folding both concerns into one idempotent
+    `sync()` function called from every relevant driver event, so each call
+    corrects both drift and play state together instead of two separate
+    handlers fighting each other.
+12. **FastAPI silently treated `/export`'s form fields as query
+    parameters.** A plain `str`-typed parameter on an endpoint that also
+    takes an `UploadFile` is inferred as a query parameter unless it's
+    explicitly wrapped in `Form(...)` — there's no multipart-form-data
+    auto-inference the way there is for `UploadFile`/`File(...)`. Every
+    request 422'd with "field required" pointing at `"loc": ["query", ...]`
+    until each string field was declared `= Form(...)`. Only surfaced when
+    actually calling the endpoint over real HTTP (via the browser) — direct
+    Python-level calls into the render pipeline never touch FastAPI's
+    parameter-binding layer at all.
 
 ---
 
@@ -447,17 +633,25 @@ re-discovers them the hard way.
 
 Roughly in order of what unlocks the most value next:
 
-1. **Export** — the actual render/compositor pipeline: burn the per-turn
-   layout choices (and eventually annotations) into a real output video
-   via `ffmpeg`. This is the single biggest gap between "editor preview"
-   and "usable tool."
-2. **Split-screen, for real** — likely two synchronized `<video>` elements
-   for the live preview, and a real two-region composite for export.
-3. **Annotations** — text/bubble overlays per turn.
-4. **Automatic speaker-to-face matching** — remove the manual labeling
+1. ~~**Export**~~ — done. `POST /export` renders a real MP4 with hard cuts,
+   bust-shot zoom, and a real multi-speaker composite.
+2. ~~**Split-screen, for real**~~ — done, both live preview (two synced
+   `<video>` elements) and export (real ffmpeg composite, capped at 3 panes).
+3. **The real-world test** — run an actual full episode through the
+   pipeline and show it to a podcast host who edits manually. Everything
+   built so far has been verified on short real clips and synthetic data;
+   this is the test the whole roadmap has been sequenced against.
+4. **Annotations** — text/bubble overlays per turn.
+5. **Voice ducking for overlapping speech** — gated on a source-separation
+   research spike; genuinely unresolved, not a checkbox (see
+   `TECHNICAL_ARCHITECTURE.md`'s discussion of what overlap detection can
+   and can't do).
+6. **Automatic speaker-to-face matching** — remove the manual labeling
    step via audio-visual active speaker detection (matching lip movement
    to who's making sound). Genuinely harder than everything built so far;
    deliberately deferred until the manual-labeling version proves the rest
    of the concept out.
-5. **Multi-camera-angle support, desktop packaging** — noted as stretch
+7. **Captions, jargon annotations, audio effects, intro/outro presets,
+   automatic social clips** — later roadmap items, not yet started.
+8. **Multi-camera-angle support, desktop packaging** — noted as stretch
    goals from the start; not begun.

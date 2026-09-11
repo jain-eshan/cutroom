@@ -9,9 +9,19 @@ dependencies = [
     "numpy>=2.5.3",
     "opencv-python-headless>=4.9,<5",
     "pillow>=12.3.0",
+    "pyannote-audio>=4.0.7",
+    "python-dotenv>=1.2.3",
     "python-multipart>=0.0.32",
     "resemblyzer>=0.1.4",
     "scikit-learn>=1.9.1",
     "setuptools<81",
     "uvicorn[standard]>=0.52.4",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
