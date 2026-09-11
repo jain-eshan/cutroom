@@ -1,0 +1,17 @@
+[project]
+name = "server"
+version = "0.1.0"
+description = "Local processing service: transcription, diarization, turn segmentation."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141.1",
+    "faster-whisper>=1.2.1",
+    "numpy>=2.5.3",
+    "opencv-python-headless>=4.9,<5",
+    "pillow>=12.3.0",
+    "python-multipart>=0.0.32",
+    "resemblyzer>=0.1.4",
+    "scikit-learn>=1.9.1",
+    "setuptools<81",
+    "uvicorn[standard]>=0.52.4",
+]
