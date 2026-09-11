@@ -1,10 +1,30 @@
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
 import numpy as np
+from sklearn.cluster import DBSCAN
 
-MODEL_PATH = Path(__file__).parent.parent / ".models" / "face_detection_yunet.onnx"
+MODELS_DIR = Path(__file__).parent.parent / ".models"
+DETECTION_MODEL = MODELS_DIR / "face_detection_yunet.onnx"
+RECOGNITION_MODEL = MODELS_DIR / "face_recognition_sface_2021dec.onnx"
+RECOGNITION_MODEL_URL = (
+	"https://github.com/opencv/opencv_zoo/raw/main/models/"
+	"face_recognition_sface/face_recognition_sface_2021dec.onnx"
+)
+
+# Cosine distance below which two face embeddings are treated as the same person.
+# Measured on real footage: four participants separated by 0.66-0.91, while
+# fragments of the SAME person sat far below this. Anywhere in 0.3-0.6 gave an
+# identical answer, so the exact value is not load-bearing.
+IDENTITY_DISTANCE = 0.4
+
+# A "person" seen in fewer sampled frames than this is discarded. Mirrors
+# Immich's "Minimum Recognized Faces" setting. Catches false positives --
+# on the test footage a hand was detected as a face twice and clustered into
+# its own identity; this is what removes it.
+MIN_DETECTIONS = 3
 
 
 @dataclass
@@ -22,10 +42,34 @@ class Detection:
 
 
 @dataclass
-class FaceTrack:
+class Person:
+	"""One real human, assembled from however many detection fragments the
+	tracker produced for them."""
+
 	id: int
 	thumbnail_jpeg: bytes
 	keyframes: list[Detection] = field(default_factory=list)
+	detection_count: int = 0
+
+
+def _ensure_recognition_model() -> None:
+	"""SFace is ~38MB -- too big to commit, so it downloads on first use, the
+	same way the Whisper model already does."""
+	if RECOGNITION_MODEL.exists():
+		return
+	MODELS_DIR.mkdir(parents=True, exist_ok=True)
+	tmp = RECOGNITION_MODEL.with_suffix(".onnx.part")
+	print(f"[faces] downloading face recognition model (~38MB) to {RECOGNITION_MODEL} ...")
+	try:
+		urllib.request.urlretrieve(RECOGNITION_MODEL_URL, tmp)
+		tmp.replace(RECOGNITION_MODEL)
+		print("[faces] face recognition model ready.")
+	except Exception as err:
+		tmp.unlink(missing_ok=True)
+		raise RuntimeError(
+			f"Could not download the face recognition model from {RECOGNITION_MODEL_URL}. "
+			f"Download it manually and save it to {RECOGNITION_MODEL}. Original error: {err}"
+		) from err
 
 
 def _iou(a: BBox, b: BBox) -> float:
@@ -38,41 +82,35 @@ def _iou(a: BBox, b: BBox) -> float:
 	return inter / union if union > 0 else 0.0
 
 
-def _sample_frames(video_path: str, interval_s: float) -> list[tuple[float, np.ndarray]]:
+def _sample_frames(video_path: str, interval_s: float):
 	cap = cv2.VideoCapture(video_path)
 	fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
 	frame_interval = max(1, round(fps * interval_s))
-
-	frames: list[tuple[float, np.ndarray]] = []
 	idx = 0
 	while True:
 		ok, frame = cap.read()
 		if not ok:
 			break
 		if idx % frame_interval == 0:
-			frames.append((idx / fps, frame))
+			yield idx / fps, frame
 		idx += 1
 	cap.release()
-	return frames
 
 
-def _detect_in_frame(detector: cv2.FaceDetectorYN, frame: np.ndarray) -> list[BBox]:
-	_, faces = detector.detect(frame)
-	if faces is None:
-		return []
-	return [BBox(x=float(f[0]), y=float(f[1]), width=float(f[2]), height=float(f[3])) for f in faces]
-
-
-def _crop_thumbnail(frame: np.ndarray, bbox: BBox, pad: float = 0.15) -> bytes:
+def _crop_thumbnail(frame: np.ndarray, bbox: BBox, pad: float = 0.4) -> bytes:
 	h, w = frame.shape[:2]
 	pad_w, pad_h = bbox.width * pad, bbox.height * pad
 	x1 = max(0, int(bbox.x - pad_w))
 	y1 = max(0, int(bbox.y - pad_h))
 	x2 = min(w, int(bbox.x + bbox.width + pad_w))
 	y2 = min(h, int(bbox.y + bbox.height + pad_h))
-	crop = frame[y1:y2, x1:x2]
-	_, buf = cv2.imencode(".jpg", crop)
+	_, buf = cv2.imencode(".jpg", frame[y1:y2, x1:x2], [cv2.IMWRITE_JPEG_QUALITY, 88])
 	return buf.tobytes()
+
+
+def _normalize(v: np.ndarray) -> np.ndarray:
+	n = float(np.linalg.norm(v))
+	return v / n if n > 0 else v
 
 
 def get_video_dimensions(video_path: str) -> tuple[int, int]:
@@ -83,35 +121,77 @@ def get_video_dimensions(video_path: str) -> tuple[int, int]:
 	return w, h
 
 
+def get_video_duration(video_path: str) -> float:
+	cap = cv2.VideoCapture(video_path)
+	fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+	frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+	cap.release()
+	return frame_count / fps if fps else 0.0
+
+
+def get_video_fps(video_path: str) -> float:
+	cap = cv2.VideoCapture(video_path)
+	fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+	cap.release()
+	return float(fps)
+
+
 def detect_and_track_faces(
 	video_path: str,
 	interval_s: float = 1.0,
 	iou_threshold: float = 0.3,
 	max_gap_s: float = 3.0,
-	min_keyframes: int = 2,
-) -> list[FaceTrack]:
-	"""Detect faces on sampled frames and link them into persistent tracks.
+	identity_distance: float = IDENTITY_DISTANCE,
+	min_detections: int = MIN_DETECTIONS,
+	progress=None,
+) -> list[Person]:
+	"""Find the distinct people in a video, not just face rectangles.
 
-	No face-identity/embedding model here (that's a heavier ask than we need) —
-	just greedy IOU matching frame-to-frame, which is enough for a mostly
-	static single-camera podcast shot. A track that isn't matched for more
-	than max_gap_s is closed out (handles someone leaving frame and a new
-	person entering later without merging them into the same track).
+	Three stages:
+
+	1. **Detect** faces on sampled frames (YuNet), keeping the five facial
+	   landmarks -- SFace needs them to align each crop before embedding.
+	2. **Track** detections frame-to-frame by bounding-box overlap. This is
+	   only good for short-term continuity: a hand passing over a face or a
+	   head turn breaks the chain and starts a new track, so one person
+	   routinely produces several fragments.
+	3. **Recognise** -- embed every detection with SFace, average per track,
+	   and cluster the track embeddings with DBSCAN. That collapses the
+	   fragments back into one identity per real human, which is what stage 2
+	   alone can never do. Same approach Immich uses for its people view
+	   (embedding + DBSCAN), with a smaller, permissively-licensed model.
+
+	On real four-person footage this turned 9 raw tracks into 4 people plus
+	one junk cluster (a hand), which `min_detections` then drops.
 	"""
-	frames = _sample_frames(video_path, interval_s)
+	_ensure_recognition_model()
+
+	frames = list(_sample_frames(video_path, interval_s))
 	if not frames:
 		return []
 
 	h, w = frames[0][1].shape[:2]
-	detector = cv2.FaceDetectorYN.create(str(MODEL_PATH), "", (w, h), score_threshold=0.6)
+	detector = cv2.FaceDetectorYN.create(str(DETECTION_MODEL), "", (w, h), score_threshold=0.6)
 	detector.setInputSize((w, h))
+	recognizer = cv2.FaceRecognizerSF.create(str(RECOGNITION_MODEL), "")
 
 	next_id = 0
 	active: dict[int, dict] = {}
 	finished: list[dict] = []
 
-	for t, frame in frames:
-		boxes = _detect_in_frame(detector, frame)
+	for i, (t, frame) in enumerate(frames):
+		if progress is not None and i % 10 == 0:
+			progress(i / len(frames))
+
+		_, raw = detector.detect(frame)
+		rows = [] if raw is None else list(raw)
+		boxes = [BBox(x=float(r[0]), y=float(r[1]), width=float(r[2]), height=float(r[3])) for r in rows]
+		# alignCrop needs the full 15-value row (bbox + 5 landmarks + score),
+		# which is exactly why detection can't throw the landmarks away.
+		embeddings = [
+			_normalize(np.asarray(recognizer.feature(recognizer.alignCrop(frame, r))).flatten())
+			for r in rows
+		]
 
 		candidates = [
 			(_iou(track["last_bbox"], box), track_id, bi)
@@ -133,11 +213,11 @@ def detect_and_track_faces(
 			track["last_bbox"] = box
 			track["last_seen"] = t
 			track["keyframes"].append(Detection(t=t, bbox=box))
+			track["embeddings"].append(embeddings[bi])
 			area = box.width * box.height
 			if area > track["best_area"]:
 				track["best_area"] = area
-				track["best_frame"] = frame
-				track["best_bbox"] = box
+				track["thumbnail"] = _crop_thumbnail(frame, box)
 
 		for track_id in list(active.keys()):
 			if track_id not in matched_tracks and t - active[track_id]["last_seen"] > max_gap_s:
@@ -151,21 +231,50 @@ def detect_and_track_faces(
 				"last_bbox": box,
 				"last_seen": t,
 				"keyframes": [Detection(t=t, bbox=box)],
+				"embeddings": [embeddings[bi]],
 				"best_area": box.width * box.height,
-				"best_frame": frame,
-				"best_bbox": box,
+				# Store the encoded thumbnail, not the frame -- holding full
+				# 1920x1080 frames per track balloons memory on long videos.
+				"thumbnail": _crop_thumbnail(frame, box),
 			}
 			next_id += 1
 
 	finished.extend(active.values())
+	tracks = [tr for tr in finished if tr["embeddings"]]
+	if not tracks:
+		return []
 
-	tracks = [
-		FaceTrack(
-			id=tr["id"],
-			thumbnail_jpeg=_crop_thumbnail(tr["best_frame"], tr["best_bbox"]),
-			keyframes=tr["keyframes"],
+	track_embeddings = np.array([_normalize(np.mean(tr["embeddings"], axis=0)) for tr in tracks])
+	labels = DBSCAN(eps=identity_distance, min_samples=1, metric="cosine").fit_predict(track_embeddings)
+
+	people: list[Person] = []
+	for label in sorted(set(labels)):
+		members = [tracks[i] for i in range(len(tracks)) if labels[i] == label]
+		keyframes: dict[float, Detection] = {}
+		for m in members:
+			for kf in m["keyframes"]:
+				# Fragments of one person can overlap in time if detection
+				# double-fired; keep the largest box for any given instant.
+				prev = keyframes.get(kf.t)
+				if prev is None or kf.bbox.width * kf.bbox.height > prev.bbox.width * prev.bbox.height:
+					keyframes[kf.t] = kf
+		count = sum(len(m["keyframes"]) for m in members)
+		if count < min_detections:
+			continue
+		best = max(members, key=lambda m: m["best_area"])
+		people.append(
+			Person(
+				id=len(people),
+				thumbnail_jpeg=best["thumbnail"],
+				keyframes=sorted(keyframes.values(), key=lambda k: k.t),
+				detection_count=count,
+			)
 		)
-		for tr in finished
-		if len(tr["keyframes"]) >= min_keyframes
-	]
-	return sorted(tracks, key=lambda tr: tr.keyframes[0].t)
+
+	# Most-present people first: in a podcast the participants are on screen
+	# far more than anyone who wanders through, so this puts the real
+	# participants at the top of the labelling UI.
+	people.sort(key=lambda p: -p.detection_count)
+	for i, p in enumerate(people):
+		p.id = i
+	return people

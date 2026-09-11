@@ -58,9 +58,13 @@ First run downloads the Whisper model (`small` by default, ~500MB) and the
 voice-embedding model (small, bundled via `resemblyzer`) — both public, no
 account needed.
 
-## Optional: higher-accuracy diarization
+## Optional: overlap detection (`pyannote.audio`)
 
-`pyannote.audio` is generally more accurate than the resemblyzer-based
-approach here, but its models are gated on HuggingFace (you'd need a free HF
-account, to accept the model license, and an access token). Not wired up
-yet — worth revisiting if diarization accuracy becomes the bottleneck.
+Wired up as of the export phase — `pipeline/diarize.py`'s `detect_overlap()`
+uses `pyannote.audio`'s overlapped-speech-detection model to find stretches
+where two people are talking at once, which is what triggers the editor's
+multi-speaker composite. Gated on HuggingFace (a free account, accepting the
+model license, and an access token) — see the main
+[ARCHITECTURE.md](../docs/ARCHITECTURE.md)'s Setup section for the exact
+steps. Without a token configured, `/transcribe` still works normally; it
+just returns an empty `overlapWindows` list and prints a one-line notice.

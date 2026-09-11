@@ -1,3 +1,7 @@
 .venv
 __pycache__
 *.pyc
+.env
+logs/
+# Downloads on first run (~38MB) -- see pipeline/faces.py
+.models/face_recognition_sface_*.onnx

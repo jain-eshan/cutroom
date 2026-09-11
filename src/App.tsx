@@ -1,38 +1,89 @@
-import { useState } from "react";
-import { SpeakerLabelingScreen } from "@/features/faces/SpeakerLabelingScreen";
+import { useEffect, useState } from "react";
+import { CastScreen, type CastResult } from "@/features/faces/CastScreen";
 import { EditorView } from "@/features/timeline/EditorView";
+import { ProcessingScreen } from "@/features/upload/ProcessingScreen";
 import { UploadScreen } from "@/features/upload/UploadScreen";
-import { detectFaces, transcribe, type DetectFacesResponse, type Turn } from "@/lib/api";
+import {
+	getProgress,
+	processVideo,
+	type DetectFacesResponse,
+	type JobProgress,
+	type OverlapWindow,
+	type Turn,
+} from "@/lib/api";
 
 type Status =
 	| { state: "idle" }
-	| { state: "processing" }
+	| { state: "processing"; file: File; jobId: string; startedAt: number }
 	| { state: "error"; message: string }
-	| { state: "labeling"; file: File; turns: Turn[]; faces: DetectFacesResponse }
+	| {
+			state: "cast";
+			file: File;
+			sessionId: string;
+			turns: Turn[];
+			overlapWindows: OverlapWindow[];
+			faces: DetectFacesResponse;
+	  }
 	| {
 			state: "editing";
 			file: File;
+			sessionId: string;
 			turns: Turn[];
+			overlapWindows: OverlapWindow[];
 			faces: DetectFacesResponse;
-			speakerToTrack: Record<number, number>;
+			cast: CastResult;
 	  };
-
-function invertMapping(trackIdToSpeakerId: Record<number, number>): Record<number, number> {
-	const speakerIdToTrackId: Record<number, number> = {};
-	for (const [trackId, speakerId] of Object.entries(trackIdToSpeakerId)) {
-		speakerIdToTrackId[speakerId] = Number(trackId);
-	}
-	return speakerIdToTrackId;
-}
 
 function App() {
 	const [status, setStatus] = useState<Status>({ state: "idle" });
+	const [uploadFraction, setUploadFraction] = useState(0);
+	const [progress, setProgress] = useState<JobProgress | null>(null);
+	const [elapsed, setElapsed] = useState(0);
+
+	const processingJobId = status.state === "processing" ? status.jobId : null;
+	const processingStartedAt = status.state === "processing" ? status.startedAt : null;
+
+	// Poll the server for which stage it's on. Both requests run in parallel
+	// and report under the same job id, so one poll covers both.
+	useEffect(() => {
+		if (!processingJobId) return;
+		let cancelled = false;
+		const tick = async () => {
+			try {
+				const p = await getProgress(processingJobId);
+				if (!cancelled) setProgress(p);
+			} catch {
+				// Transient -- the next poll will pick it up.
+			}
+		};
+		void tick();
+		const id = setInterval(tick, 700);
+		return () => {
+			cancelled = true;
+			clearInterval(id);
+		};
+	}, [processingJobId]);
+
+	useEffect(() => {
+		if (processingStartedAt === null) return;
+		const id = setInterval(() => setElapsed((Date.now() - processingStartedAt) / 1000), 500);
+		return () => clearInterval(id);
+	}, [processingStartedAt]);
 
 	async function handleFile(file: File) {
-		setStatus({ state: "processing" });
+		const jobId = crypto.randomUUID();
+		setUploadFraction(0);
+		setProgress(null);
+		setElapsed(0);
+		setStatus({ state: "processing", file, jobId, startedAt: Date.now() });
 		try {
-			const [{ turns }, faces] = await Promise.all([transcribe(file), detectFaces(file)]);
-			setStatus({ state: "labeling", file, turns, faces });
+			const { turns, overlapWindows, faces } = await processVideo(
+				file,
+				jobId,
+				undefined,
+				setUploadFraction,
+			);
+			setStatus({ state: "cast", file, sessionId: jobId, turns, overlapWindows, faces });
 		} catch (err) {
 			setStatus({
 				state: "error",
@@ -43,26 +94,32 @@ function App() {
 
 	if (status.state === "processing") {
 		return (
-			<div className="flex min-h-screen items-center justify-center px-6 text-center text-sm text-neutral-500">
-				Transcribing, detecting speakers, and finding faces — this runs locally and can take
-				a few minutes for longer recordings...
-			</div>
+			<ProcessingScreen
+				uploadFraction={uploadFraction}
+				progress={progress}
+				elapsedSeconds={elapsed}
+				fileName={status.file.name}
+				fileSizeBytes={status.file.size}
+			/>
 		);
 	}
 
-	if (status.state === "labeling") {
-		const speakerIds = [...new Set(status.turns.map((t) => t.speaker))].sort((a, b) => a - b);
+	if (status.state === "cast") {
 		return (
-			<SpeakerLabelingScreen
-				tracks={status.faces.tracks}
-				speakerIds={speakerIds}
-				onComplete={(trackIdToSpeakerId) =>
+			<CastScreen
+				file={status.file}
+				people={status.faces.people}
+				turns={status.turns}
+				sampledFrames={Math.max(0, ...status.faces.people.map((p) => p.detectionCount))}
+				onComplete={(cast) =>
 					setStatus({
 						state: "editing",
 						file: status.file,
+						sessionId: status.sessionId,
 						turns: status.turns,
+						overlapWindows: status.overlapWindows,
 						faces: status.faces,
-						speakerToTrack: invertMapping(trackIdToSpeakerId),
+						cast,
 					})
 				}
 			/>
@@ -73,9 +130,11 @@ function App() {
 		return (
 			<EditorView
 				file={status.file}
+				sessionId={status.sessionId}
 				turns={status.turns}
+				overlapWindows={status.overlapWindows}
 				faces={status.faces}
-				speakerToTrack={status.speakerToTrack}
+				cast={status.cast}
 			/>
 		);
 	}
