@@ -6,6 +6,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3460
+    },
+    {
+      "name": "podcast-editor-backend",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "--directory", "server", "uvicorn", "main:app", "--port", "8787"],
+      "port": 8787,
+      "url": "http://127.0.0.1:8787"
     }
   ]
 }

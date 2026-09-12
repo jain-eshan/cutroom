@@ -154,7 +154,9 @@ export async function exportVideo(
 	form.append("file", file);
 	form.append("layoutChoices", JSON.stringify(layoutChoices));
 	form.append("overlapSegments", JSON.stringify(overlapSegments));
-	form.append("faces", JSON.stringify(faces));
+	// Sent as a file, not a text field: the server caps text fields at 1MB and
+	// face keyframes for a full-length episode are larger than that.
+	form.append("faces", new Blob([JSON.stringify(faces)], { type: "application/json" }), "faces.json");
 	form.append("sessionId", sessionId);
 
 	const res = await fetch(new URL("/export", API_BASE), { method: "POST", body: form });

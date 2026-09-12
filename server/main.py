@@ -163,15 +163,19 @@ async def process_endpoint(
 @app.post("/export")
 async def export_endpoint(
 	file: UploadFile,
+	# A file part, not a text field: Starlette caps text fields at 1MB, and face
+	# keyframes grow with episode length (every sampled second, every person).
+	# Measured: a 53-minute episode's faces are 1.7MB and the export 400'd with
+	# "Part exceeded maximum size of 1024KB."
+	faces: UploadFile,
 	layoutChoices: str = Form(...),
 	overlapSegments: str = Form(...),
-	faces: str = Form(...),
 	sessionId: str | None = Form(None),
 ) -> FileResponse:
 	try:
 		layout_choices_data = json.loads(layoutChoices)
 		overlap_segments_data = json.loads(overlapSegments)
-		faces_data = json.loads(faces)
+		faces_data = json.loads(await faces.read())
 	except json.JSONDecodeError as err:
 		raise HTTPException(400, f"Malformed JSON in request field: {err}") from err
 

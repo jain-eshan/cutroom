@@ -44,6 +44,15 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | Processing is not slow | **12.5s end to end** for a 104 MB / 60s clip via curl; ≈1/5 of real time |
 | Concurrency helps | 13s concurrent vs 16s sequential for transcribe + faces |
 
+**Full-length episode (53 min, four people, 1080p, 5.3GB), run 2026-09-12:**
+
+| Claim | Measurement |
+|---|---|
+| Processing completes | **892s (~15 min)** end to end, ~0.28x real time, peak 4.5GB RAM |
+| Face recognition holds up at length | all four participants found in **3,164-3,172 of 3,181** sampled frames; six junk clusters of 3-12 detections also survive `MIN_DETECTIONS` (fixed threshold does not scale with episode length) |
+| Export completes and is faithful | **95,436 frames in -> 95,436 out**, duration exact, 1920x1080 preserved, audio stream-copied **bit-identical** (matching MD5), 3.5GB out, peak 949MB RAM |
+| Diarisation does **not** hold up at length | 4 people -> **2 speakers, 34 turns in 53 min** (median turn 33s, longest 6.4 min). See "What's left" |
+
 **Checks:** 16 backend tests passing, `tsc` clean, `oxlint` clean (one
 deliberate, documented warning), production build clean, full flow verified
 in a real browser against real footage.
@@ -78,11 +87,30 @@ Two things the epic listed as open questions are now answered:
 Ordered by what unlocks the most, not by effort.
 
 ### Next
-1. **Run a full episode end to end and show it to a podcast host.** The epic
-   sequenced everything against this and it has never been done — the
-   longest run so far is a 5-minute cut. It is the only thing that can tell
-   us whether the edit decisions are actually good, as opposed to
-   technically correct.
+1. **Fix speaker diarisation.** The full-episode run (2026-09-12) found this
+   is the blocker in front of everything else: on a four-person episode the
+   pipeline heard **two** speakers and cut 34 turns in 53 minutes, so two
+   participants never get a close-up. Measured on the real episode:
+
+   | Approach | Result |
+   |---|---|
+   | `resemblyzer` + average-linkage clustering (current) | 99.5% of speech in one cluster at every k from 2 to 6 |
+   | WeSpeaker embeddings + k-means / spectral / Ward | stable labels (2-3% flips) but never a clean four-way split |
+   | `sherpa-onnx` (pyannote segmentation 3.0 ONNX + WeSpeaker, no HF token) | 3 speakers when asked for 4 (89% in one), or 22 fragments unconstrained |
+   | `pyannote` **community-1** (CC-BY-4.0, HF token) | recommended by research: VBx clustering, accepts `num_speakers`, overlap-aware, exclusive mode for word alignment. Evaluation in progress |
+   | **LR-ASD lip-sync** (MIT, AVA weights) | **validated on real footage** — tracked all four faces 100% of sampled frames, and its "who is speaking" call was confirmed correct by a human watching an annotated 3-minute clip. Independently showed the single dominant "voice" is really two different people |
+
+   The evidence points at a fused design: voices from community-1, "which
+   face" from lip-sync, paired with Hungarian matching (the approach in
+   Adobe's patent US12125501B2). That also removes the manual voice-to-face
+   step in the cast screen. Cost measured on a 3-minute clip: ~15 min per
+   53-min episode for the lip-sync model pass, plus dense face detection
+   (64 min unoptimised, expected to drop a lot by searching only where each
+   seated person already is).
+
+2. **Then show a full edit to a podcast host.** Still the milestone the whole
+   roadmap is sequenced against, and still not done — an edit built on
+   two-speaker diarisation is not worth a host's time.
 
 ### Then, informed by that
 2. **Smarter cutting** — trim dead air and filler words, vary shot length so
@@ -127,16 +155,22 @@ Ordered by what unlocks the most, not by effort.
   four people. The real fix is source resolution: shoot 4K, deliver 1080p,
   and punch-ins become genuinely sharp because the crop then holds more real
   pixels than the output needs.
-- **Overlap detection is optional** and needs a free Hugging Face token.
-  Without it everything still works; the multi-person composite just has no
-  automatic trigger (a manually forced Split still works).
+- **Overlap detection does not work on `pyannote.audio` 4.** The installed
+  4.0.7 dropped the `OverlappedSpeechDetection` pipeline that
+  `pyannote/overlapped-speech-detection` needs (and renamed `use_auth_token`
+  to `token`), so the model cannot load at all. It now degrades to "no
+  overlap data" instead of failing the request — before this fix, a
+  configured `HF_TOKEN` made every `/process` call 500. The real fix is
+  community-1, whose diarisation is overlap-aware in one pass.
 - **Diarisation is voice-clustering, not perfect.** It can mis-assign a
   turn, and only finds speakers who actually speak in the window analysed.
   This is why per-turn correction exists in the editor.
 - **No automated frontend tests.** Backend has 16; the frontend is verified
   by typecheck, build, and real browser sessions.
-- **Never run on a full-length episode.** Longest verified run is 5 minutes.
-  Expect ~10-12 minutes of processing for a 53-minute episode; untested.
+- **Junk "people" survive on long episodes.** `MIN_DETECTIONS` is a fixed 3,
+  so a 53-minute episode yielded four real participants plus six clusters
+  seen 3-12 times. They sort last in the cast screen, but the threshold
+  should scale with episode length.
 - **No pre-flight disk-space check.** A multi-GB upload plus extracted audio
   plus a same-or-larger render can transiently need a lot of temp space.
 - **macOS only so far.** Nothing is knowingly platform-specific, but nothing
