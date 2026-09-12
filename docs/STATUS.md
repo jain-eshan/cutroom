@@ -97,8 +97,25 @@ Ordered by what unlocks the most, not by effort.
    | `resemblyzer` + average-linkage clustering (current) | 99.5% of speech in one cluster at every k from 2 to 6 |
    | WeSpeaker embeddings + k-means / spectral / Ward | stable labels (2-3% flips) but never a clean four-way split |
    | `sherpa-onnx` (pyannote segmentation 3.0 ONNX + WeSpeaker, no HF token) | 3 speakers when asked for 4 (89% in one), or 22 fragments unconstrained |
-   | `pyannote` **community-1** (CC-BY-4.0, HF token) | recommended by research: VBx clustering, accepts `num_speakers`, overlap-aware, exclusive mode for word alignment. Evaluation in progress |
+   | `pyannote` **community-1** (CC-BY-4.0, HF token) | best of the audio-only options, and slow: on a 10-min slice it found 4 speakers and 87 turns (the old pipeline managed 34 in the whole episode), at **0.66x real time on CPU — ~35 min for a 53-min episode**. Overlap-aware in one pass (2.6s of overlap in 600s here), and its exclusive mode aligns to Whisper words. MPS untested |
    | **LR-ASD lip-sync** (MIT, AVA weights) | **validated on real footage** — tracked all four faces 100% of sampled frames, and its "who is speaking" call was confirmed correct by a human watching an annotated 3-minute clip. Independently showed the single dominant "voice" is really two different people |
+
+   **Cross-checking the two settles the design.** On the same 10 minutes,
+   community-1's voices versus the lip-sync model's "who is on screen
+   talking":
+
+   | community-1 voice | face the lip model picks |
+   |---|---|
+   | SPEAKER_00 | p0, 100% of 71s |
+   | SPEAKER_01 | p2, 100% of 39s |
+   | SPEAKER_02 | p0 again, 100% of 36s |
+
+   Two voices map cleanly onto one face each; the third is the same person as
+   the first, split in two because `num_speakers=4` was forced on a window
+   where the fourth participant barely speaks. So each signal catches the
+   other's failure: one voice pointing at two faces means merged speakers
+   (split them), two voices pointing at one face means an over-split speaker
+   (merge them). Neither can see its own error.
 
    The evidence points at a fused design: voices from community-1, "which
    face" from lip-sync, paired with Hungarian matching (the approach in
