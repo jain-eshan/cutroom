@@ -70,6 +70,11 @@ runs in a local service on your machine — nothing is uploaded anywhere.
 
 Needs Node, [uv](https://docs.astral.sh/uv/), and `ffmpeg` on your PATH.
 
+Burned-in captions need an `ffmpeg` built with libass. Homebrew's regular
+`ffmpeg` formula is not — use `brew install ffmpeg-full` if you want them.
+Everything else works on either build, and the export says so up front rather
+than dropping the captions silently.
+
 ```bash
 # frontend
 npm install

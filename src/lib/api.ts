@@ -165,14 +165,27 @@ export async function exportVideo(
 	form.append("file", file);
 	form.append("layoutChoices", JSON.stringify(layoutChoices));
 	form.append("overlapSegments", JSON.stringify(overlapSegments));
-	form.append("faces", JSON.stringify(faces));
+	// Sent as a file, not a text field: the server caps text fields at 1MB and
+	// face keyframes for a full-length episode are larger than that.
+	form.append("faces", new Blob([JSON.stringify(faces)], { type: "application/json" }), "faces.json");
 	form.append("sessionId", sessionId);
-	form.append("words", JSON.stringify(words));
+	// A file part for the same reason as faces — word timestamps grow with
+	// episode length.
+	form.append("words", new Blob([JSON.stringify(words)], { type: "application/json" }), "words.json");
 	form.append("captions", String(captions));
 
 	const res = await fetch(new URL("/export", API_BASE), { method: "POST", body: form });
 	if (!res.ok) {
-		throw new Error(`Export failed (${res.status}): ${await res.text()}`);
+		// FastAPI puts the actionable part in `detail`; showing the raw JSON
+		// envelope buries advice the user is meant to act on.
+		const body = await res.text();
+		let detail = body;
+		try {
+			detail = (JSON.parse(body) as { detail?: string }).detail ?? body;
+		} catch {
+			// Not JSON (a proxy error page, say) -- show it as-is.
+		}
+		throw new Error(`Export failed (${res.status}): ${detail}`);
 	}
 	return res.blob();
 }

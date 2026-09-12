@@ -244,7 +244,9 @@ requirement.
 plus four JSON-encoded form fields: `layoutChoices` (per-turn layout
 decisions, each carrying its own `start`/`end`), `overlapWindows` (from
 `/transcribe`, `[]` if overlap detection isn't configured), `faces` (the
-`/detect-faces` response, re-sent so the server doesn't re-run detection),
+recognised people, **sent as a file part, not a form field** — Starlette caps
+form fields at 1MB and a 53-minute episode's keyframes are 1.7MB, which made
+every long-episode export fail with "Part exceeded maximum size of 1024KB"),
 and `speakerToTrack` (`Record<speakerId, trackId>`). Optional `sessionId`
 form field triggers `decisions.jsonl` logging on success.
 
@@ -526,6 +528,13 @@ own fallback — see `TECHNICAL_ARCHITECTURE.md` §3.4). To enable it:
   same video reruns detection from scratch; there's no caching or
   project-file concept yet (Recordly-style `.recordly` project persistence
   was noted as a nice-to-have, not built).
+- **Diarisation cannot separate similar voices.** On a real four-person
+  episode it found two speakers and 34 turns in 53 minutes. This is the
+  current blocker — see [STATUS.md](STATUS.md)'s "What's left" for the
+  measured comparison of the alternatives.
+- **Overlap detection is broken on `pyannote.audio` 4** (the pipeline class it
+  needs was removed upstream). It degrades to an empty list rather than
+  failing `/process`.
 - **Zooming into a wide shot is inherently soft.** Framing now matches
   professional practice (3.5x face height), which needs ~2.6x upscale on a
   1080p wide shot of four people — sharper than the 3.5x the old cap forced,

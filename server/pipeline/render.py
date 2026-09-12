@@ -1,5 +1,6 @@
 import subprocess
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
@@ -357,6 +358,27 @@ def _audio_args(input_path: Path) -> list[str]:
 	return ["-c:a", "aac", "-b:a", AUDIO_BITRATE]
 
 
+@lru_cache(maxsize=1)
+def has_ass_filter() -> bool:
+	"""Whether this ffmpeg can burn in subtitles at all.
+
+	Homebrew's regular `ffmpeg` formula is built without libass -- and without
+	freetype, so `drawtext` is not a fallback either -- which means a plain
+	`brew install ffmpeg` (what the README asks for) cannot render text onto a
+	frame. That is the normal state of a macOS install, not a broken one, so
+	callers check this *before* starting a render: finding out at the end of a
+	15-minute export is the difference between an error and a wasted evening.
+	"""
+	try:
+		out = subprocess.run(
+			["ffmpeg", "-hide_banner", "-filters"], check=True, capture_output=True, text=True
+		)
+	except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+		return False
+	# Lines are "  <flags> <name> <in>-><out>  <description>".
+	return any(parts[1] == "ass" for line in out.stdout.splitlines() if len(parts := line.split()) > 1)
+
+
 def _escape_filter_path(path: Path) -> str:
 	"""Escape a filesystem path for use as an ffmpeg filtergraph argument.
 	The filter parser treats `\\`, `:` and `'` specially even inside quotes,
@@ -387,7 +409,7 @@ def render_export(
 	concat_label = "vconcat" if ass_path is not None else "vout"
 	filter_complex = ";".join(filter_parts) + f";{concat_inputs}concat=n={len(segments)}:v=1:a=0[{concat_label}]"
 	if ass_path is not None:
-		filter_complex += f";[{concat_label}]ass={_escape_filter_path(ass_path)}[vout]"
+		filter_complex += f";[{concat_label}]ass=filename={_escape_filter_path(ass_path)}[vout]"
 
 	cmd = [
 		"ffmpeg",

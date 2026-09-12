@@ -24,6 +24,7 @@ from pipeline.render import (
 	OverlapSegment,
 	Track,
 	build_render_segments,
+	has_ass_filter,
 	render_export,
 )
 from pipeline.transcribe import Word, transcribe
@@ -169,20 +170,38 @@ async def process_endpoint(
 @app.post("/export")
 async def export_endpoint(
 	file: UploadFile,
+	# A file part, not a text field: Starlette caps text fields at 1MB, and face
+	# keyframes grow with episode length (every sampled second, every person).
+	# Measured: a 53-minute episode's faces are 1.7MB and the export 400'd with
+	# "Part exceeded maximum size of 1024KB."
+	faces: UploadFile,
 	layoutChoices: str = Form(...),
 	overlapSegments: str = Form(...),
-	faces: str = Form(...),
 	sessionId: str | None = Form(None),
-	words: str | None = Form(None),
+	# Also a file part, and for the same reason as faces: word timestamps grow
+	# with episode length. A 53-minute episode is ~550KB of them, which fits
+	# under the 1MB text-field cap only by luck; a two-hour one would not.
+	words: UploadFile | None = None,
 	captions: bool = Form(False),
 ) -> FileResponse:
 	try:
 		layout_choices_data = json.loads(layoutChoices)
 		overlap_segments_data = json.loads(overlapSegments)
-		faces_data = json.loads(faces)
-		words_data = json.loads(words) if words else []
+		faces_data = json.loads(await faces.read())
+		words_data = json.loads(await words.read()) if words is not None else []
 	except json.JSONDecodeError as err:
 		raise HTTPException(400, f"Malformed JSON in request field: {err}") from err
+
+	# Before the upload is saved and the render starts, not after: a full-length
+	# export is ~15 minutes of work, and silently dropping the captions someone
+	# explicitly asked for is worse than refusing the job.
+	if captions and words_data and not has_ass_filter():
+		raise HTTPException(
+			400,
+			"This ffmpeg was built without libass, so captions cannot be burned in. "
+			"Homebrew's regular `ffmpeg` formula omits it -- `brew install ffmpeg-full` "
+			"has it. Export without captions to continue with this build.",
+		)
 
 	layout_choices = [
 		LayoutChoice(

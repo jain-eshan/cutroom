@@ -76,9 +76,9 @@ def diarize(
 
 
 class OverlapDetectionUnavailable(Exception):
-	"""Raised when HF_TOKEN isn't configured. Caller should treat this as a
-	soft failure (no overlap data) rather than a hard error -- everything
-	else in /transcribe works fine without it."""
+	"""Raised when overlap detection cannot run: no HF_TOKEN, or the model
+	fails to load. Caller should treat this as a soft failure (no overlap data)
+	rather than a hard error -- everything else in /process works without it."""
 
 
 _overlap_pipeline = None
@@ -97,7 +97,17 @@ def _get_overlap_pipeline():
 			)
 		from pyannote.audio import Pipeline
 
-		_overlap_pipeline = Pipeline.from_pretrained(OVERLAP_MODEL, use_auth_token=token)
+		# pyannote.audio 4 renamed use_auth_token to token, and dropped the
+		# OverlappedSpeechDetection pipeline this model's config points at, so
+		# loading it raises AttributeError on 4.x. Report any load failure as
+		# unavailable: overlap data is optional, and /process must still return a
+		# transcript rather than 500 because of it.
+		try:
+			_overlap_pipeline = Pipeline.from_pretrained(OVERLAP_MODEL, token=token)
+		except Exception as err:
+			raise OverlapDetectionUnavailable(
+				f"Could not load {OVERLAP_MODEL} with the installed pyannote.audio: {err}"
+			) from err
 	return _overlap_pipeline
 
 
