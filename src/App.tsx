@@ -8,6 +8,7 @@ import {
 	processVideo,
 	type DetectFacesResponse,
 	type JobProgress,
+	type MatchResult,
 	type OverlapWindow,
 	type Turn,
 	type Word,
@@ -25,6 +26,7 @@ type Status =
 			overlapWindows: OverlapWindow[];
 			words: Word[];
 			faces: DetectFacesResponse;
+			match: MatchResult;
 	  }
 	| {
 			state: "editing";
@@ -80,12 +82,21 @@ function App() {
 		setElapsed(0);
 		setStatus({ state: "processing", file, jobId, startedAt: Date.now() });
 		try {
-			const { turns, overlapWindows, words, faces } = await processVideo(
+			const { turns, overlapWindows, words, faces, match } = await processVideo(
 				file,
 				jobId,
 				setUploadFraction,
 			);
-			setStatus({ state: "cast", file, sessionId: jobId, turns, overlapWindows, words, faces });
+			setStatus({
+				state: "cast",
+				file,
+				sessionId: jobId,
+				turns,
+				overlapWindows,
+				words,
+				faces,
+				match,
+			});
 		} catch (err) {
 			setStatus({
 				state: "error",
@@ -112,6 +123,7 @@ function App() {
 				file={status.file}
 				people={status.faces.people}
 				turns={status.turns}
+				match={status.match}
 				sampledFrames={Math.max(0, ...status.faces.people.map((p) => p.detectionCount))}
 				onComplete={(cast) =>
 					setStatus({

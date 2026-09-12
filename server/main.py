@@ -13,10 +13,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
-from pipeline.audio import extract_wav
+from pipeline.audio import NoAudioTrack, extract_wav
 from pipeline.captions import build_caption_cues, write_ass
-from pipeline.diarize import DiarizationUnavailable, diarize
+from pipeline.diarize import Diarization, DiarizationUnavailable, diarize
+from pipeline.fuse import fuse
 from pipeline.faces import BBox, detect_and_track_faces, get_video_dimensions, get_video_duration
+from pipeline.lipsync import analyse
 from pipeline.progress import report, snapshot
 from pipeline.render import (
 	Keyframe,
@@ -65,7 +67,7 @@ def progress_endpoint(job_id: str) -> dict:
 	return snapshot(job_id)
 
 
-def _transcribe_work(wav_path: Path, job_id: str | None) -> dict:
+def _transcribe_work(wav_path: Path, job_id: str | None) -> tuple[dict, Diarization]:
 	report(job_id, "transcribe", "transcribing speech")
 	segments = transcribe(
 		str(wav_path), progress=lambda f: report(job_id, "transcribe", "transcribing speech", f)
@@ -90,6 +92,39 @@ def _transcribe_work(wav_path: Path, job_id: str | None) -> dict:
 		"words": [
 			{"start": w.start, "end": w.end, "text": w.text} for seg in segments for w in seg.words
 		],
+	}, diarization
+
+
+def _match_work(
+	video_path: Path, wav_path: Path, diarization: Diarization, people: list[dict], job_id: str | None
+) -> dict:
+	"""Work out which face each voice belongs to.
+
+	This is the step that used to be the human's job in the cast screen. It
+	still is -- the result is a suggestion the editor confirms -- but it starts
+	from evidence rather than from a blank grid.
+	"""
+	report(job_id, "match", "matching voices to faces")
+	lip = analyse(
+		str(video_path),
+		str(wav_path),
+		people,
+		progress=lambda f: report(job_id, "match", "matching voices to faces", f),
+	)
+	result = fuse(diarization.segments, lip.speaking_per_second(), lip.person_ids)
+	report(job_id, "match", "done", 1.0, done=True)
+	return {
+		"speakerToPerson": result.speaker_to_person(),
+		"matches": [
+			{
+				"speaker": m.speaker,
+				"personId": m.person_id,
+				"confidence": m.confidence,
+				"judgedSeconds": m.judged_seconds,
+			}
+			for m in result.matches
+		],
+		"notes": result.notes,
 	}
 
 
@@ -148,10 +183,13 @@ async def process_endpoint(file: UploadFile, jobId: str | None = None) -> dict:
 
 		wav_path = Path(tmp) / "audio.wav"
 		report(jobId, "transcribe", "extracting audio")
-		extract_wav(input_path, wav_path)
+		try:
+			extract_wav(input_path, wav_path)
+		except NoAudioTrack as err:
+			raise HTTPException(400, str(err)) from err
 
 		try:
-			transcript, faces = await asyncio.gather(
+			(transcript, diarization), faces = await asyncio.gather(
 				asyncio.to_thread(_transcribe_work, wav_path, jobId),
 				asyncio.to_thread(_faces_work, input_path, jobId),
 			)
@@ -160,7 +198,12 @@ async def process_endpoint(file: UploadFile, jobId: str | None = None) -> dict:
 			# do, so it needs to reach the user rather than become a 500.
 			raise HTTPException(400, str(err)) from err
 
-	return {**transcript, "faces": faces}
+		# Third, not concurrent: it needs both of the above to have finished.
+		match = await asyncio.to_thread(
+			_match_work, input_path, wav_path, diarization, faces["people"], jobId
+		)
+
+	return {**transcript, "faces": faces, "match": match}
 
 
 @app.post("/export")

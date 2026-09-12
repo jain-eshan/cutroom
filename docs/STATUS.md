@@ -16,8 +16,9 @@ locally, nothing is uploaded anywhere.
 2. **Process** — one upload feeds transcription, speaker diarisation,
    optional overlapping-speech detection, and face recognition. Per-stage
    progress is polled and shown while it runs.
-3. **Cast** — name each recognised person once, then match each distinct
-   voice to a person by listening to a sample of what they actually said.
+3. **Cast** — name each recognised person once. Voices are already matched to
+   faces by lip-sync, so this is a confirmation with the uncertain ones
+   flagged, not a grid of anonymous voices to work out by ear.
 4. **Edit** — turn-by-turn transcript with real names, a live preview that
    uses the same framing maths as the export, per-turn layout override
    (wide / single / multi-person) and per-turn correction of who is on
@@ -47,6 +48,7 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | Captions land where they should | burned-in cues verified frame by frame on a synthetic clip: text present during each cue, **absent during the pause between them**, 100 → 100 frames, duration exact |
 | The GPU makes community-1 affordable | same 10-min slice, same venv: **398.4s on CPU (0.664x) → 53.3s on MPS (0.089x)**, and byte-identical output either way (3 speakers, 90 turns). **35 min → 4.7 min** for a 53-minute episode |
 | Forcing a speaker count invents speakers | unconstrained gives **3 speakers / 90 turns** on the 10-min slice, on both devices; forcing `num_speakers=4` gave 4/87, splitting one person in two. The count is no longer passed |
+| Real overlap is rarer than it looks | community-1 finds 10 overlaps in the 10-min slice totalling 2.65s — every one between **0.02s and 0.56s**. All interjections; none long enough to cut to a composite for. On this episode the split-screen never auto-triggers, and that is the correct answer, not a gap |
 
 **Full-length episode (53 min, four people, 1080p, 5.3GB), run 2026-09-12:**
 

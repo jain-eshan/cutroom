@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { Person, Turn } from "@/lib/api";
+import type { MatchResult, Person, Turn } from "@/lib/api";
+
+/** Below this, the automatic match is shown as a guess to check rather than an
+ * answer. Matches pipeline/fuse.py's DOMINANT_SHARE. */
+const CONFIDENT = 0.6;
 
 export interface CastResult {
 	names: Record<number, string>;
@@ -31,19 +35,27 @@ export function CastScreen({
 	file,
 	people,
 	turns,
+	match,
 	sampledFrames,
 	onComplete,
 }: {
 	file: File;
 	people: Person[];
 	turns: Turn[];
+	match: MatchResult;
 	sampledFrames: number;
 	onComplete: (result: CastResult) => void;
 }) {
 	const [names, setNames] = useState<Record<number, string>>(() =>
 		Object.fromEntries(people.map((p, i) => [p.id, defaultName(i)])),
 	);
-	const [speakerToPerson, setSpeakerToPerson] = useState<Record<number, number>>({});
+	// Pre-filled from the lip-sync match rather than starting blank. It is
+	// still the editor's call -- every one of these is a select they can change
+	// -- but starting from evidence beats starting from nothing.
+	const [speakerToPerson, setSpeakerToPerson] = useState<Record<number, number>>(
+		() => ({ ...match.speakerToPerson }),
+	);
+	const confidenceFor = new Map(match.matches.map((m) => [m.speaker, m]));
 	const [description, setDescription] = useState("");
 	const [playing, setPlaying] = useState<number | null>(null);
 
@@ -132,14 +144,25 @@ export function CastScreen({
 			<div className="flex flex-col gap-2">
 				<h3 className="text-base font-semibold">Which voice is which?</h3>
 				<p className="text-sm text-neutral-500">
-					We found {speakers.length} distinct {speakers.length === 1 ? "voice" : "voices"}. Listen
-					to each and pick who it is — this is what decides who the camera cuts to.
+					We found {speakers.length} distinct {speakers.length === 1 ? "voice" : "voices"} and
+					matched {speakers.length === 1 ? "it" : "them"} to faces by watching whose mouth moves.
+					Check the ones flagged below — this is what decides who the camera cuts to.
 				</p>
+				{match.notes.length > 0 && (
+					<ul className="flex flex-col gap-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+						{match.notes.map((note) => (
+							<li key={note}>{note}</li>
+						))}
+					</ul>
+				)}
 			</div>
 
 			<div className="flex flex-col gap-3">
 				{speakers.map((speaker) => {
 					const sample = longestTurn(turns, speaker);
+					const matched = confidenceFor.get(speaker);
+					const automatic =
+						matched?.personId != null && speakerToPerson[speaker] === matched.personId;
 					return (
 						<div
 							key={speaker}
@@ -173,6 +196,19 @@ export function CastScreen({
 										</option>
 									))}
 								</select>
+								{automatic && matched && (
+									<span
+										className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] ${
+											matched.confidence >= CONFIDENT
+												? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400"
+												: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+										}`}
+										title={`Agreed on ${Math.round(matched.confidence * 100)}% of the ${matched.judgedSeconds}s where this voice spoke and a face was visibly talking`}
+									>
+										{matched.confidence >= CONFIDENT ? "matched" : "unsure"}{" "}
+										{Math.round(matched.confidence * 100)}%
+									</span>
+								)}
 							</div>
 							{sample && (
 								<p className="text-xs text-neutral-500">

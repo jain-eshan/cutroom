@@ -1,20 +1,11 @@
-import os
 import subprocess
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-# Which ffmpeg to run. Captions need one built with libass, and Homebrew's
-# regular `ffmpeg` formula is not -- its `ffmpeg-full` is, but that formula is
-# keg-only, so it is deliberately absent from PATH. Rather than asking anyone
-# to reorder their global PATH (which changes ffmpeg for everything else they
-# run), point this at the binary you want:
-#   FFMPEG_BINARY=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg
-# server/.env is read at startup, so it belongs there.
-FFMPEG = os.environ.get("FFMPEG_BINARY", "ffmpeg")
-
 from .faces import BBox
+from .ffmpeg import FFMPEG, FFPROBE
 from .framing import CropRect, person_crop
 
 Layout = Literal["original", "zoom", "split"]
@@ -345,7 +336,7 @@ def _source_audio_codec(input_path: Path) -> str | None:
 	try:
 		out = subprocess.run(
 			[
-				"ffprobe", "-v", "error", "-select_streams", "a:0",
+				FFPROBE, "-v", "error", "-select_streams", "a:0",
 				"-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1",
 				str(input_path),
 			],

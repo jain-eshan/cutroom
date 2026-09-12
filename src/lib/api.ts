@@ -19,11 +19,31 @@ export interface Word {
 	text: string;
 }
 
+/** What the pipeline thinks each voice's face is, and how sure it is. A
+ * suggestion for the cast screen, not a decision — the editor confirms it. */
+export interface VoiceFaceMatch {
+	speaker: number;
+	personId: number | null;
+	/** Share of the seconds where this voice was heard and some face was
+	 * visibly talking that pointed at this person. */
+	confidence: number;
+	judgedSeconds: number;
+}
+
+export interface MatchResult {
+	speakerToPerson: Record<number, number>;
+	matches: VoiceFaceMatch[];
+	/** Plain-language warnings: a speaker that looks split in two, a voice
+	 * nobody's face matched, and so on. */
+	notes: string[];
+}
+
 export interface ProcessResponse {
 	turns: Turn[];
 	overlapWindows: OverlapWindow[];
 	words: Word[];
 	faces: DetectFacesResponse;
+	match: MatchResult;
 }
 
 export interface BBox {
@@ -113,6 +133,8 @@ export interface StageProgress {
 export interface JobProgress {
 	transcribe: StageProgress;
 	faces: StageProgress;
+	/** Runs after the other two — matching voices to faces needs both. */
+	match: StageProgress;
 }
 
 export async function getProgress(jobId: string): Promise<JobProgress> {

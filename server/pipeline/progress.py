@@ -30,6 +30,9 @@ class StageProgress:
 class JobProgress:
 	transcribe: StageProgress = field(default_factory=StageProgress)
 	faces: StageProgress = field(default_factory=StageProgress)
+	# Runs after the other two rather than alongside them: matching voices to
+	# faces needs both to have finished.
+	match: StageProgress = field(default_factory=StageProgress)
 	updated: float = field(default_factory=time.time)
 
 
