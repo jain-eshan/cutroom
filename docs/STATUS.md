@@ -49,6 +49,10 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | The GPU makes community-1 affordable | same 10-min slice, same venv: **398.4s on CPU (0.664x) → 53.3s on MPS (0.089x)**, and byte-identical output either way (3 speakers, 90 turns). **35 min → 4.7 min** for a 53-minute episode |
 | Forcing a speaker count invents speakers | unconstrained gives **3 speakers / 90 turns** on the 10-min slice, on both devices; forcing `num_speakers=4` gave 4/87, splitting one person in two. The count is no longer passed |
 | Real overlap is rarer than it looks | community-1 finds 10 overlaps in the 10-min slice totalling 2.65s — every one between **0.02s and 0.56s**. All interjections; none long enough to cut to a composite for. On this episode the split-screen never auto-triggers, and that is the correct answer, not a gap |
+| Lip-sync picks the same face as the validated benchmark | on the same 3-min clip, **100% agreement** across the 145s where both say someone is talking (94% counting the silence boundary), per-face shares within 3 points — while skipping per-frame face detection entirely and streaming crops instead of holding 4GB of them |
+| Voices get matched to faces without being asked | end to end on that clip: voice 0 → person 1 at **97%** over 114 judged seconds, voice 1 → person 0 at **100%** over 40. The cast screen starts filled in |
+| The whole pipeline is affordable | **80s for a 3-minute clip** including transcription, diarisation, faces, lip-sync and matching — roughly 0.45x real time |
+| The presence threshold drops junk without dropping people | same clip, **5 "people" → 4** once the threshold scales: the four kept appear in 179-180 of 180 sampled frames, and it is a four-person podcast |
 
 **Full-length episode (53 min, four people, 1080p, 5.3GB), run 2026-09-12:**
 
@@ -215,10 +219,11 @@ resting on diarisation that had already lost two of the four people.
   (Installing `ffmpeg-full` upgrades x265, which leaves the regular `ffmpeg`
   linked against a libx265 that is no longer there: `brew reinstall ffmpeg`
   repairs it. Both can coexist afterwards.)
-- **Junk "people" survive on long episodes.** `MIN_DETECTIONS` is a fixed 3,
-  so a 53-minute episode yielded four real participants plus six clusters
-  seen 3-12 times. They sort last in the cast screen, but the threshold
-  should scale with episode length.
+- ~~**Junk "people" survive on long episodes.**~~ Fixed: the threshold is now
+  the larger of 3 detections and 5% of sampled frames, so it scales with
+  episode length. On the 53-minute episode that separates the four
+  participants (>99% of frames) from the six junk clusters (<0.4%) with three
+  orders of magnitude to spare.
 - **No pre-flight disk-space check.** A multi-GB upload plus extracted audio
   plus a same-or-larger render can transiently need a lot of temp space.
 - **macOS only so far.** Nothing is knowingly platform-specific, but nothing
