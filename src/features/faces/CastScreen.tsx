@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { MatchResult, Person, Turn } from "@/lib/api";
+import type { MatchNote, MatchResult, Person, Turn } from "@/lib/api";
 
 /** Below this, the automatic match is shown as a guess to check rather than an
  * answer. Matches pipeline/fuse.py's DOMINANT_SHARE. */
@@ -29,6 +29,32 @@ function formatTime(seconds: number): string {
 	const m = Math.floor(seconds / 60);
 	const s = Math.floor(seconds % 60);
 	return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function list(items: string[]): string {
+	if (items.length <= 1) return items[0] ?? "";
+	return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/** Notes arrive as data. Naming the people here means they are called whatever
+ * the editor just called them, two fields up the page, rather than "person 2". */
+function noteText(
+	note: MatchNote,
+	nameOf: (personId: number) => string,
+	voiceLabel: (speaker: number) => string,
+): string {
+	const people = list(note.personIds.map(nameOf));
+	const voices = list(note.speakers.map(voiceLabel));
+	switch (note.kind) {
+		case "over_split":
+			return `${voices} both sound like ${people} — one person was probably split into two voices. Pointing both at ${people} is usually right.`;
+		case "voice_unmatched":
+			return `${voices} never speaks while anyone's mouth is moving — they may be off camera, or the same person as another voice.`;
+		case "low_confidence":
+			return `${voices} is split across more than one face — two people may have been treated as one voice. Worth listening to.`;
+		case "person_unmatched":
+			return `No voice matched ${people} — they may not speak in this episode.`;
+	}
 }
 
 export function CastScreen({
@@ -85,6 +111,18 @@ export function CastScreen({
 	}, [mediaUrl]);
 
 	const speakers = [...new Set(turns.map((t) => t.speaker))].sort((a, b) => a - b);
+
+	function nameOf(personId: number): string {
+		const index = people.findIndex((p) => p.id === personId);
+		return names[personId] || defaultName(index === -1 ? personId : index);
+	}
+
+	// Voices have no natural name, so they get a position. The same label is
+	// printed on the row itself, otherwise a note naming one is unfindable.
+	function voiceLabel(speaker: number): string {
+		const index = speakers.indexOf(speaker);
+		return `Voice ${(index === -1 ? speaker : index) + 1}`;
+	}
 
 	function playSample(speaker: number) {
 		const turn = longestTurn(turns, speaker);
@@ -150,8 +188,8 @@ export function CastScreen({
 				</p>
 				{match.notes.length > 0 && (
 					<ul className="flex flex-col gap-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
-						{match.notes.map((note) => (
-							<li key={note}>{note}</li>
+						{match.notes.map((note, i) => (
+							<li key={i}>{noteText(note, nameOf, voiceLabel)}</li>
 						))}
 					</ul>
 				)}
@@ -169,6 +207,9 @@ export function CastScreen({
 							className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800"
 						>
 							<div className="flex items-center gap-3">
+								<span className="w-14 shrink-0 text-xs font-medium text-neutral-500">
+									{voiceLabel(speaker)}
+								</span>
 								<button
 									type="button"
 									onClick={() => playSample(speaker)}

@@ -30,12 +30,19 @@ export interface VoiceFaceMatch {
 	judgedSeconds: number;
 }
 
+/** Something worth the editor's attention, as data rather than a sentence —
+ * the wording lives in the UI because only the UI knows what the editor has
+ * named these people. */
+export interface MatchNote {
+	kind: "over_split" | "voice_unmatched" | "person_unmatched" | "low_confidence";
+	speakers: number[];
+	personIds: number[];
+}
+
 export interface MatchResult {
 	speakerToPerson: Record<number, number>;
 	matches: VoiceFaceMatch[];
-	/** Plain-language warnings: a speaker that looks split in two, a voice
-	 * nobody's face matched, and so on. */
-	notes: string[];
+	notes: MatchNote[];
 }
 
 export interface ProcessResponse {

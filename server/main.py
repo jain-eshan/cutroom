@@ -16,8 +16,8 @@ from starlette.background import BackgroundTask
 from pipeline.audio import NoAudioTrack, extract_wav
 from pipeline.captions import build_caption_cues, write_ass
 from pipeline.diarize import Diarization, DiarizationUnavailable, diarize
-from pipeline.fuse import fuse
 from pipeline.faces import BBox, detect_and_track_faces, get_video_dimensions, get_video_duration
+from pipeline.fuse import fuse
 from pipeline.lipsync import analyse
 from pipeline.progress import report, snapshot
 from pipeline.render import (
@@ -124,7 +124,9 @@ def _match_work(
 			}
 			for m in result.matches
 		],
-		"notes": result.notes,
+		"notes": [
+			{"kind": n.kind, "speakers": n.speakers, "personIds": n.person_ids} for n in result.notes
+		],
 	}
 
 

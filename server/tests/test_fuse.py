@@ -58,27 +58,27 @@ class TestFuse:
 		speaking = _speaking([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 		result = fuse(segments, speaking, person_ids=[10, 11])
 		assert result.speaker_to_person() == {0: 10, 1: 10}
-		assert any("split in two" in n for n in result.notes)
+		assert any(n.kind == "over_split" for n in result.notes)
 
 	def test_one_voice_across_two_faces_is_flagged(self):
 		# The merged case: one voice label covering two different people.
 		segments = [_voice(0, 0.0, 10.0)]
 		speaking = _speaking([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 		result = fuse(segments, speaking, person_ids=[10, 11])
-		assert any("merged" in n for n in result.notes)
+		assert any(n.kind == "low_confidence" for n in result.notes)
 
 	def test_voice_with_no_visible_speaker_is_left_unmatched(self):
 		segments = [_voice(0, 0.0, 5.0), _voice(1, 5.0, 10.0)]
 		speaking = _speaking([0, 0, 0, 0, 0, -1, -1, -1, -1, -1])
 		result = fuse(segments, speaking, person_ids=[10, 11])
 		assert result.speaker_to_person() == {0: 10}
-		assert any("never speaks while a face" in n for n in result.notes)
+		assert any(n.kind == "voice_unmatched" for n in result.notes)
 
 	def test_a_face_nobody_speaks_for_is_flagged(self):
 		segments = [_voice(0, 0.0, 5.0)]
 		speaking = _speaking([0, 0, 0, 0, 0])
 		result = fuse(segments, speaking, person_ids=[10, 11])
-		assert any("nobody's voice matched person 11" in n for n in result.notes)
+		assert any(n.kind == "person_unmatched" and n.person_ids == [11] for n in result.notes)
 
 	def test_hungarian_resolves_a_weak_tie_globally(self):
 		# Voice 1 leans slightly towards face 0, but face 0 is overwhelmingly

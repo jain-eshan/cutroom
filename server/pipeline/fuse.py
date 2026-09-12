@@ -41,10 +41,23 @@ class VoiceFaceMatch:
 
 
 @dataclass
+class Note:
+	"""Something worth the editor's attention, as data rather than a sentence.
+
+	The wording is the UI's job because only the UI knows what these people are
+	called -- the editor names them on the same screen. A note that says
+	"person 2" while the screen says "Priya" is worse than no note.
+	"""
+
+	kind: str  # over_split | voice_unmatched | person_unmatched | low_confidence
+	speakers: list[int] = field(default_factory=list)
+	person_ids: list[int] = field(default_factory=list)
+
+
+@dataclass
 class Fusion:
 	matches: list[VoiceFaceMatch]
-	# Plain-language flags for the cast screen: what looks wrong and why.
-	notes: list[str] = field(default_factory=list)
+	notes: list[Note] = field(default_factory=list)
 
 	def speaker_to_person(self) -> dict[int, int]:
 		return {m.speaker: m.person_id for m in self.matches if m.person_id is not None}
@@ -111,8 +124,8 @@ def fuse(
 
 def _notes(
 	matches: list[VoiceFaceMatch], voices: list[int], counts: np.ndarray, person_ids: list[int]
-) -> list[str]:
-	notes: list[str] = []
+) -> list[Note]:
+	notes: list[Note] = []
 
 	by_person: dict[int, list[int]] = {}
 	for match in matches:
@@ -120,28 +133,18 @@ def _notes(
 			by_person.setdefault(match.person_id, []).append(match.speaker)
 	for person_id, speakers in sorted(by_person.items()):
 		if len(speakers) > 1:
-			listed = " and ".join(f"voice {s}" for s in speakers)
-			notes.append(
-				f"{listed} both look like the same person — one speaker was probably split in two."
-			)
+			notes.append(Note(kind="over_split", speakers=speakers, person_ids=[person_id]))
 
 	for i, match in enumerate(matches):
 		if match.person_id is None:
+			notes.append(Note(kind="voice_unmatched", speakers=[match.speaker]))
+		elif 0 < match.confidence < DOMINANT_SHARE and len(counts[i]) > 1 and sorted(counts[i])[-2]:
 			notes.append(
-				f"voice {match.speaker} never speaks while a face is visibly talking — "
-				"it may be off-camera, or the same person as another voice."
+				Note(kind="low_confidence", speakers=[match.speaker], person_ids=[match.person_id])
 			)
-		elif 0 < match.confidence < DOMINANT_SHARE:
-			runner_up = sorted(counts[i])[-2] if len(counts[i]) > 1 else 0
-			if runner_up:
-				notes.append(
-					f"voice {match.speaker} is split across two faces "
-					f"({match.confidence:.0%} on its best) — two people may have been merged."
-				)
 
-	unmatched = set(person_ids) - set(by_person)
+	unmatched = sorted(set(person_ids) - set(by_person))
 	if unmatched:
-		listed = ", ".join(str(p) for p in sorted(unmatched))
-		notes.append(f"nobody's voice matched person {listed} — they may not speak in this episode.")
+		notes.append(Note(kind="person_unmatched", person_ids=unmatched))
 
 	return notes
