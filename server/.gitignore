@@ -3,5 +3,6 @@ __pycache__
 *.pyc
 .env
 logs/
-# Downloads on first run (~38MB) -- see pipeline/faces.py
+# Download on first run -- see pipeline/faces.py and pipeline/lipsync.py
 .models/face_recognition_sface_*.onnx
+.models/lrasd_*.model
