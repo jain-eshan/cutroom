@@ -33,15 +33,18 @@ tracking work and their current accuracy limits.
 
 ## How it works
 
-1. **Transcript + timestamps** (done) — Whisper transcription + speaker
-   diarization on the mixed audio track, giving speaker-labeled, timestamped
-   dialogue turns. Optional overlap detection (`pyannote.audio`, needs a
-   Hugging Face token) finds stretches where two people talk at once.
-2. **Face recognition + one-time cast setup** (done) — detects faces (OpenCV
+1. **Transcript + timestamps** (done) — Whisper transcription, plus speaker
+   diarization on the mixed audio track (`pyannote` community-1, needs a free
+   Hugging Face token), giving speaker-labeled, timestamped dialogue turns.
+   No speaker count is forced. Stretches where two people talk at once come
+   out of the same pass.
+2. **Face recognition + automatic casting** (done) — detects faces (OpenCV
    YuNet), tracks them, then embeds and clusters them (SFace + DBSCAN) so one
-   person is one person rather than one entry per head-turn. You name everyone
-   once and say which voice is whose. From then on, framing is automatic, and
-   any turn it gets wrong is a one-click fix.
+   person is one person rather than one entry per head-turn. A lip-sync model
+   (LR-ASD) then works out which face is speaking when, and each voice is
+   matched to a face by how much the two coincide. You name everyone once and
+   confirm the matches — the uncertain ones are flagged. From then on framing
+   is automatic, and any turn it gets wrong is a one-click fix.
 3. **Auto-framing** (done) — Original, Zoom, and a real multi-speaker
    composite (up to 3 people, tiled side by side within the 16:9 frame) are
    all live previews per turn, computed from the real detected face
@@ -50,10 +53,9 @@ tracking work and their current accuracy limits.
    renders the same decisions into a real MP4 via `ffmpeg`, re-encoded at a
    quality target high enough not to visibly degrade 4K source footage.
    Text/bubble annotations remain a stub.
-5. **Stretch** (not started) — automatic speaker-to-face matching (skip the
-   manual labeling step), voice ducking for overlapping speech (a genuinely
-   open research question, not scoped yet), multi-camera-angle support,
-   desktop packaging.
+5. **Stretch** (not started) — voice ducking for overlapping speech (a
+   genuinely open research question, not scoped yet), multi-camera-angle
+   support, desktop packaging.
 
 Processing (transcription, diarization, face tracking, export rendering)
 runs in a local service on your machine — nothing is uploaded anywhere.
@@ -62,13 +64,31 @@ runs in a local service on your machine — nothing is uploaded anywhere.
 
 - React + Vite + TypeScript + Tailwind (frontend)
 - Python + FastAPI local processing service (`server/`) — `faster-whisper`
-  for transcription, `resemblyzer` for speaker diarization, `pyannote.audio`
-  for optional overlap detection, OpenCV (YuNet) for face detection/tracking,
-  `ffmpeg` for the export render pipeline
+  for transcription, `pyannote.audio` community-1 for speaker diarization,
+  OpenCV (YuNet + SFace) for face detection and recognition, LR-ASD for
+  lip-sync, `ffmpeg` for the export render pipeline
+
+The diarization model needs a free Hugging Face token: create one at
+[huggingface.co/settings/tokens](https://huggingface.co/settings/tokens),
+accept the licence for
+[community-1](https://huggingface.co/pyannote/speaker-diarization-community-1),
+then put `HF_TOKEN=...` in `server/.env`.
 
 ## Setup
 
 Needs Node, [uv](https://docs.astral.sh/uv/), and `ffmpeg` on your PATH.
+
+Burned-in captions need an `ffmpeg` built with libass. Homebrew's regular
+`ffmpeg` formula is not — `brew install ffmpeg-full` is, and because that
+formula is keg-only it does not replace your existing ffmpeg. Point the
+server at it in `server/.env`:
+
+```
+FFMPEG_BINARY=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg
+```
+
+Everything else works on either build, and the export says so up front rather
+than dropping the captions silently.
 
 ```bash
 # frontend

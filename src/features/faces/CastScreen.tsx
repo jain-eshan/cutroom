@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { Person, Turn } from "@/lib/api";
+import type { MatchNote, MatchResult, Person, Turn } from "@/lib/api";
+
+/** Below this, the automatic match is shown as a guess to check rather than an
+ * answer. Matches pipeline/fuse.py's DOMINANT_SHARE. */
+const CONFIDENT = 0.6;
 
 export interface CastResult {
 	names: Record<number, string>;
@@ -27,23 +31,57 @@ function formatTime(seconds: number): string {
 	return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function list(items: string[]): string {
+	if (items.length <= 1) return items[0] ?? "";
+	return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/** Notes arrive as data. Naming the people here means they are called whatever
+ * the editor just called them, two fields up the page, rather than "person 2". */
+function noteText(
+	note: MatchNote,
+	nameOf: (personId: number) => string,
+	voiceLabel: (speaker: number) => string,
+): string {
+	const people = list(note.personIds.map(nameOf));
+	const voices = list(note.speakers.map(voiceLabel));
+	switch (note.kind) {
+		case "over_split":
+			return `${voices} both sound like ${people} — one person was probably split into two voices. Pointing both at ${people} is usually right.`;
+		case "voice_unmatched":
+			return `${voices} never speaks while anyone's mouth is moving — they may be off camera, or the same person as another voice.`;
+		case "low_confidence":
+			return `${voices} is split across more than one face — two people may have been treated as one voice. Worth listening to.`;
+		case "person_unmatched":
+			return `No voice matched ${people} — they may not speak in this episode.`;
+	}
+}
+
 export function CastScreen({
 	file,
 	people,
 	turns,
+	match,
 	sampledFrames,
 	onComplete,
 }: {
 	file: File;
 	people: Person[];
 	turns: Turn[];
+	match: MatchResult;
 	sampledFrames: number;
 	onComplete: (result: CastResult) => void;
 }) {
 	const [names, setNames] = useState<Record<number, string>>(() =>
 		Object.fromEntries(people.map((p, i) => [p.id, defaultName(i)])),
 	);
-	const [speakerToPerson, setSpeakerToPerson] = useState<Record<number, number>>({});
+	// Pre-filled from the lip-sync match rather than starting blank. It is
+	// still the editor's call -- every one of these is a select they can change
+	// -- but starting from evidence beats starting from nothing.
+	const [speakerToPerson, setSpeakerToPerson] = useState<Record<number, number>>(
+		() => ({ ...match.speakerToPerson }),
+	);
+	const confidenceFor = new Map(match.matches.map((m) => [m.speaker, m]));
 	const [description, setDescription] = useState("");
 	const [playing, setPlaying] = useState<number | null>(null);
 
@@ -73,6 +111,18 @@ export function CastScreen({
 	}, [mediaUrl]);
 
 	const speakers = [...new Set(turns.map((t) => t.speaker))].sort((a, b) => a - b);
+
+	function nameOf(personId: number): string {
+		const index = people.findIndex((p) => p.id === personId);
+		return names[personId] || defaultName(index === -1 ? personId : index);
+	}
+
+	// Voices have no natural name, so they get a position. The same label is
+	// printed on the row itself, otherwise a note naming one is unfindable.
+	function voiceLabel(speaker: number): string {
+		const index = speakers.indexOf(speaker);
+		return `Voice ${(index === -1 ? speaker : index) + 1}`;
+	}
 
 	function playSample(speaker: number) {
 		const turn = longestTurn(turns, speaker);
@@ -132,20 +182,34 @@ export function CastScreen({
 			<div className="flex flex-col gap-2">
 				<h3 className="text-base font-semibold">Which voice is which?</h3>
 				<p className="text-sm text-neutral-500">
-					We found {speakers.length} distinct {speakers.length === 1 ? "voice" : "voices"}. Listen
-					to each and pick who it is — this is what decides who the camera cuts to.
+					We found {speakers.length} distinct {speakers.length === 1 ? "voice" : "voices"} and
+					matched {speakers.length === 1 ? "it" : "them"} to faces by watching whose mouth moves.
+					Check the ones flagged below — this is what decides who the camera cuts to.
 				</p>
+				{match.notes.length > 0 && (
+					<ul className="flex flex-col gap-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+						{match.notes.map((note, i) => (
+							<li key={i}>{noteText(note, nameOf, voiceLabel)}</li>
+						))}
+					</ul>
+				)}
 			</div>
 
 			<div className="flex flex-col gap-3">
 				{speakers.map((speaker) => {
 					const sample = longestTurn(turns, speaker);
+					const matched = confidenceFor.get(speaker);
+					const automatic =
+						matched?.personId != null && speakerToPerson[speaker] === matched.personId;
 					return (
 						<div
 							key={speaker}
 							className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800"
 						>
 							<div className="flex items-center gap-3">
+								<span className="w-14 shrink-0 text-xs font-medium text-neutral-500">
+									{voiceLabel(speaker)}
+								</span>
 								<button
 									type="button"
 									onClick={() => playSample(speaker)}
@@ -173,6 +237,19 @@ export function CastScreen({
 										</option>
 									))}
 								</select>
+								{automatic && matched && (
+									<span
+										className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] ${
+											matched.confidence >= CONFIDENT
+												? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400"
+												: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+										}`}
+										title={`Agreed on ${Math.round(matched.confidence * 100)}% of the ${matched.judgedSeconds}s where this voice spoke and a face was visibly talking`}
+									>
+										{matched.confidence >= CONFIDENT ? "matched" : "unsure"}{" "}
+										{Math.round(matched.confidence * 100)}%
+									</span>
+								)}
 							</div>
 							{sample && (
 								<p className="text-xs text-neutral-500">

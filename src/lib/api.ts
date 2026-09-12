@@ -11,10 +11,46 @@ export interface OverlapWindow {
 	speakers: number[];
 }
 
+/** One transcribed word with its own timing, independent of turn boundaries.
+ * Captions need this tighter timing than a turn provides. */
+export interface Word {
+	start: number;
+	end: number;
+	text: string;
+}
+
+/** What the pipeline thinks each voice's face is, and how sure it is. A
+ * suggestion for the cast screen, not a decision — the editor confirms it. */
+export interface VoiceFaceMatch {
+	speaker: number;
+	personId: number | null;
+	/** Share of the seconds where this voice was heard and some face was
+	 * visibly talking that pointed at this person. */
+	confidence: number;
+	judgedSeconds: number;
+}
+
+/** Something worth the editor's attention, as data rather than a sentence —
+ * the wording lives in the UI because only the UI knows what the editor has
+ * named these people. */
+export interface MatchNote {
+	kind: "over_split" | "voice_unmatched" | "person_unmatched" | "low_confidence";
+	speakers: number[];
+	personIds: number[];
+}
+
+export interface MatchResult {
+	speakerToPerson: Record<number, number>;
+	matches: VoiceFaceMatch[];
+	notes: MatchNote[];
+}
+
 export interface ProcessResponse {
 	turns: Turn[];
 	overlapWindows: OverlapWindow[];
+	words: Word[];
 	faces: DetectFacesResponse;
+	match: MatchResult;
 }
 
 export interface BBox {
@@ -104,6 +140,8 @@ export interface StageProgress {
 export interface JobProgress {
 	transcribe: StageProgress;
 	faces: StageProgress;
+	/** Runs after the other two — matching voices to faces needs both. */
+	match: StageProgress;
 }
 
 export async function getProgress(jobId: string): Promise<JobProgress> {
@@ -117,12 +155,9 @@ export async function getProgress(jobId: string): Promise<JobProgress> {
 export function processVideo(
 	file: File,
 	jobId: string,
-	numSpeakers?: number,
 	onUploadProgress?: (fraction: number) => void,
 ): Promise<ProcessResponse> {
-	const params: Record<string, string> = { jobId };
-	if (numSpeakers) params.num_speakers = String(numSpeakers);
-	return postFile("/process", file, params, onUploadProgress);
+	return postFile("/process", file, { jobId }, onUploadProgress);
 }
 
 export interface LayoutChoice {
@@ -149,6 +184,8 @@ export async function exportVideo(
 	overlapSegments: OverlapSegment[],
 	faces: DetectFacesResponse,
 	sessionId: string,
+	words: Word[],
+	captions: boolean,
 ): Promise<Blob> {
 	const form = new FormData();
 	form.append("file", file);
@@ -158,10 +195,23 @@ export async function exportVideo(
 	// face keyframes for a full-length episode are larger than that.
 	form.append("faces", new Blob([JSON.stringify(faces)], { type: "application/json" }), "faces.json");
 	form.append("sessionId", sessionId);
+	// A file part for the same reason as faces — word timestamps grow with
+	// episode length.
+	form.append("words", new Blob([JSON.stringify(words)], { type: "application/json" }), "words.json");
+	form.append("captions", String(captions));
 
 	const res = await fetch(new URL("/export", API_BASE), { method: "POST", body: form });
 	if (!res.ok) {
-		throw new Error(`Export failed (${res.status}): ${await res.text()}`);
+		// FastAPI puts the actionable part in `detail`; showing the raw JSON
+		// envelope buries advice the user is meant to act on.
+		const body = await res.text();
+		let detail = body;
+		try {
+			detail = (JSON.parse(body) as { detail?: string }).detail ?? body;
+		} catch {
+			// Not JSON (a proxy error page, say) -- show it as-is.
+		}
+		throw new Error(`Export failed (${res.status}): ${detail}`);
 	}
 	return res.blob();
 }

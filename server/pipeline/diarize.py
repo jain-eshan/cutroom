@@ -1,15 +1,19 @@
 import os
 from dataclasses import dataclass
 
-import numpy as np
-from resemblyzer import VoiceEncoder, preprocess_wav
-from sklearn.cluster import AgglomerativeClustering
-from sklearn.metrics import silhouette_score
+import soundfile as sf
 
-RESEMBLYZER_SAMPLE_RATE = 16000
+DIARIZATION_MODEL = "pyannote/speaker-diarization-community-1"
+DIARIZATION_SETUP_URL = f"https://huggingface.co/{DIARIZATION_MODEL}"
 
-OVERLAP_MODEL = "pyannote/overlapped-speech-detection"
-OVERLAP_SETUP_URL = f"https://huggingface.co/{OVERLAP_MODEL}"
+# An overlap shorter than this is real speech but not an edit. community-1
+# resolves overlap far more finely than the old detector did -- on a 10-minute
+# slice it found 10 overlaps totalling 2.6s, every one of them between 0.02s
+# and 0.31s. Those are interjections ("yeah", "mhm"), and cutting to a
+# two-person composite for a fifth of a second reads as a flash, not as two
+# people talking over each other. The data is right; the edit decision is what
+# needs a floor.
+MIN_OVERLAP_SECONDS = 1.0
 
 
 @dataclass
@@ -26,135 +30,126 @@ class OverlapWindow:
 	speakers: list[int]
 
 
-_encoder: VoiceEncoder | None = None
+@dataclass
+class Diarization:
+	"""Both outputs of one pass. Overlap used to be a second model that had to
+	be cross-referenced against the speaker segments to guess who was involved;
+	community-1 is overlap-aware, so the two people talking over each other are
+	simply two segments covering the same instant, and "who" is exact rather
+	than inferred."""
+
+	segments: list[SpeakerSegment]
+	overlaps: list[OverlapWindow]
 
 
-def get_encoder() -> VoiceEncoder:
-	global _encoder
-	if _encoder is None:
-		_encoder = VoiceEncoder()
-	return _encoder
+class DiarizationUnavailable(Exception):
+	"""Raised when the diarisation model cannot run: no HF_TOKEN, or the model
+	fails to load. Unlike the old optional overlap detection, this is fatal --
+	without speaker turns there is nothing to edit."""
 
 
-def diarize(
-	wav_path: str,
-	num_speakers: int | None = None,
-	max_speakers: int = 6,
-) -> list[SpeakerSegment]:
-	"""Cluster sliding-window voice embeddings into speaker turns.
-
-	No per-speaker audio to lean on, so this is audio-only diarization on the
-	single mixed track: embed overlapping windows, cluster them by voice
-	similarity, then collapse consecutive same-cluster windows into segments.
-	"""
-	wav = preprocess_wav(wav_path)
-	encoder = get_encoder()
-	_, partial_embeds, wav_splits = encoder.embed_utterance(wav, return_partials=True, rate=1.3)
-
-	if len(partial_embeds) < 2:
-		return [SpeakerSegment(start=0.0, end=len(wav) / RESEMBLYZER_SAMPLE_RATE, speaker=0)]
-
-	k = num_speakers or _estimate_speaker_count(partial_embeds, max_speakers)
-	k = max(1, min(k, len(partial_embeds)))
-
-	if k == 1:
-		labels = np.zeros(len(partial_embeds), dtype=int)
-	else:
-		clustering = AgglomerativeClustering(n_clusters=k, metric="cosine", linkage="average")
-		labels = clustering.fit_predict(partial_embeds)
-
-	segments: list[SpeakerSegment] = []
-	for label, split in zip(labels, wav_splits):
-		start = split.start / RESEMBLYZER_SAMPLE_RATE
-		end = split.stop / RESEMBLYZER_SAMPLE_RATE
-		speaker = int(label)
-		if segments and segments[-1].speaker == speaker and start - segments[-1].end < 0.3:
-			segments[-1] = SpeakerSegment(start=segments[-1].start, end=end, speaker=speaker)
-		else:
-			segments.append(SpeakerSegment(start=start, end=end, speaker=speaker))
-	return segments
+_pipeline = None
 
 
-class OverlapDetectionUnavailable(Exception):
-	"""Raised when overlap detection cannot run: no HF_TOKEN, or the model
-	fails to load. Caller should treat this as a soft failure (no overlap data)
-	rather than a hard error -- everything else in /process works without it."""
+def _best_device():
+	import torch
+
+	# Measured on a 10-minute slice: 398s on CPU vs 53s on MPS, for byte-identical
+	# output (3 speakers, 90 turns either way). 35 minutes per episode versus 5.
+	if torch.backends.mps.is_available():
+		return torch.device("mps")
+	if torch.cuda.is_available():
+		return torch.device("cuda")
+	return torch.device("cpu")
 
 
-_overlap_pipeline = None
-
-
-def _get_overlap_pipeline():
-	global _overlap_pipeline
-	if _overlap_pipeline is None:
+def _get_pipeline():
+	global _pipeline
+	if _pipeline is None:
 		token = os.environ.get("HF_TOKEN")
 		if not token:
-			raise OverlapDetectionUnavailable(
-				f"HF_TOKEN is not set. Overlap detection needs a Hugging Face "
-				f"access token: create one at https://huggingface.co/settings/tokens, "
-				f"accept the model license at {OVERLAP_SETUP_URL}, then set HF_TOKEN "
-				f"in your environment (e.g. server/.env) and restart the service."
+			raise DiarizationUnavailable(
+				"HF_TOKEN is not set. Speaker diarisation needs a Hugging Face access "
+				"token: create one at https://huggingface.co/settings/tokens, accept the "
+				f"model licence at {DIARIZATION_SETUP_URL}, then set HF_TOKEN in "
+				"server/.env and restart the service."
 			)
 		from pyannote.audio import Pipeline
 
-		# pyannote.audio 4 renamed use_auth_token to token, and dropped the
-		# OverlappedSpeechDetection pipeline this model's config points at, so
-		# loading it raises AttributeError on 4.x. Report any load failure as
-		# unavailable: overlap data is optional, and /process must still return a
-		# transcript rather than 500 because of it.
 		try:
-			_overlap_pipeline = Pipeline.from_pretrained(OVERLAP_MODEL, token=token)
+			pipeline = Pipeline.from_pretrained(DIARIZATION_MODEL, token=token)
 		except Exception as err:
-			raise OverlapDetectionUnavailable(
-				f"Could not load {OVERLAP_MODEL} with the installed pyannote.audio: {err}"
+			raise DiarizationUnavailable(
+				f"Could not load {DIARIZATION_MODEL}: {err}. The licence at "
+				f"{DIARIZATION_SETUP_URL} has to be accepted by the account the token "
+				"belongs to."
 			) from err
-	return _overlap_pipeline
+		pipeline.to(_best_device())
+		_pipeline = pipeline
+	return _pipeline
 
 
-def detect_overlap(wav_path: str, speaker_segments: list[SpeakerSegment]) -> list[OverlapWindow]:
-	"""Find stretches where two or more people are talking at once.
+def diarize(wav_path: str) -> Diarization:
+	"""Who speaks when, on the single mixed track.
 
-	pyannote.audio's overlapped-speech-detection model finds WHEN multiple
-	voices are active -- it doesn't know WHICH of our speaker ids (assigned
-	separately, by diarize() above) are involved, since that's a different
-	model with no shared vocabulary of speaker identity. Cross-reference: for
-	every detected overlap region, collect the distinct speaker ids from
-	`speaker_segments` whose time range intersects it. In practice,
-	window-based clustering (diarize()) tends to flip between the two
-	dominant voices from one window to the next during a real overlap, which
-	recovers >=2 distinct ids. If fewer than 2 ids are recovered, the overlap
-	region is dropped -- there's no usable "who" signal to build a composite
-	from, and a single-speaker "overlap" is a contradiction anyway.
-
-	Raises OverlapDetectionUnavailable if HF_TOKEN isn't configured -- callers
-	should catch this and fall back to an empty list, not fail the request.
+	No speaker count is passed. Forcing one was measured to invent speakers:
+	asking for four on a ten-minute window where the fourth participant barely
+	talks split one person into two. The roster is confirmed by a human at the
+	cast step instead, which is the one place that actually knows.
 	"""
-	pipeline = _get_overlap_pipeline()
-	output = pipeline(wav_path)
+	import torch
+
+	pipeline = _get_pipeline()
+
+	# Decoded here rather than handed over as a path. pyannote 4 reads audio via
+	# torchcodec, whose prebuilt libraries link against FFmpeg 4-7; on FFmpeg 9
+	# none of them load and the pipeline cannot open a file at all. We already
+	# have a 16kHz mono wav by this point, so there is nothing to gain from
+	# letting it decode its own.
+	samples, sample_rate = sf.read(wav_path, dtype="float32", always_2d=True)
+	waveform = torch.from_numpy(samples.T)  # (channels, samples)
+
+	output = pipeline({"waveform": waveform, "sample_rate": sample_rate})
+	annotation = getattr(output, "speaker_diarization", output)
+
+	tracks = list(annotation.itertracks(yield_label=True))
+	# Model labels are strings ("SPEAKER_00"); the rest of the codebase speaks
+	# in ints. Sorted so the mapping is deterministic across runs.
+	label_ids = {label: i for i, label in enumerate(sorted({label for _, _, label in tracks}))}
+
+	segments = sorted(
+		(
+			SpeakerSegment(start=turn.start, end=turn.end, speaker=label_ids[label])
+			for turn, _, label in tracks
+		),
+		key=lambda s: (s.start, s.end),
+	)
+	return Diarization(segments=segments, overlaps=overlap_windows(segments))
+
+
+def overlap_windows(
+	segments: list[SpeakerSegment], min_duration: float = MIN_OVERLAP_SECONDS
+) -> list[OverlapWindow]:
+	"""Stretches where two or more speakers are active at the same instant, and
+	stay that way long enough to be worth cutting to.
+
+	A boundary sweep rather than pairwise intersection: the same approach as
+	build_render_segments, and it handles three-way overlaps without special
+	cases. Merging happens before the length filter, so a long overlap
+	interrupted by boundary noise isn't thrown away in pieces."""
+	boundaries = sorted({s.start for s in segments} | {s.end for s in segments})
 
 	windows: list[OverlapWindow] = []
-	for region in output.get_timeline().support():
-		speakers = sorted(
-			{
-				seg.speaker
-				for seg in speaker_segments
-				if seg.start < region.end and seg.end > region.start
-			}
-		)
-		if len(speakers) >= 2:
-			windows.append(OverlapWindow(start=region.start, end=region.end, speakers=speakers))
-	return windows
-
-
-def _estimate_speaker_count(embeds: np.ndarray, max_speakers: int) -> int:
-	best_k, best_score = 2, -1.0
-	upper = min(max_speakers, len(embeds) - 1)
-	for k in range(2, max(upper, 2) + 1):
-		clustering = AgglomerativeClustering(n_clusters=k, metric="cosine", linkage="average")
-		labels = clustering.fit_predict(embeds)
-		if len(set(labels)) < 2:
+	for a, b in zip(boundaries, boundaries[1:]):
+		if b - a <= 1e-6:
 			continue
-		score = silhouette_score(embeds, labels, metric="cosine")
-		if score > best_score:
-			best_k, best_score = k, score
-	return best_k
+		mid = (a + b) / 2
+		active = sorted({s.speaker for s in segments if s.start <= mid < s.end})
+		if len(active) < 2:
+			continue
+		last = windows[-1] if windows else None
+		if last is not None and last.speakers == active and abs(last.end - a) <= 1e-6:
+			windows[-1] = OverlapWindow(start=last.start, end=b, speakers=active)
+		else:
+			windows.append(OverlapWindow(start=a, end=b, speakers=active))
+	return [w for w in windows if w.end - w.start >= min_duration]

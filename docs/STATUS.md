@@ -16,15 +16,17 @@ locally, nothing is uploaded anywhere.
 2. **Process** — one upload feeds transcription, speaker diarisation,
    optional overlapping-speech detection, and face recognition. Per-stage
    progress is polled and shown while it runs.
-3. **Cast** — name each recognised person once, then match each distinct
-   voice to a person by listening to a sample of what they actually said.
+3. **Cast** — name each recognised person once. Voices are already matched to
+   faces by lip-sync, so this is a confirmation with the uncertain ones
+   flagged, not a grid of anonymous voices to work out by ear.
 4. **Edit** — turn-by-turn transcript with real names, a live preview that
    uses the same framing maths as the export, per-turn layout override
    (wide / single / multi-person) and per-turn correction of who is on
    screen.
 5. **Export** — a real MP4: hard cuts at turn boundaries, medium-shot
    framing, multi-person composites, source resolution preserved, original
-   audio stream-copied.
+   audio stream-copied, and optional burned-in captions cut from the Whisper
+   word timestamps (not the coarser turn boundaries).
 
 ---
 
@@ -43,6 +45,14 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | Output preserves the source | 1920×1080 in → 1920×1080 out, duration exact, **1799 frames in → 1799 out** across 44 segments (no drift, no desync) |
 | Processing is not slow | **12.5s end to end** for a 104 MB / 60s clip via curl; ≈1/5 of real time |
 | Concurrency helps | 13s concurrent vs 16s sequential for transcribe + faces |
+| Captions land where they should | burned-in cues verified frame by frame on a synthetic clip: text present during each cue, **absent during the pause between them**, 100 → 100 frames, duration exact |
+| The GPU makes community-1 affordable | same 10-min slice, same venv: **398.4s on CPU (0.664x) → 53.3s on MPS (0.089x)**, and byte-identical output either way (3 speakers, 90 turns). **35 min → 4.7 min** for a 53-minute episode |
+| Forcing a speaker count invents speakers | unconstrained gives **3 speakers / 90 turns** on the 10-min slice, on both devices; forcing `num_speakers=4` gave 4/87, splitting one person in two. The count is no longer passed |
+| Real overlap is rarer than it looks | community-1 finds 10 overlaps in the 10-min slice totalling 2.65s — every one between **0.02s and 0.56s**. All interjections; none long enough to cut to a composite for. On this episode the split-screen never auto-triggers, and that is the correct answer, not a gap |
+| Lip-sync picks the same face as the validated benchmark | on the same 3-min clip, **100% agreement** across the 145s where both say someone is talking (94% counting the silence boundary), per-face shares within 3 points — while skipping per-frame face detection entirely and streaming crops instead of holding 4GB of them |
+| Voices get matched to faces without being asked | end to end on that clip: voice 0 → person 1 at **97%** over 114 judged seconds, voice 1 → person 0 at **100%** over 40. The cast screen starts filled in |
+| The whole pipeline is affordable | **80s for a 3-minute clip** including transcription, diarisation, faces, lip-sync and matching — roughly 0.45x real time |
+| The presence threshold drops junk without dropping people | same clip, **5 "people" → 4** once the threshold scales: the four kept appear in 179-180 of 180 sampled frames, and it is a four-person podcast |
 
 **Full-length episode (53 min, four people, 1080p, 5.3GB), run 2026-09-12:**
 
@@ -53,8 +63,8 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | Export completes and is faithful | **95,436 frames in -> 95,436 out**, duration exact, 1920x1080 preserved, audio stream-copied **bit-identical** (matching MD5), 3.5GB out, peak 949MB RAM |
 | Diarisation does **not** hold up at length | 4 people -> **2 speakers, 34 turns in 53 min** (median turn 33s, longest 6.4 min). See "What's left" |
 
-**Checks:** 16 backend tests passing, `tsc` clean, `oxlint` clean (one
-deliberate, documented warning), production build clean, full flow verified
+**Checks:** 23 backend tests passing, `tsc` clean, `oxlint` clean (two
+deliberate, documented warnings), production build clean, full flow verified
 in a real browser against real footage.
 
 ---
@@ -87,17 +97,22 @@ Two things the epic listed as open questions are now answered:
 Ordered by what unlocks the most, not by effort.
 
 ### Next
-1. **Fix speaker diarisation.** The full-episode run (2026-09-12) found this
-   is the blocker in front of everything else: on a four-person episode the
-   pipeline heard **two** speakers and cut 34 turns in 53 minutes, so two
-   participants never get a close-up. Measured on the real episode:
+1. **Fix speaker diarisation.** *Voices: done. Which face: next.*
+
+   The full-episode run (2026-09-12) found this is the blocker in front of
+   everything else: on a four-person episode the pipeline heard **two**
+   speakers and cut 34 turns in 53 minutes, so two participants never get a
+   close-up. `resemblyzer` has now been replaced by community-1 on the GPU,
+   which removed the separate overlap model as well. What remains is the
+   other half of the fused design — lip-sync for *which face*, and the
+   Hungarian matching that joins the two. Measured on the real episode:
 
    | Approach | Result |
    |---|---|
-   | `resemblyzer` + average-linkage clustering (current) | 99.5% of speech in one cluster at every k from 2 to 6 |
+   | `resemblyzer` + average-linkage clustering (was shipping) | 99.5% of speech in one cluster at every k from 2 to 6. Removed |
    | WeSpeaker embeddings + k-means / spectral / Ward | stable labels (2-3% flips) but never a clean four-way split |
    | `sherpa-onnx` (pyannote segmentation 3.0 ONNX + WeSpeaker, no HF token) | 3 speakers when asked for 4 (89% in one), or 22 fragments unconstrained |
-   | `pyannote` **community-1** (CC-BY-4.0, HF token) | best of the audio-only options, and slow: on a 10-min slice it found 4 speakers and 87 turns (the old pipeline managed 34 in the whole episode), at **0.66x real time on CPU — ~35 min for a 53-min episode**. Overlap-aware in one pass (2.6s of overlap in 600s here), and its exclusive mode aligns to Whisper words. MPS untested |
+   | `pyannote` **community-1** (CC-BY-4.0, HF token) — **now shipping** | best of the audio-only options. On a 10-min slice, unconstrained: **3 speakers, 90 turns** (the old pipeline managed 34 in the whole episode). The speed objection is gone: **0.089x on MPS, 4.7 min per episode**, same output as CPU. Overlap-aware in one pass, so the separate overlap model is deleted |
    | **LR-ASD lip-sync** (MIT, AVA weights) | **validated on real footage** — tracked all four faces 100% of sampled frames, and its "who is speaking" call was confirmed correct by a human watching an annotated 3-minute clip. Independently showed the single dominant "voice" is really two different people |
 
    **Cross-checking the two settles the design.** On the same 10 minutes,
@@ -117,24 +132,26 @@ Ordered by what unlocks the most, not by effort.
    (split them), two voices pointing at one face means an over-split speaker
    (merge them). Neither can see its own error.
 
-   The evidence points at a fused design: voices from community-1, "which
-   face" from lip-sync, paired with Hungarian matching (the approach in
-   Adobe's patent US12125501B2). That also removes the manual voice-to-face
-   step in the cast screen. Cost measured on a 3-minute clip: ~15 min per
-   53-min episode for the lip-sync model pass, plus dense face detection
-   (64 min unoptimised, expected to drop a lot by searching only where each
-   seated person already is).
+   No speaker count is forced any more, which removes the cause of that
+   particular over-split. The roster gets confirmed by the one party that
+   actually knows — the human at the cast step, who is already there naming
+   faces — rather than guessed at by the model.
+
+   **Still to build:** "which face" from lip-sync, paired to the voices with
+   Hungarian matching (the approach in Adobe's patent US12125501B2). That
+   also removes the manual voice-to-face step in the cast screen. Cost
+   measured on a 3-minute clip: ~15 min per 53-min episode for the lip-sync
+   pass, plus dense face detection (64 min unoptimised, expected to drop a
+   lot by searching only where each seated person already is).
 
 2. **Then show a full edit to a podcast host.** Still the milestone the whole
    roadmap is sequenced against, and still not done — an edit built on
    two-speaker diarisation is not worth a host's time.
 
 ### Then, informed by that
-2. **Smarter cutting** — trim dead air and filler words, vary shot length so
+3. **Smarter cutting** — trim dead air and filler words, vary shot length so
    the edit doesn't feel metronomic. The epic's "decision quality before
    decoration" principle puts this ahead of everything below.
-3. **Captions** — own ASS generation from the Whisper word timestamps
-   already being produced. `pysubs2` is the only new dependency.
 4. **Smoothing / scene-boundary layer** — the deferred Approach B. Only
    worth it if the real-world test says crop jitter is a real complaint.
 5. **Jargon info-text annotations** — genuinely novel, nothing open-source
@@ -149,9 +166,12 @@ Ordered by what unlocks the most, not by effort.
    corrections; before that there is no pattern to learn from.
 9. **Automatic social clips** — own offline scoring heuristic (pace,
    silence, turn density), deliberately avoiding a cloud-LLM dependency.
-10. **Automatic speaker-to-face matching** — the hard one, still correctly
-    deferred. The cast step now takes under a minute, so the payoff shrank.
-11. **Multi-camera support, desktop packaging (Electron).**
+10. **Multi-camera support, desktop packaging (Electron).**
+
+Automatic speaker-to-face matching used to sit at the bottom of this list as
+"the hard one, deferred". It is now item 1: the fused design does it as a
+side effect, and the full-episode run showed the manual cast step was
+resting on diarisation that had already lost two of the four people.
 
 ### Separate passes, not roadmap items
 - **Visual design language** — colours, typography, spacing, component
@@ -172,22 +192,38 @@ Ordered by what unlocks the most, not by effort.
   four people. The real fix is source resolution: shoot 4K, deliver 1080p,
   and punch-ins become genuinely sharp because the crop then holds more real
   pixels than the output needs.
-- **Overlap detection does not work on `pyannote.audio` 4.** The installed
-  4.0.7 dropped the `OverlappedSpeechDetection` pipeline that
-  `pyannote/overlapped-speech-detection` needs (and renamed `use_auth_token`
-  to `token`), so the model cannot load at all. It now degrades to "no
-  overlap data" instead of failing the request — before this fix, a
-  configured `HF_TOKEN` made every `/process` call 500. The real fix is
-  community-1, whose diarisation is overlap-aware in one pass.
-- **Diarisation is voice-clustering, not perfect.** It can mis-assign a
-  turn, and only finds speakers who actually speak in the window analysed.
-  This is why per-turn correction exists in the editor.
-- **No automated frontend tests.** Backend has 16; the frontend is verified
+- **Diarisation now requires a Hugging Face token.** community-1 replaced the
+  token-free `resemblyzer` clustering, which was measured finding two
+  speakers on a four-person episode — a fallback that produces a quietly
+  wrong edit is worse than an error that says what to do, so there is no
+  fallback. `/process` returns a 400 naming the token and the licence page.
+- **Diarisation is still not perfect.** It can mis-assign a turn, and only
+  finds speakers who actually speak in the window analysed. This is why
+  per-turn correction exists in the editor.
+- **pyannote 4 cannot read audio files on FFmpeg 9.** It decodes through
+  torchcodec, whose prebuilt libraries link against FFmpeg 4-7, so on a
+  modern ffmpeg every one of them fails to load. Worked around by decoding
+  the wav ourselves and handing the pipeline a waveform, which is free — the
+  pipeline already extracts a 16kHz mono wav before this point.
+- **No automated frontend tests.** Backend has 23; the frontend is verified
   by typecheck, build, and real browser sessions.
-- **Junk "people" survive on long episodes.** `MIN_DETECTIONS` is a fixed 3,
-  so a 53-minute episode yielded four real participants plus six clusters
-  seen 3-12 times. They sort last in the cast screen, but the threshold
-  should scale with episode length.
+- **Caption burn-in needs an ffmpeg the standard install doesn't give you.**
+  Homebrew's regular `ffmpeg` formula (9.0) ships without libass — and
+  without freetype, so `drawtext` is not a fallback — so the `ass` filter
+  does not exist and no text can be rendered onto a frame. `brew install
+  ffmpeg-full` has it, but that formula is keg-only, so point the server at
+  it with `FFMPEG_BINARY=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg` in
+  `server/.env` rather than reordering a global PATH. Export checks before
+  starting the render and refuses with that advice, rather than spending 15
+  minutes and handing back a video with no captions on it.
+  (Installing `ffmpeg-full` upgrades x265, which leaves the regular `ffmpeg`
+  linked against a libx265 that is no longer there: `brew reinstall ffmpeg`
+  repairs it. Both can coexist afterwards.)
+- ~~**Junk "people" survive on long episodes.**~~ Fixed: the threshold is now
+  the larger of 3 detections and 5% of sampled frames, so it scales with
+  episode length. On the 53-minute episode that separates the four
+  participants (>99% of frames) from the six junk clusters (<0.4%) with three
+  orders of magnitude to spare.
 - **No pre-flight disk-space check.** A multi-GB upload plus extracted audio
   plus a same-or-larger render can transiently need a lot of temp space.
 - **macOS only so far.** Nothing is knowingly platform-specific, but nothing

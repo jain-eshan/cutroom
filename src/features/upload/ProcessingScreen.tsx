@@ -96,12 +96,19 @@ export function ProcessingScreen({
 					done={progress?.faces.done ?? false}
 					showPercent
 				/>
+				<Row
+					title="Voices to faces"
+					stage={progress?.match.stage ?? "waiting"}
+					fraction={progress?.match.fraction ?? 0}
+					done={progress?.match.done ?? false}
+					showPercent
+				/>
 			</div>
 
 			<p className="text-xs text-neutral-400">
-				Elapsed {formatElapsed(elapsedSeconds)}. Measured on a laptop CPU, processing runs at
-				roughly a fifth of real time — about a minute of work for a five-minute recording,
-				plus however long the upload itself takes.
+				Elapsed {formatElapsed(elapsedSeconds)}. Measured on a real episode, processing runs at
+				roughly a third of real time — about 20 minutes of work for a 53-minute recording, plus
+				however long the upload itself takes.
 			</p>
 		</div>
 	);

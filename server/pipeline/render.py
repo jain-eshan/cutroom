@@ -1,9 +1,11 @@
 import subprocess
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
 from .faces import BBox
+from .ffmpeg import FFMPEG, FFPROBE
 from .framing import CropRect, person_crop
 
 Layout = Literal["original", "zoom", "split"]
@@ -334,7 +336,7 @@ def _source_audio_codec(input_path: Path) -> str | None:
 	try:
 		out = subprocess.run(
 			[
-				"ffprobe", "-v", "error", "-select_streams", "a:0",
+				FFPROBE, "-v", "error", "-select_streams", "a:0",
 				"-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1",
 				str(input_path),
 			],
@@ -357,19 +359,61 @@ def _audio_args(input_path: Path) -> list[str]:
 	return ["-c:a", "aac", "-b:a", AUDIO_BITRATE]
 
 
-def render_export(input_path: Path, output_path: Path, segments: list[RenderSegment], frame_w: int, frame_h: int) -> None:
+@lru_cache(maxsize=1)
+def has_ass_filter() -> bool:
+	"""Whether this ffmpeg can burn in subtitles at all.
+
+	Homebrew's regular `ffmpeg` formula is built without libass -- and without
+	freetype, so `drawtext` is not a fallback either -- which means a plain
+	`brew install ffmpeg` (what the README asks for) cannot render text onto a
+	frame. That is the normal state of a macOS install, not a broken one, so
+	callers check this *before* starting a render: finding out at the end of a
+	15-minute export is the difference between an error and a wasted evening.
+	"""
+	try:
+		out = subprocess.run(
+			[FFMPEG, "-hide_banner", "-filters"], check=True, capture_output=True, text=True
+		)
+	except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+		return False
+	# Lines are "  <flags> <name> <in>-><out>  <description>".
+	return any(parts[1] == "ass" for line in out.stdout.splitlines() if len(parts := line.split()) > 1)
+
+
+def _escape_filter_path(path: Path) -> str:
+	"""Escape a filesystem path for use as an ffmpeg filtergraph argument.
+	The filter parser treats `\\`, `:` and `'` specially even inside quotes,
+	so all three need escaping before wrapping the result in single quotes."""
+	escaped = str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+	return f"'{escaped}'"
+
+
+def render_export(
+	input_path: Path,
+	output_path: Path,
+	segments: list[RenderSegment],
+	frame_w: int,
+	frame_h: int,
+	ass_path: Path | None = None,
+) -> None:
 	"""One ffmpeg invocation, one filter_complex graph: each segment gets its
 	own trim+crop+scale filter chain, all segments concat back into a single
 	video stream the same total length as the source, then muxed with the
 	source's original audio track (untouched content -- no ducking, no
 	trimming -- and stream-copied rather than re-encoded whenever the source
-	codec can live in an MP4, so audio comes through bit-identical)."""
+	codec can live in an MP4, so audio comes through bit-identical). Captions,
+	when requested, are burned in as a last filter step on the concatenated
+	stream rather than per-segment -- one filter application instead of one
+	per segment, and cue timing is independent of segment boundaries anyway."""
 	filter_parts = [_segment_filter(i, seg, frame_w, frame_h) for i, seg in enumerate(segments)]
 	concat_inputs = "".join(f"[v{i}]" for i in range(len(segments)))
-	filter_complex = ";".join(filter_parts) + f";{concat_inputs}concat=n={len(segments)}:v=1:a=0[vout]"
+	concat_label = "vconcat" if ass_path is not None else "vout"
+	filter_complex = ";".join(filter_parts) + f";{concat_inputs}concat=n={len(segments)}:v=1:a=0[{concat_label}]"
+	if ass_path is not None:
+		filter_complex += f";[{concat_label}]ass=filename={_escape_filter_path(ass_path)}[vout]"
 
 	cmd = [
-		"ffmpeg",
+		FFMPEG,
 		"-y",
 		"-i", str(input_path),
 		"-filter_complex", filter_complex,

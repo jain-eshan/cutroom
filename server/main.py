@@ -13,9 +13,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
-from pipeline.audio import extract_wav
-from pipeline.diarize import OverlapDetectionUnavailable, OverlapWindow, detect_overlap, diarize
+from pipeline.audio import NoAudioTrack, extract_wav
+from pipeline.captions import build_caption_cues, write_ass
+from pipeline.diarize import Diarization, DiarizationUnavailable, diarize
 from pipeline.faces import BBox, detect_and_track_faces, get_video_dimensions, get_video_duration
+from pipeline.fuse import fuse
+from pipeline.lipsync import analyse
 from pipeline.progress import report, snapshot
 from pipeline.render import (
 	Keyframe,
@@ -23,9 +26,10 @@ from pipeline.render import (
 	OverlapSegment,
 	Track,
 	build_render_segments,
+	has_ass_filter,
 	render_export,
 )
-from pipeline.transcribe import transcribe
+from pipeline.transcribe import Word, transcribe
 from pipeline.turns import build_turns
 
 load_dotenv()
@@ -63,24 +67,17 @@ def progress_endpoint(job_id: str) -> dict:
 	return snapshot(job_id)
 
 
-def _transcribe_work(wav_path: Path, num_speakers: int | None, job_id: str | None) -> dict:
+def _transcribe_work(wav_path: Path, job_id: str | None) -> tuple[dict, Diarization]:
 	report(job_id, "transcribe", "transcribing speech")
 	segments = transcribe(
 		str(wav_path), progress=lambda f: report(job_id, "transcribe", "transcribing speech", f)
 	)
 	report(job_id, "transcribe", "identifying speakers", 1.0)
-	speaker_segments = diarize(str(wav_path), num_speakers=num_speakers)
-	turns = build_turns(segments, speaker_segments)
-
-	try:
-		report(job_id, "transcribe", "detecting overlapping speech", 1.0)
-		overlap_windows = detect_overlap(str(wav_path), speaker_segments)
-	except OverlapDetectionUnavailable as err:
-		# Soft failure -- overlap detection needs a Hugging Face token that not
-		# every install will have configured. Everything else still works; the
-		# multi-speaker composite just won't have an automatic trigger.
-		print(f"[process] overlap detection skipped: {err}")
-		overlap_windows = []
+	# One pass: speaker turns and the stretches where people talk over each
+	# other come out of the same model, so overlap no longer needs a second
+	# model or a guess about which speakers were involved.
+	diarization = diarize(str(wav_path))
+	turns = build_turns(segments, diarization.segments)
 
 	report(job_id, "transcribe", "done", 1.0, done=True)
 	return {
@@ -88,7 +85,47 @@ def _transcribe_work(wav_path: Path, num_speakers: int | None, job_id: str | Non
 			{"speaker": t.speaker, "start": t.start, "end": t.end, "text": t.text} for t in turns
 		],
 		"overlapWindows": [
-			{"start": w.start, "end": w.end, "speakers": w.speakers} for w in overlap_windows
+			{"start": w.start, "end": w.end, "speakers": w.speakers} for w in diarization.overlaps
+		],
+		# Word-level timestamps, independent of turn boundaries -- captions need
+		# tighter timing than a turn provides (see pipeline/captions.py).
+		"words": [
+			{"start": w.start, "end": w.end, "text": w.text} for seg in segments for w in seg.words
+		],
+	}, diarization
+
+
+def _match_work(
+	video_path: Path, wav_path: Path, diarization: Diarization, people: list[dict], job_id: str | None
+) -> dict:
+	"""Work out which face each voice belongs to.
+
+	This is the step that used to be the human's job in the cast screen. It
+	still is -- the result is a suggestion the editor confirms -- but it starts
+	from evidence rather than from a blank grid.
+	"""
+	report(job_id, "match", "matching voices to faces")
+	lip = analyse(
+		str(video_path),
+		str(wav_path),
+		people,
+		progress=lambda f: report(job_id, "match", "matching voices to faces", f),
+	)
+	result = fuse(diarization.segments, lip.speaking_per_second(), lip.person_ids)
+	report(job_id, "match", "done", 1.0, done=True)
+	return {
+		"speakerToPerson": result.speaker_to_person(),
+		"matches": [
+			{
+				"speaker": m.speaker,
+				"personId": m.person_id,
+				"confidence": m.confidence,
+				"judgedSeconds": m.judged_seconds,
+			}
+			for m in result.matches
+		],
+		"notes": [
+			{"kind": n.kind, "speakers": n.speakers, "personIds": n.person_ids} for n in result.notes
 		],
 	}
 
@@ -131,9 +168,7 @@ def _faces_work(input_path: Path, job_id: str | None) -> dict:
 
 
 @app.post("/process")
-async def process_endpoint(
-	file: UploadFile, num_speakers: int | None = None, jobId: str | None = None
-) -> dict:
+async def process_endpoint(file: UploadFile, jobId: str | None = None) -> dict:
 	"""Transcript, speakers and people in one pass.
 
 	This used to be two endpoints the frontend called in parallel, which meant
@@ -150,14 +185,27 @@ async def process_endpoint(
 
 		wav_path = Path(tmp) / "audio.wav"
 		report(jobId, "transcribe", "extracting audio")
-		extract_wav(input_path, wav_path)
+		try:
+			extract_wav(input_path, wav_path)
+		except NoAudioTrack as err:
+			raise HTTPException(400, str(err)) from err
 
-		transcript, faces = await asyncio.gather(
-			asyncio.to_thread(_transcribe_work, wav_path, num_speakers, jobId),
-			asyncio.to_thread(_faces_work, input_path, jobId),
+		try:
+			(transcript, diarization), faces = await asyncio.gather(
+				asyncio.to_thread(_transcribe_work, wav_path, jobId),
+				asyncio.to_thread(_faces_work, input_path, jobId),
+			)
+		except DiarizationUnavailable as err:
+			# Setup problem, not a server fault: the message says exactly what to
+			# do, so it needs to reach the user rather than become a 500.
+			raise HTTPException(400, str(err)) from err
+
+		# Third, not concurrent: it needs both of the above to have finished.
+		match = await asyncio.to_thread(
+			_match_work, input_path, wav_path, diarization, faces["people"], jobId
 		)
 
-	return {**transcript, "faces": faces}
+	return {**transcript, "faces": faces, "match": match}
 
 
 @app.post("/export")
@@ -171,13 +219,32 @@ async def export_endpoint(
 	layoutChoices: str = Form(...),
 	overlapSegments: str = Form(...),
 	sessionId: str | None = Form(None),
+	# Also a file part, and for the same reason as faces: word timestamps grow
+	# with episode length. A 53-minute episode is ~550KB of them, which fits
+	# under the 1MB text-field cap only by luck; a two-hour one would not.
+	words: UploadFile | None = None,
+	captions: bool = Form(False),
 ) -> FileResponse:
 	try:
 		layout_choices_data = json.loads(layoutChoices)
 		overlap_segments_data = json.loads(overlapSegments)
 		faces_data = json.loads(await faces.read())
+		words_data = json.loads(await words.read()) if words is not None else []
 	except json.JSONDecodeError as err:
 		raise HTTPException(400, f"Malformed JSON in request field: {err}") from err
+
+	# Before the upload is saved and the render starts, not after: a full-length
+	# export is ~15 minutes of work, and silently dropping the captions someone
+	# explicitly asked for is worse than refusing the job.
+	if captions and words_data and not has_ass_filter():
+		raise HTTPException(
+			400,
+			"This ffmpeg was built without libass, so captions cannot be burned in. "
+			"Homebrew's regular `ffmpeg` formula omits it: `brew install ffmpeg-full` "
+			"has it, then point the server at that binary by putting "
+			"FFMPEG_BINARY=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg in server/.env. "
+			"Or export without captions to continue with this build.",
+		)
 
 	layout_choices = [
 		LayoutChoice(
@@ -221,8 +288,15 @@ async def export_endpoint(
 			people=people,
 		)
 
+		ass_path: Path | None = None
+		if captions and words_data:
+			words_list = [Word(start=w["start"], end=w["end"], text=w["text"]) for w in words_data]
+			cues = build_caption_cues(words_list)
+			ass_path = Path(tmp) / "captions.ass"
+			write_ass(cues, ass_path, frame_w, frame_h)
+
 		output_path = Path(tmp) / "export.mp4"
-		render_export(input_path, output_path, segments, frame_w, frame_h)
+		render_export(input_path, output_path, segments, frame_w, frame_h, ass_path=ass_path)
 	except subprocess.CalledProcessError as err:
 		shutil.rmtree(tmp, ignore_errors=True)
 		stderr_tail = (err.stderr or b"").decode(errors="replace")[-2000:]

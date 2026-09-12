@@ -6,6 +6,7 @@ import {
 	type OverlapSegment,
 	type OverlapWindow,
 	type Turn,
+	type Word,
 } from "@/lib/api";
 import type { Layout } from "@/features/timeline/types";
 
@@ -21,6 +22,8 @@ export function ExportButton({
 	turns,
 	layouts,
 	overlapWindows,
+	words,
+	captionsEnabled,
 	faces,
 	speakerToPerson,
 	personForTurn,
@@ -30,6 +33,8 @@ export function ExportButton({
 	turns: Turn[];
 	layouts: Record<number, Layout>;
 	overlapWindows: OverlapWindow[];
+	words: Word[];
+	captionsEnabled: boolean;
 	faces: DetectFacesResponse;
 	speakerToPerson: Record<number, number>;
 	/** Resolved person for a turn, including any manual correction. */
@@ -64,7 +69,15 @@ export function ExportButton({
 				],
 			}));
 
-			const blob = await exportVideo(file, layoutChoices, overlapSegments, faces, sessionId);
+			const blob = await exportVideo(
+				file,
+				layoutChoices,
+				overlapSegments,
+				faces,
+				sessionId,
+				words,
+				captionsEnabled,
+			);
 			const url = URL.createObjectURL(blob);
 			const baseName = file.name.replace(/\.[^.]+$/, "");
 			setState({ status: "done", url, filename: `${baseName}-edited.mp4` });

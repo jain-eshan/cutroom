@@ -24,7 +24,17 @@ IDENTITY_DISTANCE = 0.4
 # Immich's "Minimum Recognized Faces" setting. Catches false positives --
 # on the test footage a hand was detected as a face twice and clustered into
 # its own identity; this is what removes it.
+#
+# The floor, for clips too short for a proportion to mean anything.
 MIN_DETECTIONS = 3
+
+# What actually scales: a real participant is on screen for most of an
+# episode, and a false positive is not. Measured on the 53-minute episode --
+# all four participants appeared in 3,164-3,172 of 3,181 sampled frames
+# (>99%), while six junk clusters appeared in 3 to 12 (<0.4%). A fixed floor
+# of 3 keeps every one of those; anything in the low percentages separates
+# them cleanly, so the exact value is not load-bearing.
+MIN_PRESENCE = 0.05
 
 
 @dataclass
@@ -143,6 +153,7 @@ def detect_and_track_faces(
 	max_gap_s: float = 3.0,
 	identity_distance: float = IDENTITY_DISTANCE,
 	min_detections: int = MIN_DETECTIONS,
+	min_presence: float = MIN_PRESENCE,
 	progress=None,
 ) -> list[Person]:
 	"""Find the distinct people in a video, not just face rectangles.
@@ -177,8 +188,10 @@ def detect_and_track_faces(
 	next_id = 0
 	active: dict[int, dict] = {}
 	finished: list[dict] = []
+	sampled_frames = 0
 
 	for i, (t, frame) in enumerate(_sample_frames(video_path, interval_s)):
+		sampled_frames = i + 1
 		if detector is None:
 			h, w = frame.shape[:2]
 			detector = cv2.FaceDetectorYN.create(str(DETECTION_MODEL), "", (w, h), score_threshold=0.6)
@@ -261,7 +274,11 @@ def detect_and_track_faces(
 				if prev is None or kf.bbox.width * kf.bbox.height > prev.bbox.width * prev.bbox.height:
 					keyframes[kf.t] = kf
 		count = sum(len(m["keyframes"]) for m in members)
-		if count < min_detections:
+		# Scales with episode length: a fixed floor of 3 is a high bar on a
+		# 60-second clip and no bar at all on a 53-minute episode, where six
+		# junk clusters cleared it and turned up in the cast screen as people
+		# to name.
+		if count < max(min_detections, round(sampled_frames * min_presence)):
 			continue
 		best = max(members, key=lambda m: m["best_area"])
 		people.append(
