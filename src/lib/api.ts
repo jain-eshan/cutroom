@@ -11,9 +11,18 @@ export interface OverlapWindow {
 	speakers: number[];
 }
 
+/** One transcribed word with its own timing, independent of turn boundaries.
+ * Captions need this tighter timing than a turn provides. */
+export interface Word {
+	start: number;
+	end: number;
+	text: string;
+}
+
 export interface ProcessResponse {
 	turns: Turn[];
 	overlapWindows: OverlapWindow[];
+	words: Word[];
 	faces: DetectFacesResponse;
 }
 
@@ -149,6 +158,8 @@ export async function exportVideo(
 	overlapSegments: OverlapSegment[],
 	faces: DetectFacesResponse,
 	sessionId: string,
+	words: Word[],
+	captions: boolean,
 ): Promise<Blob> {
 	const form = new FormData();
 	form.append("file", file);
@@ -156,6 +167,8 @@ export async function exportVideo(
 	form.append("overlapSegments", JSON.stringify(overlapSegments));
 	form.append("faces", JSON.stringify(faces));
 	form.append("sessionId", sessionId);
+	form.append("words", JSON.stringify(words));
+	form.append("captions", String(captions));
 
 	const res = await fetch(new URL("/export", API_BASE), { method: "POST", body: form });
 	if (!res.ok) {

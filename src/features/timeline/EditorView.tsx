@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DetectFacesResponse, OverlapWindow, Turn } from "@/lib/api";
+import type { DetectFacesResponse, OverlapWindow, Turn, Word } from "@/lib/api";
 import type { CastResult } from "@/features/faces/CastScreen";
 import { bboxAtTime, personCrop } from "@/lib/faceCrop";
 import { ExportButton } from "@/features/timeline/ExportButton";
@@ -171,6 +171,7 @@ export function EditorView({
 	sessionId,
 	turns,
 	overlapWindows,
+	words,
 	faces,
 	cast,
 }: {
@@ -178,9 +179,11 @@ export function EditorView({
 	sessionId: string;
 	turns: Turn[];
 	overlapWindows: OverlapWindow[];
+	words: Word[];
 	faces: DetectFacesResponse;
 	cast: CastResult;
 }) {
+	const [captionsEnabled, setCaptionsEnabled] = useState(true);
 	// Object URL has to be created *inside* the effect (not derived via useMemo)
 	// so StrictMode's mount->cleanup->mount dev-mode cycle recreates a fresh URL
 	// each time instead of revoking the one useMemo cached and never remaking.
@@ -420,12 +423,22 @@ export function EditorView({
 					);
 				})}
 			</div>
+			<label className="flex w-fit items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+				<input
+					type="checkbox"
+					checked={captionsEnabled}
+					onChange={(e) => setCaptionsEnabled(e.target.checked)}
+				/>
+				Burn in captions
+			</label>
 			<ExportButton
 				file={file}
 				sessionId={sessionId}
 				turns={turns}
 				layouts={layouts}
 				overlapWindows={overlapWindows}
+				words={words}
+				captionsEnabled={captionsEnabled}
 				faces={faces}
 				speakerToPerson={cast.speakerToPerson}
 				personForTurn={personForTurn}

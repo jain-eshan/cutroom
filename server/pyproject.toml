@@ -10,6 +10,7 @@ dependencies = [
     "opencv-python-headless>=4.9,<5",
     "pillow>=12.3.0",
     "pyannote-audio>=4.0.7",
+    "pysubs2>=1.8.0",
     "python-dotenv>=1.2.3",
     "python-multipart>=0.0.32",
     "resemblyzer>=0.1.4",

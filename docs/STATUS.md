@@ -44,8 +44,8 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | Processing is not slow | **12.5s end to end** for a 104 MB / 60s clip via curl; ≈1/5 of real time |
 | Concurrency helps | 13s concurrent vs 16s sequential for transcribe + faces |
 
-**Checks:** 16 backend tests passing, `tsc` clean, `oxlint` clean (one
-deliberate, documented warning), production build clean, full flow verified
+**Checks:** 23 backend tests passing, `tsc` clean, `oxlint` clean (two
+deliberate, documented warnings), production build clean, full flow verified
 in a real browser against real footage.
 
 ---
@@ -88,8 +88,12 @@ Ordered by what unlocks the most, not by effort.
 2. **Smarter cutting** — trim dead air and filler words, vary shot length so
    the edit doesn't feel metronomic. The epic's "decision quality before
    decoration" principle puts this ahead of everything below.
-3. **Captions** — own ASS generation from the Whisper word timestamps
-   already being produced. `pysubs2` is the only new dependency.
+3. **Captions** — done. ASS captions burned in at export from the Whisper
+   word timestamps already being produced (`pysubs2`), grouped into cues by
+   pause length and a max line length rather than inheriting a turn's
+   (much coarser) boundaries. Toggleable per export. Cue-grouping logic has
+   unit tests; the ffmpeg burn-in step itself hasn't been run against a real
+   recording yet (see Known limitations).
 4. **Smoothing / scene-boundary layer** — the deferred Approach B. Only
    worth it if the real-world test says crop jitter is a real complaint.
 5. **Jargon info-text annotations** — genuinely novel, nothing open-source
@@ -133,8 +137,14 @@ Ordered by what unlocks the most, not by effort.
 - **Diarisation is voice-clustering, not perfect.** It can mis-assign a
   turn, and only finds speakers who actually speak in the window analysed.
   This is why per-turn correction exists in the editor.
-- **No automated frontend tests.** Backend has 16; the frontend is verified
+- **No automated frontend tests.** Backend has 23; the frontend is verified
   by typecheck, build, and real browser sessions.
+- **Captions haven't been rendered against a real recording.** The word-to-
+  cue grouping is unit-tested, and the export pipeline wiring (ffmpeg's
+  `ass` filter, form fields, dependency install) has been verified to
+  import and build cleanly, but there is no test recording in this
+  environment to run an actual export against and check the burned-in
+  result looks right.
 - **Never run on a full-length episode.** Longest verified run is 5 minutes.
   Expect ~10-12 minutes of processing for a 53-minute episode; untested.
 - **No pre-flight disk-space check.** A multi-GB upload plus extracted audio

@@ -10,6 +10,7 @@ import {
 	type JobProgress,
 	type OverlapWindow,
 	type Turn,
+	type Word,
 } from "@/lib/api";
 
 type Status =
@@ -22,6 +23,7 @@ type Status =
 			sessionId: string;
 			turns: Turn[];
 			overlapWindows: OverlapWindow[];
+			words: Word[];
 			faces: DetectFacesResponse;
 	  }
 	| {
@@ -30,6 +32,7 @@ type Status =
 			sessionId: string;
 			turns: Turn[];
 			overlapWindows: OverlapWindow[];
+			words: Word[];
 			faces: DetectFacesResponse;
 			cast: CastResult;
 	  };
@@ -77,13 +80,13 @@ function App() {
 		setElapsed(0);
 		setStatus({ state: "processing", file, jobId, startedAt: Date.now() });
 		try {
-			const { turns, overlapWindows, faces } = await processVideo(
+			const { turns, overlapWindows, words, faces } = await processVideo(
 				file,
 				jobId,
 				undefined,
 				setUploadFraction,
 			);
-			setStatus({ state: "cast", file, sessionId: jobId, turns, overlapWindows, faces });
+			setStatus({ state: "cast", file, sessionId: jobId, turns, overlapWindows, words, faces });
 		} catch (err) {
 			setStatus({
 				state: "error",
@@ -118,6 +121,7 @@ function App() {
 						sessionId: status.sessionId,
 						turns: status.turns,
 						overlapWindows: status.overlapWindows,
+						words: status.words,
 						faces: status.faces,
 						cast,
 					})
@@ -133,6 +137,7 @@ function App() {
 				sessionId={status.sessionId}
 				turns={status.turns}
 				overlapWindows={status.overlapWindows}
+				words={status.words}
 				faces={status.faces}
 				cast={status.cast}
 			/>

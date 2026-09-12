@@ -357,16 +357,37 @@ def _audio_args(input_path: Path) -> list[str]:
 	return ["-c:a", "aac", "-b:a", AUDIO_BITRATE]
 
 
-def render_export(input_path: Path, output_path: Path, segments: list[RenderSegment], frame_w: int, frame_h: int) -> None:
+def _escape_filter_path(path: Path) -> str:
+	"""Escape a filesystem path for use as an ffmpeg filtergraph argument.
+	The filter parser treats `\\`, `:` and `'` specially even inside quotes,
+	so all three need escaping before wrapping the result in single quotes."""
+	escaped = str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+	return f"'{escaped}'"
+
+
+def render_export(
+	input_path: Path,
+	output_path: Path,
+	segments: list[RenderSegment],
+	frame_w: int,
+	frame_h: int,
+	ass_path: Path | None = None,
+) -> None:
 	"""One ffmpeg invocation, one filter_complex graph: each segment gets its
 	own trim+crop+scale filter chain, all segments concat back into a single
 	video stream the same total length as the source, then muxed with the
 	source's original audio track (untouched content -- no ducking, no
 	trimming -- and stream-copied rather than re-encoded whenever the source
-	codec can live in an MP4, so audio comes through bit-identical)."""
+	codec can live in an MP4, so audio comes through bit-identical). Captions,
+	when requested, are burned in as a last filter step on the concatenated
+	stream rather than per-segment -- one filter application instead of one
+	per segment, and cue timing is independent of segment boundaries anyway."""
 	filter_parts = [_segment_filter(i, seg, frame_w, frame_h) for i, seg in enumerate(segments)]
 	concat_inputs = "".join(f"[v{i}]" for i in range(len(segments)))
-	filter_complex = ";".join(filter_parts) + f";{concat_inputs}concat=n={len(segments)}:v=1:a=0[vout]"
+	concat_label = "vconcat" if ass_path is not None else "vout"
+	filter_complex = ";".join(filter_parts) + f";{concat_inputs}concat=n={len(segments)}:v=1:a=0[{concat_label}]"
+	if ass_path is not None:
+		filter_complex += f";[{concat_label}]ass={_escape_filter_path(ass_path)}[vout]"
 
 	cmd = [
 		"ffmpeg",

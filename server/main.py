@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
 from pipeline.audio import extract_wav
+from pipeline.captions import build_caption_cues, write_ass
 from pipeline.diarize import OverlapDetectionUnavailable, OverlapWindow, detect_overlap, diarize
 from pipeline.faces import BBox, detect_and_track_faces, get_video_dimensions, get_video_duration
 from pipeline.progress import report, snapshot
@@ -25,7 +26,7 @@ from pipeline.render import (
 	build_render_segments,
 	render_export,
 )
-from pipeline.transcribe import transcribe
+from pipeline.transcribe import Word, transcribe
 from pipeline.turns import build_turns
 
 load_dotenv()
@@ -89,6 +90,11 @@ def _transcribe_work(wav_path: Path, num_speakers: int | None, job_id: str | Non
 		],
 		"overlapWindows": [
 			{"start": w.start, "end": w.end, "speakers": w.speakers} for w in overlap_windows
+		],
+		# Word-level timestamps, independent of turn boundaries -- captions need
+		# tighter timing than a turn provides (see pipeline/captions.py).
+		"words": [
+			{"start": w.start, "end": w.end, "text": w.text} for seg in segments for w in seg.words
 		],
 	}
 
@@ -167,11 +173,14 @@ async def export_endpoint(
 	overlapSegments: str = Form(...),
 	faces: str = Form(...),
 	sessionId: str | None = Form(None),
+	words: str | None = Form(None),
+	captions: bool = Form(False),
 ) -> FileResponse:
 	try:
 		layout_choices_data = json.loads(layoutChoices)
 		overlap_segments_data = json.loads(overlapSegments)
 		faces_data = json.loads(faces)
+		words_data = json.loads(words) if words else []
 	except json.JSONDecodeError as err:
 		raise HTTPException(400, f"Malformed JSON in request field: {err}") from err
 
@@ -217,8 +226,15 @@ async def export_endpoint(
 			people=people,
 		)
 
+		ass_path: Path | None = None
+		if captions and words_data:
+			words_list = [Word(start=w["start"], end=w["end"], text=w["text"]) for w in words_data]
+			cues = build_caption_cues(words_list)
+			ass_path = Path(tmp) / "captions.ass"
+			write_ass(cues, ass_path, frame_w, frame_h)
+
 		output_path = Path(tmp) / "export.mp4"
-		render_export(input_path, output_path, segments, frame_w, frame_h)
+		render_export(input_path, output_path, segments, frame_w, frame_h, ass_path=ass_path)
 	except subprocess.CalledProcessError as err:
 		shutil.rmtree(tmp, ignore_errors=True)
 		stderr_tail = (err.stderr or b"").decode(errors="replace")[-2000:]
