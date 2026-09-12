@@ -44,6 +44,7 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | Output preserves the source | 1920×1080 in → 1920×1080 out, duration exact, **1799 frames in → 1799 out** across 44 segments (no drift, no desync) |
 | Processing is not slow | **12.5s end to end** for a 104 MB / 60s clip via curl; ≈1/5 of real time |
 | Concurrency helps | 13s concurrent vs 16s sequential for transcribe + faces |
+| Captions land where they should | burned-in cues verified frame by frame on a synthetic clip: text present during each cue, **absent during the pause between them**, 100 → 100 frames, duration exact |
 
 **Full-length episode (53 min, four people, 1080p, 5.3GB), run 2026-09-12:**
 
@@ -190,14 +191,14 @@ resting on diarisation that had already lost two of the four people.
   Homebrew's regular `ffmpeg` formula (9.0) ships without libass — and
   without freetype, so `drawtext` is not a fallback — so the `ass` filter
   does not exist and no text can be rendered onto a frame. `brew install
-  ffmpeg-full` has it. Export now checks this before starting the render and
-  refuses with that advice, rather than spending 15 minutes and handing back
-  a video with no captions on it.
-- **The burn-in itself is therefore still unverified.** Cue timing and
-  grouping are unit-tested and were checked against a real ASS file; the
-  export path, the multipart wiring and the pre-flight refusal were verified
-  with a real `/export` call (frame-exact, 100 → 100 frames). What nobody has
-  seen yet is a frame with a caption actually drawn on it.
+  ffmpeg-full` has it, but that formula is keg-only, so point the server at
+  it with `FFMPEG_BINARY=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg` in
+  `server/.env` rather than reordering a global PATH. Export checks before
+  starting the render and refuses with that advice, rather than spending 15
+  minutes and handing back a video with no captions on it.
+  (Installing `ffmpeg-full` upgrades x265, which leaves the regular `ffmpeg`
+  linked against a libx265 that is no longer there: `brew reinstall ffmpeg`
+  repairs it. Both can coexist afterwards.)
 - **Junk "people" survive on long episodes.** `MIN_DETECTIONS` is a fixed 3,
   so a 53-minute episode yielded four real participants plus six clusters
   seen 3-12 times. They sort last in the cast screen, but the threshold

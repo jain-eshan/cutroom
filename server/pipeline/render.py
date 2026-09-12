@@ -1,8 +1,18 @@
+import os
 import subprocess
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+
+# Which ffmpeg to run. Captions need one built with libass, and Homebrew's
+# regular `ffmpeg` formula is not -- its `ffmpeg-full` is, but that formula is
+# keg-only, so it is deliberately absent from PATH. Rather than asking anyone
+# to reorder their global PATH (which changes ffmpeg for everything else they
+# run), point this at the binary you want:
+#   FFMPEG_BINARY=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg
+# server/.env is read at startup, so it belongs there.
+FFMPEG = os.environ.get("FFMPEG_BINARY", "ffmpeg")
 
 from .faces import BBox
 from .framing import CropRect, person_crop
@@ -371,7 +381,7 @@ def has_ass_filter() -> bool:
 	"""
 	try:
 		out = subprocess.run(
-			["ffmpeg", "-hide_banner", "-filters"], check=True, capture_output=True, text=True
+			[FFMPEG, "-hide_banner", "-filters"], check=True, capture_output=True, text=True
 		)
 	except (subprocess.CalledProcessError, FileNotFoundError, OSError):
 		return False
@@ -412,7 +422,7 @@ def render_export(
 		filter_complex += f";[{concat_label}]ass=filename={_escape_filter_path(ass_path)}[vout]"
 
 	cmd = [
-		"ffmpeg",
+		FFMPEG,
 		"-y",
 		"-i", str(input_path),
 		"-filter_complex", filter_complex,

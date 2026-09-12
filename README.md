@@ -71,7 +71,14 @@ runs in a local service on your machine — nothing is uploaded anywhere.
 Needs Node, [uv](https://docs.astral.sh/uv/), and `ffmpeg` on your PATH.
 
 Burned-in captions need an `ffmpeg` built with libass. Homebrew's regular
-`ffmpeg` formula is not — use `brew install ffmpeg-full` if you want them.
+`ffmpeg` formula is not — `brew install ffmpeg-full` is, and because that
+formula is keg-only it does not replace your existing ffmpeg. Point the
+server at it in `server/.env`:
+
+```
+FFMPEG_BINARY=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg
+```
+
 Everything else works on either build, and the export says so up front rather
 than dropping the captions silently.
 

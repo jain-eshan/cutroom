@@ -199,8 +199,10 @@ async def export_endpoint(
 		raise HTTPException(
 			400,
 			"This ffmpeg was built without libass, so captions cannot be burned in. "
-			"Homebrew's regular `ffmpeg` formula omits it -- `brew install ffmpeg-full` "
-			"has it. Export without captions to continue with this build.",
+			"Homebrew's regular `ffmpeg` formula omits it: `brew install ffmpeg-full` "
+			"has it, then point the server at that binary by putting "
+			"FFMPEG_BINARY=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg in server/.env. "
+			"Or export without captions to continue with this build.",
 		)
 
 	layout_choices = [
