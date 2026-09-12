@@ -83,7 +83,6 @@ function App() {
 			const { turns, overlapWindows, words, faces } = await processVideo(
 				file,
 				jobId,
-				undefined,
 				setUploadFraction,
 			);
 			setStatus({ state: "cast", file, sessionId: jobId, turns, overlapWindows, words, faces });

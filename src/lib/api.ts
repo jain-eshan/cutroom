@@ -126,12 +126,9 @@ export async function getProgress(jobId: string): Promise<JobProgress> {
 export function processVideo(
 	file: File,
 	jobId: string,
-	numSpeakers?: number,
 	onUploadProgress?: (fraction: number) => void,
 ): Promise<ProcessResponse> {
-	const params: Record<string, string> = { jobId };
-	if (numSpeakers) params.num_speakers = String(numSpeakers);
-	return postFile("/process", file, params, onUploadProgress);
+	return postFile("/process", file, { jobId }, onUploadProgress);
 }
 
 export interface LayoutChoice {

@@ -15,7 +15,7 @@ from starlette.background import BackgroundTask
 
 from pipeline.audio import extract_wav
 from pipeline.captions import build_caption_cues, write_ass
-from pipeline.diarize import OverlapDetectionUnavailable, OverlapWindow, detect_overlap, diarize
+from pipeline.diarize import DiarizationUnavailable, diarize
 from pipeline.faces import BBox, detect_and_track_faces, get_video_dimensions, get_video_duration
 from pipeline.progress import report, snapshot
 from pipeline.render import (
@@ -65,24 +65,17 @@ def progress_endpoint(job_id: str) -> dict:
 	return snapshot(job_id)
 
 
-def _transcribe_work(wav_path: Path, num_speakers: int | None, job_id: str | None) -> dict:
+def _transcribe_work(wav_path: Path, job_id: str | None) -> dict:
 	report(job_id, "transcribe", "transcribing speech")
 	segments = transcribe(
 		str(wav_path), progress=lambda f: report(job_id, "transcribe", "transcribing speech", f)
 	)
 	report(job_id, "transcribe", "identifying speakers", 1.0)
-	speaker_segments = diarize(str(wav_path), num_speakers=num_speakers)
-	turns = build_turns(segments, speaker_segments)
-
-	try:
-		report(job_id, "transcribe", "detecting overlapping speech", 1.0)
-		overlap_windows = detect_overlap(str(wav_path), speaker_segments)
-	except OverlapDetectionUnavailable as err:
-		# Soft failure -- overlap detection needs a Hugging Face token that not
-		# every install will have configured. Everything else still works; the
-		# multi-speaker composite just won't have an automatic trigger.
-		print(f"[process] overlap detection skipped: {err}")
-		overlap_windows = []
+	# One pass: speaker turns and the stretches where people talk over each
+	# other come out of the same model, so overlap no longer needs a second
+	# model or a guess about which speakers were involved.
+	diarization = diarize(str(wav_path))
+	turns = build_turns(segments, diarization.segments)
 
 	report(job_id, "transcribe", "done", 1.0, done=True)
 	return {
@@ -90,7 +83,7 @@ def _transcribe_work(wav_path: Path, num_speakers: int | None, job_id: str | Non
 			{"speaker": t.speaker, "start": t.start, "end": t.end, "text": t.text} for t in turns
 		],
 		"overlapWindows": [
-			{"start": w.start, "end": w.end, "speakers": w.speakers} for w in overlap_windows
+			{"start": w.start, "end": w.end, "speakers": w.speakers} for w in diarization.overlaps
 		],
 		# Word-level timestamps, independent of turn boundaries -- captions need
 		# tighter timing than a turn provides (see pipeline/captions.py).
@@ -138,9 +131,7 @@ def _faces_work(input_path: Path, job_id: str | None) -> dict:
 
 
 @app.post("/process")
-async def process_endpoint(
-	file: UploadFile, num_speakers: int | None = None, jobId: str | None = None
-) -> dict:
+async def process_endpoint(file: UploadFile, jobId: str | None = None) -> dict:
 	"""Transcript, speakers and people in one pass.
 
 	This used to be two endpoints the frontend called in parallel, which meant
@@ -159,10 +150,15 @@ async def process_endpoint(
 		report(jobId, "transcribe", "extracting audio")
 		extract_wav(input_path, wav_path)
 
-		transcript, faces = await asyncio.gather(
-			asyncio.to_thread(_transcribe_work, wav_path, num_speakers, jobId),
-			asyncio.to_thread(_faces_work, input_path, jobId),
-		)
+		try:
+			transcript, faces = await asyncio.gather(
+				asyncio.to_thread(_transcribe_work, wav_path, jobId),
+				asyncio.to_thread(_faces_work, input_path, jobId),
+			)
+		except DiarizationUnavailable as err:
+			# Setup problem, not a server fault: the message says exactly what to
+			# do, so it needs to reach the user rather than become a 500.
+			raise HTTPException(400, str(err)) from err
 
 	return {**transcript, "faces": faces}
 

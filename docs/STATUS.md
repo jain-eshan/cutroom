@@ -45,6 +45,8 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | Processing is not slow | **12.5s end to end** for a 104 MB / 60s clip via curl; ≈1/5 of real time |
 | Concurrency helps | 13s concurrent vs 16s sequential for transcribe + faces |
 | Captions land where they should | burned-in cues verified frame by frame on a synthetic clip: text present during each cue, **absent during the pause between them**, 100 → 100 frames, duration exact |
+| The GPU makes community-1 affordable | same 10-min slice, same venv: **398.4s on CPU (0.664x) → 53.3s on MPS (0.089x)**, and byte-identical output either way (3 speakers, 90 turns). **35 min → 4.7 min** for a 53-minute episode |
+| Forcing a speaker count invents speakers | unconstrained gives **3 speakers / 90 turns** on the 10-min slice, on both devices; forcing `num_speakers=4` gave 4/87, splitting one person in two. The count is no longer passed |
 
 **Full-length episode (53 min, four people, 1080p, 5.3GB), run 2026-09-12:**
 
@@ -89,17 +91,22 @@ Two things the epic listed as open questions are now answered:
 Ordered by what unlocks the most, not by effort.
 
 ### Next
-1. **Fix speaker diarisation.** The full-episode run (2026-09-12) found this
-   is the blocker in front of everything else: on a four-person episode the
-   pipeline heard **two** speakers and cut 34 turns in 53 minutes, so two
-   participants never get a close-up. Measured on the real episode:
+1. **Fix speaker diarisation.** *Voices: done. Which face: next.*
+
+   The full-episode run (2026-09-12) found this is the blocker in front of
+   everything else: on a four-person episode the pipeline heard **two**
+   speakers and cut 34 turns in 53 minutes, so two participants never get a
+   close-up. `resemblyzer` has now been replaced by community-1 on the GPU,
+   which removed the separate overlap model as well. What remains is the
+   other half of the fused design — lip-sync for *which face*, and the
+   Hungarian matching that joins the two. Measured on the real episode:
 
    | Approach | Result |
    |---|---|
-   | `resemblyzer` + average-linkage clustering (current) | 99.5% of speech in one cluster at every k from 2 to 6 |
+   | `resemblyzer` + average-linkage clustering (was shipping) | 99.5% of speech in one cluster at every k from 2 to 6. Removed |
    | WeSpeaker embeddings + k-means / spectral / Ward | stable labels (2-3% flips) but never a clean four-way split |
    | `sherpa-onnx` (pyannote segmentation 3.0 ONNX + WeSpeaker, no HF token) | 3 speakers when asked for 4 (89% in one), or 22 fragments unconstrained |
-   | `pyannote` **community-1** (CC-BY-4.0, HF token) | best of the audio-only options, and slow: on a 10-min slice it found 4 speakers and 87 turns (the old pipeline managed 34 in the whole episode), at **0.66x real time on CPU — ~35 min for a 53-min episode**. Overlap-aware in one pass (2.6s of overlap in 600s here), and its exclusive mode aligns to Whisper words. MPS untested |
+   | `pyannote` **community-1** (CC-BY-4.0, HF token) — **now shipping** | best of the audio-only options. On a 10-min slice, unconstrained: **3 speakers, 90 turns** (the old pipeline managed 34 in the whole episode). The speed objection is gone: **0.089x on MPS, 4.7 min per episode**, same output as CPU. Overlap-aware in one pass, so the separate overlap model is deleted |
    | **LR-ASD lip-sync** (MIT, AVA weights) | **validated on real footage** — tracked all four faces 100% of sampled frames, and its "who is speaking" call was confirmed correct by a human watching an annotated 3-minute clip. Independently showed the single dominant "voice" is really two different people |
 
    **Cross-checking the two settles the design.** On the same 10 minutes,
@@ -119,13 +126,17 @@ Ordered by what unlocks the most, not by effort.
    (split them), two voices pointing at one face means an over-split speaker
    (merge them). Neither can see its own error.
 
-   The evidence points at a fused design: voices from community-1, "which
-   face" from lip-sync, paired with Hungarian matching (the approach in
-   Adobe's patent US12125501B2). That also removes the manual voice-to-face
-   step in the cast screen. Cost measured on a 3-minute clip: ~15 min per
-   53-min episode for the lip-sync model pass, plus dense face detection
-   (64 min unoptimised, expected to drop a lot by searching only where each
-   seated person already is).
+   No speaker count is forced any more, which removes the cause of that
+   particular over-split. The roster gets confirmed by the one party that
+   actually knows — the human at the cast step, who is already there naming
+   faces — rather than guessed at by the model.
+
+   **Still to build:** "which face" from lip-sync, paired to the voices with
+   Hungarian matching (the approach in Adobe's patent US12125501B2). That
+   also removes the manual voice-to-face step in the cast screen. Cost
+   measured on a 3-minute clip: ~15 min per 53-min episode for the lip-sync
+   pass, plus dense face detection (64 min unoptimised, expected to drop a
+   lot by searching only where each seated person already is).
 
 2. **Then show a full edit to a podcast host.** Still the milestone the whole
    roadmap is sequenced against, and still not done — an edit built on
@@ -175,16 +186,19 @@ resting on diarisation that had already lost two of the four people.
   four people. The real fix is source resolution: shoot 4K, deliver 1080p,
   and punch-ins become genuinely sharp because the crop then holds more real
   pixels than the output needs.
-- **Overlap detection does not work on `pyannote.audio` 4.** The installed
-  4.0.7 dropped the `OverlappedSpeechDetection` pipeline that
-  `pyannote/overlapped-speech-detection` needs (and renamed `use_auth_token`
-  to `token`), so the model cannot load at all. It now degrades to "no
-  overlap data" instead of failing the request — before this fix, a
-  configured `HF_TOKEN` made every `/process` call 500. The real fix is
-  community-1, whose diarisation is overlap-aware in one pass.
-- **Diarisation is voice-clustering, not perfect.** It can mis-assign a
-  turn, and only finds speakers who actually speak in the window analysed.
-  This is why per-turn correction exists in the editor.
+- **Diarisation now requires a Hugging Face token.** community-1 replaced the
+  token-free `resemblyzer` clustering, which was measured finding two
+  speakers on a four-person episode — a fallback that produces a quietly
+  wrong edit is worse than an error that says what to do, so there is no
+  fallback. `/process` returns a 400 naming the token and the licence page.
+- **Diarisation is still not perfect.** It can mis-assign a turn, and only
+  finds speakers who actually speak in the window analysed. This is why
+  per-turn correction exists in the editor.
+- **pyannote 4 cannot read audio files on FFmpeg 9.** It decodes through
+  torchcodec, whose prebuilt libraries link against FFmpeg 4-7, so on a
+  modern ffmpeg every one of them fails to load. Worked around by decoding
+  the wav ourselves and handing the pipeline a waveform, which is free — the
+  pipeline already extracts a 16kHz mono wav before this point.
 - **No automated frontend tests.** Backend has 23; the frontend is verified
   by typecheck, build, and real browser sessions.
 - **Caption burn-in needs an ffmpeg the standard install doesn't give you.**
