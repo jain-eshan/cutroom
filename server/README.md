@@ -60,11 +60,15 @@ account needed.
 
 ## Optional: overlap detection (`pyannote.audio`)
 
-Wired up as of the export phase — `pipeline/diarize.py`'s `detect_overlap()`
-uses `pyannote.audio`'s overlapped-speech-detection model to find stretches
-where two people are talking at once, which is what triggers the editor's
-multi-speaker composite. Gated on HuggingFace (a free account, accepting the
-model license, and an access token) — see the main
-[ARCHITECTURE.md](../docs/ARCHITECTURE.md)'s Setup section for the exact
-steps. Without a token configured, `/transcribe` still works normally; it
-just returns an empty `overlapWindows` list and prints a one-line notice.
+**Currently non-functional on the installed `pyannote.audio` 4.0.7.**
+`pipeline/diarize.py`'s `detect_overlap()` loads
+`pyannote/overlapped-speech-detection`, whose config points at an
+`OverlappedSpeechDetection` pipeline class that pyannote 4 removed (4 also
+renamed `use_auth_token` to `token`). Loading therefore raises, and the code
+reports overlap as unavailable rather than failing the request — verified
+with a real token configured: `/process` still returns a transcript, with an
+empty `overlapWindows` list and a one-line notice.
+
+The replacement is `pyannote` community-1, whose diarisation is overlap-aware
+in a single pass, so a separate overlap model is no longer needed. See
+[STATUS.md](../docs/STATUS.md)'s "What's left".

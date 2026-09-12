@@ -166,22 +166,24 @@ def detect_and_track_faces(
 	"""
 	_ensure_recognition_model()
 
-	frames = list(_sample_frames(video_path, interval_s))
-	if not frames:
-		return []
-
-	h, w = frames[0][1].shape[:2]
-	detector = cv2.FaceDetectorYN.create(str(DETECTION_MODEL), "", (w, h), score_threshold=0.6)
-	detector.setInputSize((w, h))
+	# Frames are streamed, never collected into a list. At one sample a second
+	# a 53-minute 1080p episode is ~3,200 frames, ~20GB held at once: measured,
+	# a list here pushed a 16GB machine deep into swap two minutes into a real
+	# full-length episode, while 5-minute test clips never showed it.
+	expected_frames = max(1, int(get_video_duration(video_path) / interval_s))
+	detector = None
 	recognizer = cv2.FaceRecognizerSF.create(str(RECOGNITION_MODEL), "")
 
 	next_id = 0
 	active: dict[int, dict] = {}
 	finished: list[dict] = []
 
-	for i, (t, frame) in enumerate(frames):
+	for i, (t, frame) in enumerate(_sample_frames(video_path, interval_s)):
+		if detector is None:
+			h, w = frame.shape[:2]
+			detector = cv2.FaceDetectorYN.create(str(DETECTION_MODEL), "", (w, h), score_threshold=0.6)
 		if progress is not None and i % 10 == 0:
-			progress(i / len(frames))
+			progress(min(1.0, i / expected_frames))
 
 		_, raw = detector.detect(frame)
 		rows = [] if raw is None else list(raw)
