@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BBox, DetectFacesResponse, Health, OverlapWindow, Turn, Word } from "@/lib/api";
+import type { BBox, DetectFacesResponse, Health, OverlapWindow, Turn } from "@/lib/api";
 import type { CastResult } from "@/features/faces/CastScreen";
 import { personCrop } from "@/lib/faceCrop";
-import { ExportButton } from "@/features/timeline/ExportButton";
 import { TimelineTray } from "@/features/timeline/TimelineTray";
 import { LAYOUT_LABELS, type FramingRegion } from "@/features/timeline/types";
 import {
@@ -143,33 +142,38 @@ function CroppedVideo({
 
 export function EditorView({
 	file,
-	sessionId,
 	turns,
 	overlapWindows,
-	words,
 	faces,
 	cast,
 	health,
+	regions,
+	onRegionsChange,
+	captionsEnabled,
+	trimDeadAirEnabled,
+	onTrimDeadAirChange,
+	onPublish,
 	themeMode,
 	onThemeModeChange,
 }: {
 	file: File;
-	sessionId: string;
 	turns: Turn[];
 	overlapWindows: OverlapWindow[];
-	words: Word[];
 	faces: DetectFacesResponse;
 	cast: CastResult;
 	health: Health | null;
+	/** Owned by App, so a trip to the publish screen and back keeps them. */
+	regions: FramingRegion[];
+	onRegionsChange: React.Dispatch<React.SetStateAction<FramingRegion[]>>;
+	/** Shown here; chosen on the publish screen. */
+	captionsEnabled: boolean;
+	trimDeadAirEnabled: boolean;
+	onTrimDeadAirChange: (enabled: boolean) => void;
+	onPublish: (duration: number) => void;
 	themeMode: ThemeMode;
 	onThemeModeChange: (mode: ThemeMode) => void;
 }) {
 	const captionsAvailable = health?.captions ?? true;
-	const [captionsEnabled, setCaptionsEnabled] = useState(captionsAvailable);
-	// Off by default, unlike captions -- this one actually removes content
-	// (dead air, filler words) rather than adding something on top, so it
-	// shouldn't be a silent default. See pipeline/trim.py.
-	const [trimDeadAirEnabled, setTrimDeadAirEnabled] = useState(false);
 	// Object URL has to be created *inside* the effect (not derived via useMemo)
 	// so StrictMode's mount->cleanup->mount dev-mode cycle recreates a fresh URL
 	// each time instead of revoking the one useMemo cached and never remaking.
@@ -181,7 +185,6 @@ export function EditorView({
 		() => suggestRegions(turns, overlapWindows, cast.speakerToPerson),
 		[turns, overlapWindows, cast.speakerToPerson],
 	);
-	const [regions, setRegions] = useState<FramingRegion[]>(suggested);
 	const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
 	const [selectedTurn, setSelectedTurn] = useState<number | null>(null);
 	const [currentTime, setCurrentTime] = useState(0);
@@ -253,7 +256,7 @@ export function EditorView({
 
 	function addCloseUp() {
 		if (!targetTurn || targetPerson === undefined) return;
-		setRegions(addRegion(regions, targetTurn.start, targetTurn.end, "zoom", [targetPerson]));
+		onRegionsChange(addRegion(regions, targetTurn.start, targetTurn.end, "zoom", [targetPerson]));
 	}
 
 	function addBothOnScreen() {
@@ -261,11 +264,11 @@ export function EditorView({
 		const other = otherSpeakerNear(turns, cast.speakerToPerson, targetTurn.start, targetPerson);
 		const ids = [targetPerson, other].filter((id): id is number => id !== undefined);
 		if (ids.length < 2) return;
-		setRegions(addRegion(regions, targetTurn.start, targetTurn.end, "split", ids));
+		onRegionsChange(addRegion(regions, targetTurn.start, targetTurn.end, "split", ids));
 	}
 
 	function goWide(id: string) {
-		setRegions(regions.filter((r) => r.id !== id));
+		onRegionsChange(regions.filter((r) => r.id !== id));
 		setSelectedRegionId(null);
 	}
 
@@ -568,7 +571,7 @@ export function EditorView({
 					currentTime={currentTime}
 					nameOf={(id) => nameOf(id)}
 					onSelectRegion={setSelectedRegionId}
-					onResize={(id, edge, to) => setRegions((rs) => resizeRegion(rs, id, edge, to, duration))}
+					onResize={(id, edge, to) => onRegionsChange((rs) => resizeRegion(rs, id, edge, to, duration))}
 					onSeek={seek}
 				/>
 
@@ -596,52 +599,33 @@ export function EditorView({
 					</div>
 					<div className="flex items-center gap-3">
 						<label
-							className={`flex items-center gap-2 text-[12px] ${captionsAvailable ? "text-text2" : "text-text3"}`}
-							title={
-								captionsAvailable
-									? undefined
-									: "This ffmpeg was built without libass, so it can't burn in subtitles. `brew install ffmpeg-full`, then set FFMPEG_BINARY in server/.env."
-							}
-						>
-							<input
-								type="checkbox"
-								checked={captionsEnabled && captionsAvailable}
-								disabled={!captionsAvailable}
-								onChange={(e) => setCaptionsEnabled(e.target.checked)}
-							/>
-							{captionsAvailable ? "Captions" : "Captions need libass"}
-						</label>
-						<label
 							className="flex items-center gap-2 text-[12px] text-text2"
 							title="Cuts long pauses down to a short beat and removes standalone filler words (um, uh). Conservative on purpose -- see docs/FEATURES.md."
 						>
 							<input
 								type="checkbox"
 								checked={trimDeadAirEnabled}
-								onChange={(e) => setTrimDeadAirEnabled(e.target.checked)}
+								onChange={(e) => onTrimDeadAirChange(e.target.checked)}
 							/>
 							Trim dead air
 						</label>
 						<button
 							type="button"
 							onClick={() => {
-								setRegions(suggested);
+								onRegionsChange(suggested);
 								setSelectedRegionId(null);
 							}}
 							className="rounded-control border border-line px-2 py-1 text-[11px] text-text2"
 						>
 							Reset to suggested
 						</button>
-						<ExportButton
-							file={file}
-							sessionId={sessionId}
-							regions={regions}
-							turns={turns}
-							words={words}
-							captionsEnabled={captionsEnabled && captionsAvailable}
-							trimDeadAirEnabled={trimDeadAirEnabled}
-							faces={faces}
-						/>
+						<button
+							type="button"
+							onClick={() => onPublish(duration)}
+							className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
+						>
+							Export episode
+						</button>
 					</div>
 				</div>
 			</div>

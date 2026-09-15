@@ -45,7 +45,7 @@ more precise than this file on any point where they'd disagree.
   local-first desktop-ish app, see the handoff's "Assets" section).
 - **Reskinned screens**, visuals only, no interaction/architecture changes:
   `UploadScreen`, `ProcessingScreen`, `CastScreen`, `EditorView`,
-  `ExportButton`. Copy was brought in line with the handoff's "Voice & copy
+  `ExportButton` (since folded into the publish screen). Copy was brought in line with the handoff's "Voice & copy
   rules" where it was cheap to do (plain-English shot names — "Wide" /
   "Close-up" / "Both on screen", not "Original" / "Zoom" / "Split"; "Lips
   match N% of this clip" on the cast screen's confidence chip).
@@ -79,6 +79,16 @@ Each landed as its own commit, in the handoff's order.
   trimming) instead of per-turn `layoutChoices` / `overlapSegments`.
   Verified end to end against the real service: a dragged region exported
   to a 30.0s 1280×720 MP4 and the decision log recorded it as `source: user`.
+- **Publish (`7b`) + render states (`7c`)** —
+  `src/features/publish/PublishScreen.tsx` and a new `publishing` status.
+  "Export episode" in the editor now opens it instead of rendering in
+  place. It lists what the episode comes out with and where it goes, and
+  renders through the same `/export` call; `ExportButton` is gone, folded
+  in. Regions, captions and trim moved from the editor into `App.tsx`, so a
+  trip to Publish and back keeps every edit. Verified end to end: the
+  rendering state appears with "Back to editing" disabled, the render comes
+  back as a 30.0s 1280×720 MP4, the decision log records the edited region
+  as `source: user`, and the screen was checked in both themes.
 
 ## Decisions made while building — read before changing these
 
@@ -106,6 +116,18 @@ Each landed as its own commit, in the handoff's order.
   neither is drawing a made-up shape.
 - **The episode description field is gone.** It was collected and never
   read by anything.
+- **Only what exists is checked on Publish.** The handoff shows Chapters on
+  with "6 found" and Captions "also saved as .srt". Neither exists in this
+  pipeline, so Chapters sits unchecked beside show notes and clips — the
+  handoff's own rule for unbuilt artefacts — and Captions just says
+  "burned in".
+- **No render progress, only an indeterminate bar.** `/export` reports
+  nothing while it runs, so "Turn 12 of 31 · about 4 minutes left" would be
+  invented.
+- **Closing mid-render asks first**, through the browser's own
+  `beforeunload` dialog. The in-app "Keep rendering / Close anyway" dialog
+  from `7d` can't intercept a tab closing, and there's still no cancel
+  button because the server doesn't kill ffmpeg when the client goes away.
 
 ## Known, deliberate deviations
 
@@ -121,6 +143,17 @@ Each landed as its own commit, in the handoff's order.
 - **Narrow windows.** The editor is laid out for about 1280px and its footer
   collapses badly below that. Out of scope per `UX_PRD.md` §5 (a desktop
   tool), noted here because it is visible.
+- **"Save the MP4" instead of "Show me".** The render comes back to the
+  browser as a file to save; there's no local folder to reveal it in, so
+  "Show me" would promise something the button doesn't do.
+- **"Your episode is ready" instead of "Episode 12 is out".** There are no
+  episode numbers, and nothing is published anywhere yet — the file is on
+  this machine.
+- **"Save a draft" is visible but disabled**, because project persistence
+  isn't built, and the 9:16 clip preview is a dashed "Not built yet" panel
+  rather than a mock clip.
+- **Publish is tall.** The 9:16 clips column makes the card about 850px,
+  so on a small laptop screen "Render & publish" sits below the fold.
 
 ## What's left
 
@@ -139,16 +172,13 @@ In the handoff's implementation order:
      within about 2s, plus segment boundaries where visibility changes, in
      both `render.py` and `faceCrop.ts`). Today a both-on-screen region with
      one findable person closes on them for the whole region.
-7. **Publish screen (`7b`) + render states (`7c`)** — next. `ExportButton`
-   already has the four render states' behaviour and copy ("Leave this
-   window open…", "Your edits are safe.", the raw server message in mono on
-   `terminal`). It needs wrapping in the manifest screen with a new
-   `publishing` status. Show notes and short clips ship unchecked and
-   honest, not hidden.
-8. **Edge-case sweep (`7d`)** — partly done in passing: captions-unavailable
-   is caught before a render, and a region naming a person we can't find
-   renders wide. Still to do: nobody on camera, a voice with no face, four
-   people at once (the `+1` tile), stopped while reading, closing mid-render.
+7. ~~Publish screen and render states~~ — **done**.
+8. **Edge-case sweep (`7d`)** — next, and partly done in passing:
+   captions-unavailable is caught before a render (in the editor, and on
+   Publish with the fix), a region naming a person we can't find renders
+   wide, and closing mid-render asks first. Still to do: nobody on camera,
+   a voice with no face, four people at once (the `+1` tile), and stopped
+   while reading.
 9. **Landing page (`4b`)** — last. Per-OS download buttons stay "Build from
    source" until desktop packaging exists.
 

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { CastScreen, type CastResult } from "@/features/faces/CastScreen";
+import { PublishScreen } from "@/features/publish/PublishScreen";
 import { SetupGate } from "@/features/setup/SetupGate";
 import { EditorView } from "@/features/timeline/EditorView";
+import { suggestRegions } from "@/features/timeline/regions";
+import type { FramingRegion } from "@/features/timeline/types";
 import { ProcessingScreen } from "@/features/upload/ProcessingScreen";
 import { UploadScreen } from "@/features/upload/UploadScreen";
 import { useThemeMode } from "@/lib/theme";
@@ -41,6 +44,18 @@ type Status =
 			words: Word[];
 			faces: DetectFacesResponse;
 			cast: CastResult;
+	  }
+	| {
+			state: "publishing";
+			file: File;
+			sessionId: string;
+			turns: Turn[];
+			overlapWindows: OverlapWindow[];
+			words: Word[];
+			faces: DetectFacesResponse;
+			cast: CastResult;
+			/** Measured by the editor's video element: the recording's real length. */
+			duration: number;
 	  };
 
 function App() {
@@ -49,6 +64,11 @@ function App() {
 	// What the local install can actually do, learned at the setup gate and
 	// carried forward so later screens can say so before a render, not after.
 	const [health, setHealth] = useState<Health | null>(null);
+	// Edit decisions live here rather than in the editor, so going to the
+	// publish screen and back doesn't throw them away.
+	const [regions, setRegions] = useState<FramingRegion[]>([]);
+	const [captions, setCaptions] = useState(false);
+	const [trimDeadAir, setTrimDeadAir] = useState(false);
 	const [uploadFraction, setUploadFraction] = useState(0);
 	const [progress, setProgress] = useState<JobProgress | null>(null);
 	const [elapsed, setElapsed] = useState(0);
@@ -145,7 +165,13 @@ function App() {
 				turns={status.turns}
 				words={status.words}
 				match={status.match}
-				onComplete={(cast) =>
+				onComplete={(cast) => {
+					setRegions(suggestRegions(status.turns, status.overlapWindows, cast.speakerToPerson));
+					// On when this install can burn captions in; never requested when it
+					// can't, since /export would refuse the whole job.
+					setCaptions(health?.captions ?? false);
+					// Off by default: it removes content rather than adding to it.
+					setTrimDeadAir(false);
 					setStatus({
 						state: "editing",
 						file: status.file,
@@ -155,8 +181,8 @@ function App() {
 						words: status.words,
 						faces: status.faces,
 						cast,
-					})
-				}
+					});
+				}}
 			/>
 		);
 	}
@@ -165,15 +191,39 @@ function App() {
 		return (
 			<EditorView
 				file={status.file}
-				sessionId={status.sessionId}
 				turns={status.turns}
 				overlapWindows={status.overlapWindows}
-				words={status.words}
 				faces={status.faces}
 				cast={status.cast}
 				health={health}
+				regions={regions}
+				onRegionsChange={setRegions}
+				captionsEnabled={captions}
+				trimDeadAirEnabled={trimDeadAir}
+				onTrimDeadAirChange={setTrimDeadAir}
+				onPublish={(duration) => setStatus({ ...status, state: "publishing", duration })}
 				themeMode={themeMode}
 				onThemeModeChange={setThemeMode}
+			/>
+		);
+	}
+
+	if (status.state === "publishing") {
+		return (
+			<PublishScreen
+				file={status.file}
+				sessionId={status.sessionId}
+				turns={status.turns}
+				words={status.words}
+				faces={status.faces}
+				regions={regions}
+				duration={status.duration}
+				health={health}
+				captions={captions}
+				onCaptionsChange={setCaptions}
+				trimDeadAir={trimDeadAir}
+				onBack={() => setStatus({ ...status, state: "editing" })}
+				onNew={() => setStatus({ state: "idle" })}
 			/>
 		);
 	}

@@ -165,6 +165,10 @@ runs doesn't change).
    face is known. The editor drags their edges; the live preview resolves
    what's on screen at the playhead with the same algorithm `render.py`
    uses, so the preview can't disagree with the export.
+6. "Export episode" opens `PublishScreen`, which lists what the episode
+   comes out with and posts the regions to `/export`. Edit state (regions,
+   captions, trim) lives in `App.tsx` rather than in the editor, so going to
+   Publish and back keeps it.
 
 ---
 
@@ -314,11 +318,11 @@ src/
 │   ├── upload/UploadScreen.tsx      # file picker + real drag-and-drop (idle / error states)
 │   ├── upload/ProcessingScreen.tsx  # per-stage progress + live transcript and faces found
 │   ├── faces/CastScreen.tsx         # one voice at a time: listen, pick the face, name inline
+│   ├── publish/PublishScreen.tsx    # what comes out, where it goes, and the four render states
 │   └── timeline/
 │       ├── EditorView.tsx           # transcript + preview + framing tray, one selection drives all
 │       ├── TimelineTray.tsx         # framing lane with draggable region edges + speaker lanes
 │       ├── regions.ts               # suggest / resize / resolve regions — mirrors render.py
-│       ├── ExportButton.tsx         # real export flow (idle/exporting/done/error)
 │       └── types.ts                 # `FramingRegion` and plain-English shot labels
 ```
 
@@ -330,7 +334,7 @@ CSS-first config) and re-pointed under a `[data-theme]` attribute + a
 implemented vs. deferred, and where the source design files live.
 
 **State machine** (`App.tsx`): a single `Status` union type drives which
-screen renders — `checking → idle → processing → cast → editing` (or `error` at
+screen renders — `checking → idle → processing → cast → editing ⇄ publishing` (or `error` at
 any point during processing). No router, no global state library; this is
 intentionally the simplest thing that works for a linear, single-page
 flow. `processVideo(file)` is the one call to the backend; this used to be
