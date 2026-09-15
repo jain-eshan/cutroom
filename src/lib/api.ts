@@ -142,6 +142,22 @@ export interface JobProgress {
 	faces: StageProgress;
 	/** Runs after the other two — matching voices to faces needs both. */
 	match: StageProgress;
+	/** The tail of the transcript as it's produced. A progress bar proves time
+	 * passed; this proves work happened. */
+	lines: string[];
+	/** How far into the recording transcription has reached, and the
+	 * recording's length — both in seconds. */
+	position: number;
+	duration: number;
+	/** Ids of the people recognised so far; the images come from
+	 * `faceThumbnailUrl` so they're fetched once each, not on every poll. */
+	people: number[];
+}
+
+/** Stable per (job, person), and immutable once written, so the browser
+ * fetches each face exactly once however often the snapshot is polled. */
+export function faceThumbnailUrl(jobId: string, personId: number): string {
+	return new URL(`/progress/${jobId}/face/${personId}`, API_BASE).toString();
 }
 
 export interface Health {

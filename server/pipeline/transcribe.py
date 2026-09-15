@@ -28,7 +28,16 @@ def get_model(model_size: str = "small") -> WhisperModel:
 	return _model
 
 
-def transcribe(wav_path: str, model_size: str = "small", progress=None) -> list[TranscribedSegment]:
+def transcribe(
+	wav_path: str, model_size: str = "small", progress=None, on_segment=None
+) -> list[TranscribedSegment]:
+	"""Transcribe with word timings.
+
+	`on_segment(segment, duration)` fires per segment as it is produced, which
+	is what lets the UI show the transcript arriving rather than only a bar
+	moving -- segments are yielded lazily, so there is real output to show
+	minutes before the pass finishes.
+	"""
 	model = get_model(model_size)
 	segments, info = model.transcribe(wav_path, word_timestamps=True, vad_filter=True)
 
@@ -41,5 +50,8 @@ def transcribe(wav_path: str, model_size: str = "small", progress=None) -> list[
 		if progress is not None and duration > 0:
 			progress(min(1.0, seg.end / duration))
 		words = [Word(start=w.start, end=w.end, text=w.word.strip()) for w in (seg.words or [])]
-		result.append(TranscribedSegment(start=seg.start, end=seg.end, text=seg.text.strip(), words=words))
+		item = TranscribedSegment(start=seg.start, end=seg.end, text=seg.text.strip(), words=words)
+		result.append(item)
+		if on_segment is not None:
+			on_segment(item, duration)
 	return result

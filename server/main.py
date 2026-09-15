@@ -10,7 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from starlette.background import BackgroundTask
 
 from pipeline.audio import NoAudioTrack, extract_wav
@@ -19,7 +19,7 @@ from pipeline.diarize import Diarization, DiarizationUnavailable, diarize
 from pipeline.faces import BBox, detect_and_track_faces, get_video_dimensions, get_video_duration
 from pipeline.fuse import fuse
 from pipeline.lipsync import analyse
-from pipeline.progress import report, snapshot
+from pipeline.progress import face_thumbnail, report, report_line, report_people, snapshot
 from pipeline.render import (
 	Keyframe,
 	LayoutChoice,
@@ -74,10 +74,26 @@ def progress_endpoint(job_id: str) -> dict:
 	return snapshot(job_id)
 
 
+@app.get("/progress/{job_id}/face/{person_id}")
+def progress_face(job_id: str, person_id: int) -> Response:
+	"""One recognised face, while processing is still running.
+
+	Its own endpoint rather than a field on the snapshot: these are crops off
+	full-resolution frames, and the snapshot is polled every few hundred ms.
+	Immutable once written, so the browser fetches each one exactly once.
+	"""
+	data = face_thumbnail(job_id, person_id)
+	if data is None:
+		raise HTTPException(404, "No such face for this job.")
+	return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+
+
 def _transcribe_work(wav_path: Path, job_id: str | None) -> tuple[dict, Diarization]:
 	report(job_id, "transcribe", "transcribing speech")
 	segments = transcribe(
-		str(wav_path), progress=lambda f: report(job_id, "transcribe", "transcribing speech", f)
+		str(wav_path),
+		progress=lambda f: report(job_id, "transcribe", "transcribing speech", f),
+		on_segment=lambda seg, total: report_line(job_id, seg.text, seg.end, total),
 	)
 	report(job_id, "transcribe", "identifying speakers", 1.0)
 	# One pass: speaker turns and the stretches where people talk over each
@@ -144,6 +160,7 @@ def _faces_work(input_path: Path, job_id: str | None) -> dict:
 		str(input_path),
 		progress=lambda f: report(job_id, "faces", "finding and recognising faces", f),
 	)
+	report_people(job_id, {p.id: p.thumbnail_jpeg for p in people})
 	report(job_id, "faces", "done", 1.0, done=True)
 	return {
 		"frameWidth": width,

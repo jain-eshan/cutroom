@@ -127,6 +127,7 @@ function App() {
 	if (status.state === "processing") {
 		return (
 			<ProcessingScreen
+				jobId={status.jobId}
 				uploadFraction={uploadFraction}
 				progress={progress}
 				elapsedSeconds={elapsed}
