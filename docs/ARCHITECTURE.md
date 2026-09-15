@@ -109,8 +109,8 @@ talks to over HTTP. No cloud, no database, no accounts.
 │       first                   │                              │         → Hungarian match to      │
 │                               │                              │           diarized voices         │
 │  4. EditorView                │                              │                                   │
-│     — turn list w/ names      │                              │  POST /export                     │
-│     — per-turn person fix     │                              │    build gapless segments         │
+│     — regions on a timeline   │                              │  POST /export                     │
+│     — draggable, not per-turn │                              │    build gapless segments         │
 │     — live preview = export   │                              │    → frame each person (framing)  │
 │                               │                              │    → one ffmpeg filter_complex    │
 │                               │                              │    → burn in captions (optional,  │
@@ -120,8 +120,8 @@ talks to over HTTP. No cloud, no database, no accounts.
 ```
 
 The frontend resolves *who is on screen* (lip-sync/diarization fusion
-suggests it, the user confirms or corrects any turn) and sends **person
-ids** to `/export`. The render pipeline never sees a diarisation speaker.
+suggests it, the user confirms it at the cast step) and sends **framing
+regions naming person ids** to `/export`. The render pipeline never sees a diarisation speaker.
 
 **Why a separate local service instead of doing everything in the
 browser:** transcription, diarization, and face detection all need real
@@ -136,7 +136,8 @@ runs doesn't change).
 
 **Data flow for a single upload**, end to end:
 
-1. User picks a file in `UploadScreen`.
+1. `SetupGate` waits for `GET /health` to answer, then the user picks a file
+   in `UploadScreen`.
 2. `App.tsx` calls `processVideo(file)`, one upload to `POST /process`. This
    used to be two endpoints (`/transcribe`, `/detect-faces`) called
    concurrently with `Promise.all` — that meant the browser uploaded the
@@ -158,11 +159,12 @@ runs doesn't change).
    That's what `CastScreen` uses: the user names each person once and
    confirms the matches, with low-confidence ones flagged instead of
    starting from a blank grid.
-5. `EditorView` can now, for any turn, look up which person its speaker
-   maps to, find that person's bounding box nearest the turn's start
-   time, and compute a CSS `transform` that zooms the `<video>` element
-   in on that box — a live, real preview of the "auto-zoom to whoever's
-   talking" feature, without needing a full render pipeline yet.
+5. `EditorView` turns the turns, overlap windows and confirmed cast into
+   suggested **framing regions** (`regions.ts`): close on whoever is
+   speaking, both on screen where people talk over each other, wide where no
+   face is known. The editor drags their edges; the live preview resolves
+   what's on screen at the playhead with the same algorithm `render.py`
+   uses, so the preview can't disagree with the export.
 
 ---
 
@@ -177,8 +179,11 @@ transfer for a 5GB file). They're gone; `POST /process` below replaced both.
 
 ### `GET /health`
 
-Returns `{"status": "ok"}`. Used to check the service is up before hitting
-it with real work.
+Returns `{"status": "ok", "captions": bool}`. The setup gate polls it every
+2s and doesn't show the app until it answers. `captions` is whether this
+ffmpeg was built with libass — cached for the life of the process, since the
+binary is fixed at import — and the editor uses it to refuse captions before a
+render rather than failing 15 minutes into one.
 
 ### `POST /process`
 
@@ -245,16 +250,31 @@ than a blank grid.
 
 Per-stage progress for a running job, polled by the UI. Returns
 `{transcribe: {stage, fraction, done}, faces: {...}, match: {...}}` — three
-stages, `match` running last since it depends on the other two. In-memory
-and process-local — this is a single-user local tool, so a dict is the whole
-requirement.
+stages, `match` running last since it depends on the other two. It also
+carries what's been produced so far, which is what the processing screen
+shows: `lines` (the last 8 transcript lines, as faster-whisper yields them),
+`position` / `duration` (seconds into the recording), and `people`
+(recognised person ids). In-memory and process-local — this is a single-user
+local tool, so a dict is the whole requirement.
+
+### `GET /progress/{job_id}/face/{person_id}`
+
+One recognised face as `image/jpeg`, available once face recognition
+finishes (identity is a clustering step over the whole pass, so faces arrive
+together, not one by one). Its own endpoint because thumbnails are crops off
+full-resolution frames and the snapshot is polled every 700ms;
+`Cache-Control: max-age=3600` means each is fetched once. 404 for an unknown
+job or person.
 
 ### `POST /export`
 
 **Request:** `multipart/form-data` — `file` (the source video, re-uploaded)
-plus form fields: `layoutChoices` (per-turn layout decisions, each carrying
-its own `start`/`end`), `overlapSegments` (`[]` if none), optional
-`sessionId` (triggers `decisions.jsonl` logging on success), optional
+plus form fields: `regions` (framing regions — `{start, end, layout:
+"zoom"|"split", personIds, source: "suggested"|"user"}`; time no region
+covers renders wide), `turns` (`[{start, end}]`, only used by `trimDeadAir`,
+because regions deliberately don't describe where speech is), optional
+`sessionId` (logs the regions to `decisions.jsonl` on success — `source` is
+what makes that log worth keeping), optional
 `captions` (bool, default false), and optional `trimDeadAir` (bool, default
 false — cuts long pauses and filler words, see `pipeline/trim.py`). `faces`
 is **sent as a file part, not a form field** — Starlette caps form fields
@@ -286,18 +306,20 @@ src/
 │   ├── Logo.tsx                     # Cutroom SVG mark, reduction ladder by render size
 │   └── ThemeSwitcher.tsx            # System/Light/Dark segmented control
 ├── lib/
-│   ├── api.ts                       # typed fetch wrappers for /process, /export, /progress
+│   ├── api.ts                       # typed fetch wrappers for /health, /process, /progress, /export
 │   ├── faceCrop.ts                  # bbox → CSS zoom transform math + pixel-space crop math
 │   └── theme.ts                     # `useThemeMode` — persisted, live system-preference-aware
 ├── features/
+│   ├── setup/SetupGate.tsx          # polls /health, names which service is down, advances itself
 │   ├── upload/UploadScreen.tsx      # file picker + real drag-and-drop (idle / error states)
-│   ├── upload/ProcessingScreen.tsx  # upload bytes + per-stage progress
-│   ├── faces/CastScreen.tsx         # name each person; confirm the automatic voice↔face matches
+│   ├── upload/ProcessingScreen.tsx  # per-stage progress + live transcript and faces found
+│   ├── faces/CastScreen.tsx         # one voice at a time: listen, pick the face, name inline
 │   └── timeline/
-│       ├── EditorView.tsx           # video preview + turn list + layout controls +
-│       │                            # multi-speaker composite live preview + overlap indicator
+│       ├── EditorView.tsx           # transcript + preview + framing tray, one selection drives all
+│       ├── TimelineTray.tsx         # framing lane with draggable region edges + speaker lanes
+│       ├── regions.ts               # suggest / resize / resolve regions — mirrors render.py
 │       ├── ExportButton.tsx         # real export flow (idle/exporting/done/error)
-│       └── types.ts                 # `Layout` type (original/zoom/split)
+│       └── types.ts                 # `FramingRegion` and plain-English shot labels
 ```
 
 **Design tokens & theming:** colors, type, spacing and radii are CSS custom
@@ -308,7 +330,7 @@ CSS-first config) and re-pointed under a `[data-theme]` attribute + a
 implemented vs. deferred, and where the source design files live.
 
 **State machine** (`App.tsx`): a single `Status` union type drives which
-screen renders — `idle → processing → cast → editing` (or `error` at
+screen renders — `checking → idle → processing → cast → editing` (or `error` at
 any point during processing). No router, no global state library; this is
 intentionally the simplest thing that works for a linear, single-page
 flow. `processVideo(file)` is the one call to the backend; this used to be
@@ -345,7 +367,7 @@ rather than compositing crops of a single element — a browser can't show two
 different crops of the same `<video>` at once. Two things worth knowing if
 you touch this: (1) the pane container is measured with a callback ref, not
 a plain `useRef` + `useEffect([])`, because the composite only mounts
-conditionally (once a turn is set to Split) — a plain ref/effect pair only
+conditionally (only while the playhead is inside a both-on-screen region) — a plain ref/effect pair only
 ever fires for what exists at the *component's own* mount time and silently
 never re-attaches later (see `ARCHITECTURE.md`'s bugs log, #10). (2) Keeping
 the panes in sync with the primary "driver" video is one idempotent

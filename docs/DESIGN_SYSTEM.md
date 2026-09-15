@@ -50,74 +50,114 @@ more precise than this file on any point where they'd disagree.
   "Close-up" / "Both on screen", not "Original" / "Zoom" / "Split"; "Lips
   match N% of this clip" on the cast screen's confidence chip).
 
+## Built since the foundation
+
+Each landed as its own commit, in the handoff's order.
+
+- **Setup gate (`2d`)** — `src/features/setup/SetupGate.tsx`, a new
+  `checking` state before `idle`. Polls `GET /health` every 2s and advances
+  by itself; the footer button is deliberately inert. `/health` now also
+  reports `captions` (whether this ffmpeg has libass, cached for the life of
+  the process), and that flows into the editor so captions are refused
+  before an export rather than 15 minutes into one.
+- **Processing evidence (`2e`)** — `/progress/{job_id}` carries the
+  transcript tail as faster-whisper yields it, plus the ids of recognised
+  people. Face images come from `GET /progress/{job_id}/face/{person_id}`, so
+  each is fetched once instead of riding in a snapshot polled every 700ms.
+  "About N min left" is extrapolated from real progress and only shown past
+  8%.
+- **Cast, one voice at a time (`2f`)** — `CastScreen.tsx` rewritten: the
+  voice's longest utterance at 16px, a play button, face cards with inline
+  naming, "Lips match N% of this clip", a dashed "Someone we didn't see"
+  card, and back navigation.
+- **Region-based editor (`5a`)** — framing is `FramingRegion[]`
+  (`src/features/timeline/regions.ts`, `TimelineTray.tsx`), independent of
+  turn boundaries. Suggested regions are computed once from turns, overlap
+  windows and the cast. Edges drag; `+ Close-up` / `+ Both on screen` add a
+  region over the selected turn; `Go wide here` deletes one; `Reset to
+  suggested` restores them all. `/export` takes `regions` (plus `turns`, for
+  trimming) instead of per-turn `layoutChoices` / `overlapSegments`.
+  Verified end to end against the real service: a dragged region exported
+  to a 30.0s 1280×720 MP4 and the decision log recorded it as `source: user`.
+
+## Decisions made while building — read before changing these
+
+- **Regions are in seconds, not the handoff's `startMs`.** Every other time
+  in the app and the pipeline is seconds; milliseconds here alone would put a
+  unit conversion in every comparison against a turn.
+- **Wide is the absence of a region**, not a third layout. The timeline
+  draws uncovered time in `rWide` so it still reads as a decision.
+- **Dragging an edge overwrites neighbours** instead of stopping at them.
+  Clamping would make holding a close-up through an interjection — the
+  reason the model exists — impossible. What's overwritten is gone; "Reset
+  to suggested" is the way back. There is no undo.
+- **Preview crops are taken at the region's start**, because `render.py`
+  fixes each segment's crop at its start. `resolveFraming` in `regions.ts`
+  and `build_render_segments` in `render.py` are the same algorithm and must
+  change together.
+- **Trimming still needs turns.** `/export` receives turn ranges separately;
+  regions deliberately don't describe where speech is, and using them would
+  cut unframed speech.
+- **Faces appear together, not one at a time.** Identity is a clustering
+  step over the whole pass; mid-pass there are tracks, not people, and
+  showing fragments that later merge would be dishonest.
+- **The cast waveform is speech density** from word timings, not audio
+  amplitude — decoding a multi-GB file in the browser isn't worth it, but
+  neither is drawing a made-up shape.
+- **The episode description field is gone.** It was collected and never
+  read by anything.
+
 ## Known, deliberate deviations
 
-- **Drop zone border color** — the handoff gives one literal OKLCH value
-  (`oklch(0.34 0.01 80)`), not a light/dark pair. Used the `line` token
-  instead so it adapts across themes; the literal was almost certainly
-  tuned against the handoff's dark screenshots and looks wrong in light
-  mode otherwise.
-- **No filename/size echo on drag-over** (`UploadScreen`) — the handoff
-  wants the dragged file's name and size shown before the user releases it.
-  Most browsers don't expose `DataTransferItem` file contents until
-  `drop`, only on `dragover`, so this isn't implementable as specified
-  without a different browser API or a fallback UX. Left for a follow-up
-  investigation rather than faked.
-- **Recents list** (`UploadScreen`, part of `7a`) — needs project
-  persistence (`.cutroom` save/reopen) that doesn't exist yet. Not built.
-- **Live transcript / faces-found evidence area** (`ProcessingScreen`,
-  `2e`) — the handoff's evidence area streams transcript lines and face
-  thumbnails as they're produced. `GET /progress/{job_id}` doesn't return
-  that data today, only per-stage fractions. The current screen is a
-  faithful visual reskin of the 4-stage progress view only.
-- **Cast screen stayed one page** (`CastScreen`) — the handoff specifies
-  `2f`, a one-voice-at-a-time confirmation flow, explicitly over `2g`
-  (everything on one page — "faster on a re-run but a beginner will click
-  through without listening"). The existing screen is architecturally
-  closer to `2g`. Restyled in place rather than restructured, since the
-  one-at-a-time flow is a real interaction change, not a reskin. **This is
-  the one deviation worth revisiting soonest** — it's what the handoff
-  flags as the highest-risk screen to get wrong.
+- **Drop zone border** uses the `line` token instead of the handoff's single
+  literal, which was tuned for the dark theme only.
+- **No filename echo on drag-over** — browsers don't expose the file until
+  `drop`.
+- **No recents list** — it needs `.cutroom` project persistence, which
+  doesn't exist yet.
+- **Regions are pointer-only.** They aren't focusable, so framing can't be
+  edited from the keyboard. The accessibility audit is deferred per
+  `UX_PRD.md` §5, but this is the first gap it should close.
+- **Narrow windows.** The editor is laid out for about 1280px and its footer
+  collapses badly below that. Out of scope per `UX_PRD.md` §5 (a desktop
+  tool), noted here because it is visible.
 
 ## What's left
 
-In the handoff's own implementation order (`docs/design/handoff/README.md`,
-bottom section), unstarted items only:
+In the handoff's implementation order:
 
-1. ~~Token layer + theme switching~~ — **done**.
-2. ~~Logo as SVG~~ — **done**.
-3. **Setup gate** (`2d`) — a real screen, not built. Purely additive: a new
-   `Status` member before `idle`, polling `GET /health` (already exists on
-   the backend, see `server/main.py`). No backend changes needed.
-4. **Processing evidence area** — see "Known deviations" above. Needs
-   `/progress` to carry partial transcript lines and face thumbnails, so
-   it's a backend change, not just frontend.
-5. **Cast as one-question-at-a-time (`2f`)** — see "Known deviations."
-   Frontend-only, but a real interaction rewrite of `CastScreen.tsx`.
-6. **Editor: region-based framing (`5a`)** — the big one. Replaces
-   "layout per turn" with draggable `FramingRegion[]` independent of turn
-   boundaries (drag handles, a framing lane, `Reset to suggested`). This
-   **also requires changing `server/pipeline/render.py`'s export logic** to
-   consume regions instead of per-turn layout choices — the handoff is
-   explicit that a preview which disagrees with the export is worse than no
-   preview, so frontend and backend have to land together. Do not start
-   this half-finished.
-7. **Publish screen (`7b`) + render states (`7c`)** — the scope change:
-   export becomes a manifest (episode / captions / chapters / show notes /
-   show clips) rather than a single button. The current `ExportButton` is
-   already visually styled to match the four render states (`idle` /
-   `rendering` / `done` / `error`) from `7c`, so that half transfers
-   directly into whatever wraps it. Show notes and short clips should ship
-   **unchecked and honest**, not hidden — they're unbuilt.
-8. **Edge-case sweep (`7d`)** — a pass across all screens once the above
-   exist; several of these (e.g. "four people at once," "captions
-   unavailable") already have partial backend support and just need the
-   UI treatment.
-9. **Landing page (`4b`)** — last, and explicitly gated: the handoff says
-   not to ship real per-OS download buttons until desktop packaging exists
-   ("Build from source" until then). Packaging itself isn't on this list
-   because it's a backend/build-tooling project, not a design one — see
-   `docs/STATUS.md`.
+1. ~~Tokens and theme switching~~ — **done**.
+2. ~~Logo~~ — **done**.
+3. ~~Setup gate~~ — **done**.
+4. ~~Processing evidence~~ — **done**.
+5. ~~Cast, one voice at a time~~ — **done**.
+6. ~~Region-based editor~~ — **done**, except:
+   - **6b. Per-instant visibility.** `bbox_at_time` returns the nearest
+     keyframe however far away it is, so the renderer can't tell whether a
+     person is on screen right now. The `7d` case "forced split, one person
+     — takes effect the moment the other reappears" needs that (a keyframe
+     within about 2s, plus segment boundaries where visibility changes, in
+     both `render.py` and `faceCrop.ts`). Today a both-on-screen region with
+     one findable person closes on them for the whole region.
+7. **Publish screen (`7b`) + render states (`7c`)** — next. `ExportButton`
+   already has the four render states' behaviour and copy ("Leave this
+   window open…", "Your edits are safe.", the raw server message in mono on
+   `terminal`). It needs wrapping in the manifest screen with a new
+   `publishing` status. Show notes and short clips ship unchecked and
+   honest, not hidden.
+8. **Edge-case sweep (`7d`)** — partly done in passing: captions-unavailable
+   is caught before a render, and a region naming a person we can't find
+   renders wide. Still to do: nobody on camera, a voice with no face, four
+   people at once (the `+1` tile), stopped while reading, closing mid-render.
+9. **Landing page (`4b`)** — last. Per-OS download buttons stay "Build from
+   source" until desktop packaging exists.
+
+## Frontend testing gap
+
+There is no frontend test runner. `regions.ts` is pure and is the one module
+where a silent bug changes what gets exported, so it's the first candidate if
+one is added. The editor has been verified in the browser against a synthetic
+clip instead.
 
 ## Open question, not decided here
 
