@@ -42,7 +42,7 @@ from pipeline.turns import build_turns
 
 load_dotenv()
 
-app = FastAPI(title="podcast-editor processing service")
+app = FastAPI(title="Cutroom processing service")
 
 
 class ReportUnexpectedErrors:

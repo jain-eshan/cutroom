@@ -1,0 +1,31 @@
+name: An idea
+description: Something Cutroom should do that it doesn't.
+labels: ["idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with the problem, not the feature. "I spend 20 minutes finding every laugh" is more useful than "add a laugh detector", because there may be a simpler way to solve it.
+
+        The roadmap and what's deliberately out of scope are in [docs/STATUS.md](https://github.com/jain-eshan/cutroom/blob/main/docs/STATUS.md) and [docs/PRODUCT.md](https://github.com/jain-eshan/cutroom/blob/main/docs/PRODUCT.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you're trying to do, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind
+  - type: dropdown
+    id: who
+    attributes:
+      label: You are
+      options:
+        - A podcast host or editor
+        - A developer
+        - Both
+    validations:
+      required: true

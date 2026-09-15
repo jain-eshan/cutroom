@@ -147,6 +147,17 @@ many people fit on screen, a wide-only style) and every other known edge
 case in the core product are catalogued in [EDGE_CASES.md](EDGE_CASES.md),
 with the decisions they need. They aren't placed on this list yet.
 
+**Developer preview launch, 2026-09-15.** Done ahead of the list below, at
+the founder's call, to find testers and contributors early:
+- A landing page in `site/` (see [site/README.md](../site/README.md)), hosted
+  on Vercel, with a waitlist through an embedded Tally form.
+- Contributor docs: a rewritten README with setup and troubleshooting,
+  [CONTRIBUTING.md](../CONTRIBUTING.md), [SECURITY.md](../SECURITY.md), a
+  [docs index](README.md), issue forms and a pull request template.
+- CI on GitHub Actions: typecheck, lint, unit tests and both builds for the
+  app and site, and the backend tests.
+- The repository renamed to `cutroom`.
+
 1. **Editing basics: navigation.** A timecode ruler and a playhead you can drag
    to scrub; timeline zoom and horizontal scroll with zoom-to-fit, plus a thin
    overview of the whole episode above a zoomed detail view (the idea behind

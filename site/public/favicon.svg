@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+	<!-- Cutroom tiny mark, static colours (see docs/design/handoff README, "Reduction ladder"). -->
+	<rect x="2" y="2" width="68" height="68" rx="17" fill="#1d1a17" stroke="#f0eeeb" stroke-width="4" />
+	<rect x="4" y="58" width="64" height="10" fill="#f0eeeb" />
+	<rect x="20" y="22" width="3" height="5.5" rx="1.5" fill="#f88a3d" transform="rotate(22 21.5 24.75)" />
+	<rect x="50" y="24" width="2.5" height="4" rx="1.25" fill="#f88a3d" transform="rotate(-14 51.25 26)" />
+</svg>

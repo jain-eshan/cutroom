@@ -1,0 +1,15 @@
+/* The app's tokens, fonts and base styles. The site is always the light theme
+ * (index.html sets data-theme="light"): the handoff keeps the marketing site
+ * light and the app free to follow the OS. */
+@import "../../src/index.css";
+
+html {
+	scroll-behavior: smooth;
+	scroll-padding-top: 72px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+}

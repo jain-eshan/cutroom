@@ -320,6 +320,21 @@ behind it: [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md).
 
 ---
 
+## Repository layout
+
+```
+src/        the app (React + TypeScript + Tailwind v4, Vite, port 3460)
+server/     the processing service (Python 3.12, FastAPI, uv, port 8787)
+site/       the public website: a separate small Vite app sharing src/index.css
+            and the logo, built with `npm run site:build`, hosted on Vercel
+            (vercel.json); see site/README.md
+docs/       this documentation, plus design/handoff/ and images/
+.github/    CI (workflows/ci.yml), issue forms, pull request template
+```
+
+Contributor-facing guides live at the root: README.md (setup and
+troubleshooting), CONTRIBUTING.md (layout, rules, checks) and SECURITY.md.
+
 ## Frontend Structure
 
 ```

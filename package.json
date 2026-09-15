@@ -1,6 +1,6 @@
 {
-  "name": "podcast-editor",
-  "description": "Open-source auto-editing tool for podcast video: transcribes, splits into speaker turns, and suggests zoom/split-screen framing per turn.",
+  "name": "cutroom",
+  "description": "Cutroom: free, local, open-source auto-editing for one-camera podcast video. Transcribes, works out who's talking, and frames the shot on them.",
   "license": "MIT",
   "private": true,
   "version": "0.0.0",
@@ -10,6 +10,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "node --test 'src/**/*.test.ts'",
+    "site": "vite --config site/vite.config.ts",
+    "site:build": "vite build --config site/vite.config.ts",
     "preview": "vite preview"
   },
   "dependencies": {

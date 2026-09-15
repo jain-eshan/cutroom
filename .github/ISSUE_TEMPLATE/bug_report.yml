@@ -1,0 +1,60 @@
+name: Something broke
+description: An error, a crash, a screen that got stuck, or setup that didn't work.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. If the problem is that the **edit** looked wrong (a bad cut, the wrong person on screen), use "The edit got it wrong" instead.
+
+        Please don't attach a recording of people who haven't agreed to it being public.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, and what you saw. Include the exact error text if there was one.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to happen
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where it happened
+      options:
+        - Installing or starting (npm install, npm run dev, the setup screen)
+        - Processing a recording
+        - Naming the cast
+        - The editor
+        - Exporting
+        - Somewhere else
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Technical details
+      description: |
+        On the error screens, "Copy the details" copies what we need. The terminal running `npm run dev` also prints the processing service's log.
+      render: text
+  - type: input
+    id: recording
+    attributes:
+      label: The recording
+      description: Length, resolution, camera or phone, and how many people. For example "47 min, 1080p, iPhone 15, 4 people".
+  - type: input
+    id: environment
+    attributes:
+      label: Your computer
+      description: Operating system and chip, plus Node version (`node -v`). For example "macOS 15.5, M2, Node 24.1".
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Cutroom version
+      description: The commit you're running (`git rev-parse --short HEAD`).

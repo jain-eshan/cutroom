@@ -2,13 +2,19 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "podcast-editor-frontend",
+      "name": "cutroom-app",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3460
     },
     {
-      "name": "podcast-editor-backend",
+      "name": "cutroom-site",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "site"],
+      "port": 3461
+    },
+    {
+      "name": "cutroom-service",
       "runtimeExecutable": "uv",
       "runtimeArgs": ["run", "--directory", "server", "uvicorn", "main:app", "--port", "8787"],
       "port": 8787,

@@ -220,8 +220,18 @@ In the handoff's implementation order:
    - **Forced split, one person** needs per-instant visibility (6b above).
    - **Four people at once** — the handoff's 3-pane cap conflicts with a
      deliberate, tested no-cap decision in `render.py`. See "Open questions".
-9. **Landing page (`4b`)** — last. Per-OS download buttons stay "Build from
-   source" until desktop packaging exists.
+9. ~~Landing page (`4b`)~~ — **done** (2026-09-15), in `site/`. Changes from
+   the design, all to keep it honest before there's a packaged app:
+   - The primary actions are "Join the waitlist" (a Tally form) and "Run the
+     developer preview", not per-OS download buttons.
+   - The hero is an animated illustration of the framing, not a filmed loop,
+     until a real episode clip can be shown with everyone's agreement. Its
+     crops use `framing.py`'s proportions.
+   - The proof numbers are replaced with measured ones from STATUS.md
+     (`~5 min to edit 25 minutes` and `4K kept` weren't measured). The "$30 a
+     month" price anchor was dropped for the same reason.
+   - "What it can't do yet" lists today's real gaps, and there's no Discord
+     link because there's no Discord.
 
 ## Frontend testing gap
 
@@ -234,13 +244,10 @@ verified in the browser against a synthetic clip.
 
 ## Open questions, not decided here
 
-**The name.** The product is now named **Cutroom** in the UI (title, favicon, in-app
-wordmark). `package.json`'s `name` field and the GitHub repo are still
-`podcast-editor` — renaming those is a bigger, more visible change
-(breaks any existing clone URLs/bookmarks, npm name if ever published) and
-wasn't made unilaterally. Worth an explicit decision before the landing page
-phase, since marketing copy throughout the handoff assumes "Cutroom"
-everywhere.
+**The name.** Decided on 2026-09-15: everything is **Cutroom**. The GitHub
+repository was renamed from `podcast-editor` to `cutroom` for the developer
+preview launch (GitHub redirects the old address), along with `package.json`'s
+`name` and the processing service's title.
 
 **How many people fit on screen at once.** The handoff caps a shot at
 three panes and shows a dashed `+1` tile naming whoever is left out ("Three

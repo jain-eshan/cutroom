@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security problem
+    url: https://github.com/jain-eshan/cutroom/security/advisories/new
+    about: Please report security issues privately, not as a public issue.
+  - name: Setup guide
+    url: https://github.com/jain-eshan/cutroom#readme
+    about: Most setup questions are answered in the README's troubleshooting section.

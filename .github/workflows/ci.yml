@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: App and website
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # npm test runs TypeScript directly with Node's test runner (22.18+).
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc -b
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: Build the app
+        run: npm run build
+      - name: Build the website
+        run: npm run site:build
+
+  backend:
+    name: Processing service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: server/uv.lock
+      # The tests need no network, model weights, ffmpeg, GPU or Hugging Face
+      # token, so none are set up here. uv installs Python 3.12 from
+      # server/.python-version.
+      - name: Install
+        run: uv sync --locked --directory server
+      - name: Tests
+        run: uv run --locked --directory server pytest -q

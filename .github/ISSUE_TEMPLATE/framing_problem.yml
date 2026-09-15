@@ -1,0 +1,42 @@
+name: The edit got it wrong
+description: A cut in the wrong place, the wrong person on screen, a flash of the wide shot, an odd crop.
+labels: ["framing"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        These are the most useful reports we get. Before writing one, have a look at [docs/EDGE_CASES.md](https://github.com/jain-eshan/cutroom/blob/main/docs/EDGE_CASES.md): your case may already be listed, and its ID (like A2) helps.
+
+        Please don't attach footage of people who haven't agreed to it being public. A description with timestamps is enough.
+  - type: textarea
+    id: moment
+    attributes:
+      label: What was happening in the recording
+      description: Who was talking, over whom, for how long. For example "at 12:40 Dev says 'right' for half a second while Maya is mid-story".
+    validations:
+      required: true
+  - type: textarea
+    id: did
+    attributes:
+      label: What Cutroom did
+      description: The shot it chose, as the editor names it ("Close on Dev", "Both on screen", "Wide").
+    validations:
+      required: true
+  - type: textarea
+    id: should
+    attributes:
+      label: What a good edit would have done
+    validations:
+      required: true
+  - type: input
+    id: edge-case
+    attributes:
+      label: Matching edge case, if any
+      placeholder: A2
+  - type: input
+    id: setup
+    attributes:
+      label: The recording setup
+      description: Number of people, where the camera was, and whether the video was already edited before Cutroom saw it.
+    validations:
+      required: true
