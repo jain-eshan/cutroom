@@ -60,11 +60,12 @@ Each landed as its own commit, in the handoff's order.
   reports `captions` (whether this ffmpeg has libass, cached for the life of
   the process), and that flows into the editor so captions are refused
   before an export rather than 15 minutes into one. It also reports
-  `diarization` (whether `HF_TOKEN` is set); the gate has a required
-  "Speaker detection" row with the three setup steps and won't advance
+  `diarization` (whether `HF_TOKEN` is set), and the gate won't advance
   without it, after a real run failed on a missing token six minutes into
-  transcription. The title changed from "Two things need to be running" to
-  "A few things need to be ready" since there are now three required rows.
+  transcription. The token is pasted into the gate: `POST /setup/hf-token`
+  asks Hugging Face whose token it is, then whether that account accepted the
+  model's terms, and writes `server/.env` itself — no editor, no restart. See
+  the deviations below for how the gate was simplified.
 - **Processing evidence (`2e`)** — `/progress/{job_id}` carries the
   transcript tail as faster-whisper yields it, plus the ids of recognised
   people. Face images come from `GET /progress/{job_id}/face/{person_id}`, so
@@ -182,6 +183,16 @@ Each landed as its own commit, in the handoff's order.
   doesn't have. Without it, a file that fails every time is a dead end.
 - **"Give them a name anyway" is a labelled input**, not a button that
   reveals one — a step shorter.
+- **The setup gate shows one thing at a time, not the handoff's rows.** At the
+  founder's direction, nobody should have to leave the app: `npm run dev`
+  starts the processing service (`vite.config.ts`), the Hugging Face token is
+  pasted in, and the gate only shows what needs doing — "Getting ready" while
+  the service starts, "Connect Hugging Face" when the token is missing, or the
+  service's own last lines with "Try again" if it stopped. With everything in
+  place it opens and closes in under a second. The "This window" and optional
+  "Captions" rows are gone; captions are handled on Publish. Creating the token
+  and accepting the model's terms still happen on huggingface.co, because
+  they're on the user's own account and can't be done for them.
 - **Audio-only files are only half handled.** The editor no longer collapses
   on a 0×0 frame and Publish says "no video track", but exporting an
   audio-only file through `render.py` hasn't been tried and may fail. If it

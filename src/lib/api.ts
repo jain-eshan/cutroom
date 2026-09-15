@@ -180,6 +180,26 @@ export interface Health {
 	captions: boolean;
 }
 
+/** Hand the Hugging Face token to the local service, which checks it with
+ * Hugging Face and saves it to server/.env. Throws with the service's own
+ * plain-English reason when the token can't be used. */
+export async function saveHfToken(token: string): Promise<void> {
+	const res = await fetch(new URL("/setup/hf-token", API_BASE), {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ token }),
+	});
+	if (res.ok) return;
+	let detail = `The service couldn't save the token (${res.status}).`;
+	try {
+		const parsed = ((await res.json()) as { detail?: unknown }).detail;
+		if (typeof parsed === "string") detail = parsed;
+	} catch {
+		// Not JSON -- keep the generic line.
+	}
+	throw new Error(detail);
+}
+
 export async function getHealth(): Promise<Health> {
 	const res = await fetch(new URL("/health", API_BASE));
 	if (!res.ok) throw new Error(`Processing service unhealthy (${res.status})`);

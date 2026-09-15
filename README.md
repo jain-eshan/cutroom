@@ -89,16 +89,12 @@ then put `HF_TOKEN=...` in `server/.env`.
 Needs Node, [uv](https://docs.astral.sh/uv/), and `ffmpeg` on your PATH.
 
 Speaker detection needs a free Hugging Face token, set once. Create a read
-token at https://huggingface.co/settings/tokens, accept the model licence at
-https://huggingface.co/pyannote/speaker-diarization-community-1 with the same
-account, then create `server/.env` with:
-
-```
-HF_TOKEN=hf_your_token_here
-```
-
-The app's setup screen checks for it and won't let a job start without it,
-rather than failing after the transcript is written.
+token at https://huggingface.co/settings/tokens and accept the model licence
+at https://huggingface.co/pyannote/speaker-diarization-community-1 with the
+same account, then paste the token into the app's setup screen. It checks the
+token with Hugging Face — licence included — and saves it to `server/.env`
+for you, with no restart. (Setting `HF_TOKEN=` in `server/.env` yourself still
+works.)
 
 Burned-in captions need an `ffmpeg` built with libass. Homebrew's regular
 `ffmpeg` formula is not — `brew install ffmpeg-full` is, and because that
@@ -113,15 +109,15 @@ Everything else works on either build, and the export says so up front rather
 than dropping the captions silently.
 
 ```bash
-# frontend
 npm install
 npm run dev
-
-# processing service (separate terminal — see server/README.md)
-cd server
-uv sync
-uv run uvicorn main:app --port 8787
 ```
+
+That's the whole start. `npm run dev` also starts the processing service and
+stops it when you quit, so there's no second terminal. The first start installs
+the service's Python dependencies, which takes a few minutes; the setup screen
+shows it working and moves on by itself. (To run the service on its own, see
+`server/README.md`.)
 
 ## License
 

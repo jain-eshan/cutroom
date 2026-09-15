@@ -193,6 +193,21 @@ ffmpeg was built with libass — cached for the life of the process, since the
 binary is fixed at import — and the editor uses it to refuse captions before a
 render rather than failing 15 minutes into one.
 
+### `POST /setup/hf-token`
+
+**Request:** JSON `{"token": "hf_..."}`. Called by the setup gate's token
+field. Checks the format (which also rules out a newline sneaking a second
+setting into `.env`), then asks Hugging Face two things in order: whose token
+it is (`whoami`), then whether that account can reach the diarisation model
+(`auth_check`) — which, unlike `/health`, catches unaccepted terms. The order
+matters: Hugging Face answers a made-up token on a gated model exactly as it
+answers a real account that hasn't agreed yet, so checking the model alone
+told people with a mistyped token to go accept terms they already had.
+Only a token that passes is written to `server/.env` (owner-only
+permissions) and applied to the running process, with any already-loaded
+model dropped so it reloads with the new token. Returns `{"ok": true}`, or a
+400 whose `detail` says what to fix. The token is never echoed or logged.
+
 ### `POST /process`
 
 **Request:** `multipart/form-data` with `file` and an optional `jobId`
@@ -318,7 +333,7 @@ src/
 │   ├── faceCrop.ts                  # bbox → CSS zoom transform math + pixel-space crop math
 │   └── theme.ts                     # `useThemeMode` — persisted, live system-preference-aware
 ├── features/
-│   ├── setup/SetupGate.tsx          # polls /health, names which service is down, advances itself
+│   ├── setup/SetupGate.tsx          # only what needs doing: starting, connect Hugging Face, or why it stopped
 │   ├── upload/UploadScreen.tsx      # file picker + real drag-and-drop (idle / error states)
 │   ├── upload/ProcessingFailed.tsx  # stopped partway: how far it got, the raw error, try again
 │   ├── upload/ProcessingScreen.tsx  # per-stage progress + live transcript and faces found
@@ -338,6 +353,15 @@ CSS-first config) and re-pointed under a `[data-theme]` attribute + a
 `prefers-color-scheme` media query for the three-state theme switch. See
 [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) for the full token table, what's
 implemented vs. deferred, and where the source design files live.
+
+**Starting the processing service:** `vite.config.ts` carries a dev-only
+plugin that spawns `uv run --directory server uvicorn main:app` when `npm run
+dev` starts (unless something already listens on 8787), and stops it when the
+dev server exits. It exposes `GET /__service` — state, a log tail with the
+app's own health/progress polling and a harmless macOS library warning
+filtered out, and whether startup ever completed — and `POST
+/__service/restart`, which the setup gate's "Try again" calls. A production
+build has no dev server, so the gate falls back to showing the command.
 
 **State machine** (`App.tsx`): a single `Status` union type drives which
 screen renders — `checking → idle → processing → cast → editing ⇄ publishing` (with `processing`
@@ -637,7 +661,7 @@ Needs Node, [uv](https://docs.astral.sh/uv/), and `ffmpeg` on your PATH.
 npm install
 npm run dev
 
-# processing service — http://localhost:8787 (separate terminal)
+# processing service — http://localhost:8787, started by npm run dev
 cd server
 uv sync
 uv run uvicorn main:app --port 8787

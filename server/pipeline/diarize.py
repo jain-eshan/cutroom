@@ -70,6 +70,12 @@ def diarization_configured() -> bool:
 _pipeline = None
 
 
+def forget_pipeline() -> None:
+	"""Drop the loaded model, so the next job loads it with the current token."""
+	global _pipeline
+	_pipeline = None
+
+
 def _best_device():
 	import torch
 

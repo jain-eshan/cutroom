@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from starlette.background import BackgroundTask
@@ -22,6 +22,7 @@ from pipeline.diarize import (
 	diarization_configured,
 	diarize,
 )
+from pipeline.hf_token import check_access, save_token, token_format_problem
 from pipeline.faces import BBox, detect_and_track_faces, get_video_dimensions, get_video_duration
 from pipeline.fuse import fuse
 from pipeline.lipsync import analyse
@@ -97,6 +98,24 @@ def progress_face(job_id: str, person_id: int) -> Response:
 	if data is None:
 		raise HTTPException(404, "No such face for this job.")
 	return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+
+
+@app.post("/setup/hf-token")
+async def setup_hf_token(token: str = Body(..., embed=True)) -> dict[str, bool]:
+	"""Take the Hugging Face token from the setup screen.
+
+	Checked with Hugging Face first -- including whether the account accepted
+	the model licence, which the /health presence check can't see -- and only
+	saved to server/.env once it can actually load the model. Applied to this
+	process immediately, so there's nothing to restart. The token is never
+	echoed back or logged.
+	"""
+	token = token.strip()
+	problem = token_format_problem(token) or await asyncio.to_thread(check_access, token)
+	if problem:
+		raise HTTPException(400, problem)
+	save_token(token, Path(__file__).parent / ".env")
+	return {"ok": True}
 
 
 def _transcribe_work(wav_path: Path, job_id: str | None) -> tuple[dict, Diarization]:
