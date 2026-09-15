@@ -184,6 +184,10 @@ export function EditorView({
 	cast: CastResult;
 }) {
 	const [captionsEnabled, setCaptionsEnabled] = useState(true);
+	// Off by default, unlike captions -- this one actually removes content
+	// (dead air, filler words) rather than adding something on top, so it
+	// shouldn't be a silent default. See pipeline/trim.py.
+	const [trimDeadAirEnabled, setTrimDeadAirEnabled] = useState(false);
 	// Object URL has to be created *inside* the effect (not derived via useMemo)
 	// so StrictMode's mount->cleanup->mount dev-mode cycle recreates a fresh URL
 	// each time instead of revoking the one useMemo cached and never remaking.
@@ -431,6 +435,17 @@ export function EditorView({
 				/>
 				Burn in captions
 			</label>
+			<label
+				className="flex w-fit items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400"
+				title="Cuts long pauses down to a short beat and removes standalone filler words (um, uh). Conservative on purpose -- see docs/FEATURES.md."
+			>
+				<input
+					type="checkbox"
+					checked={trimDeadAirEnabled}
+					onChange={(e) => setTrimDeadAirEnabled(e.target.checked)}
+				/>
+				Trim dead air &amp; filler words
+			</label>
 			<ExportButton
 				file={file}
 				sessionId={sessionId}
@@ -439,6 +454,7 @@ export function EditorView({
 				overlapWindows={overlapWindows}
 				words={words}
 				captionsEnabled={captionsEnabled}
+				trimDeadAirEnabled={trimDeadAirEnabled}
 				faces={faces}
 				speakerToPerson={cast.speakerToPerson}
 				personForTurn={personForTurn}

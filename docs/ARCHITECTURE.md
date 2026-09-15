@@ -254,15 +254,20 @@ requirement.
 **Request:** `multipart/form-data` — `file` (the source video, re-uploaded)
 plus form fields: `layoutChoices` (per-turn layout decisions, each carrying
 its own `start`/`end`), `overlapSegments` (`[]` if none), optional
-`sessionId` (triggers `decisions.jsonl` logging on success), and optional
-`captions` (bool, default false). `faces` is **sent as a file part, not a
-form field** — Starlette caps form fields at 1MB and a 53-minute episode's
-keyframes are 1.7MB, which made every long-episode export fail with "Part
-exceeded maximum size of 1024KB". `words` is also a file part, for the same
-reason, and only needed when `captions` is true — burning captions in reads
-from Whisper's word-level timestamps, not turn boundaries. If `captions` is
-requested but the running `ffmpeg` wasn't built with libass, the request
-fails fast with a 400 naming the fix, before the render starts.
+`sessionId` (triggers `decisions.jsonl` logging on success), optional
+`captions` (bool, default false), and optional `trimDeadAir` (bool, default
+false — cuts long pauses and filler words, see `pipeline/trim.py`). `faces`
+is **sent as a file part, not a form field** — Starlette caps form fields
+at 1MB and a 53-minute episode's keyframes are 1.7MB, which made every
+long-episode export fail with "Part exceeded maximum size of 1024KB".
+`words` is also a file part, for the same reason, and needed whenever
+`captions` or `trimDeadAir` is true — captions cut cues from word-level
+timestamps, and `trimDeadAir` needs them to find filler words (dead-air
+detection alone doesn't). If `captions` is requested but the running
+`ffmpeg` wasn't built with libass, the request fails fast with a 400 naming
+the fix, before the render starts. If both `captions` and `trimDeadAir` are
+on, caption timing is remapped onto the trimmed timeline so the two don't
+drift apart.
 
 **Response:** `video/mp4`, streamed from disk (`FileResponse`, not buffered
 in memory — exports can be large), `Content-Disposition: attachment`.
@@ -358,16 +363,19 @@ server/
 │   ├── fuse.py                   # Hungarian-match diarized voices to lip-sync's faces
 │   ├── framing.py                # crop-box math for how a person fills a pane
 │   ├── captions.py               # word-level timestamps → caption cues → .ass subtitle file
+│   ├── trim.py                   # dead-air/filler-word ranges to cut, and caption remapping
+│   │                              # for a trimmed timeline
 │   ├── progress.py               # in-memory per-job stage progress, polled by the UI
 │   └── render.py                 # /export's render pipeline: segment construction,
 │                                  # bust-shot/composite crop math, caption burn-in,
-│                                  # ffmpeg orchestration
+│                                  # dead-air/filler cutting, ffmpeg orchestration
 ├── tests/
 │   ├── test_render.py            # render.py's crop-math parity + segment-construction edge cases
 │   ├── test_diarize.py           # diarize.py's overlap-window construction
 │   ├── test_faces.py             # faces.py's identity clustering + presence threshold
 │   ├── test_fuse.py              # fuse.py's voice/face matching + notes
-│   └── test_captions.py          # captions.py's cue-splitting rules
+│   ├── test_captions.py          # captions.py's cue-splitting rules
+│   └── test_trim.py              # trim.py's range detection + timeline remapping
 ├── logs/
 │   └── <session_id>/decisions.jsonl  # written by /export on success, gitignored
 └── .models/
@@ -449,6 +457,20 @@ is the point: it lets a cue start and end exactly when speech does, instead
 of inheriting a turn's boundaries, which can run seconds past the words
 that justify it.
 
+**`trim.py`** — an opt-in export option, computes ranges to cut entirely
+rather than just reframe: pauses between turns longer than ~1.2s (trimmed
+down to a short beat, not removed outright — a hard cut to total silence
+reads as a jump cut), and standalone filler words (`um`, `uh`, and similar)
+from word-level timestamps, deliberately excluding words that are only
+*sometimes* filler ("like", "so") since there's no way to tell from the word
+alone. Also holds `remap_time()`, which shifts a timestamp on the original
+(untrimmed) timeline to where it lands after cuts are removed — used to keep
+burned-in captions in sync when trimming and captions are both requested for
+the same export, since a caption cue's timing is computed against the
+untrimmed source. Thresholds are reasoned defaults, not measured against
+real footage the way `framing.py`'s are — there's no reference edit yet to
+tune a silence cutoff against.
+
 **`ffmpeg.py`** — resolves which `ffmpeg`/`ffprobe` binary every pipeline
 stage runs, via `FFMPEG_BINARY`/`FFPROBE_BINARY` in `server/.env`. Exists
 because caption burn-in needs an `ffmpeg` built with libass, which
@@ -466,15 +488,20 @@ process-local with no persistence: this is a single-user local tool, so a
 dict is the whole requirement, and entries older than 30 minutes are
 pruned.
 
-**`render.py`** — builds a gapless, duration-complete list of `RenderSegment`s
-covering the entire source video (turns, overlap windows, *and* the pauses
-between turns, so the output stays time-aligned with the untouched source
-audio), then renders it as one `ffmpeg` invocation: one `filter_complex`
-graph with a `trim`+`crop`+`scale` chain per segment, concatenated, muxed
-with the source audio and, when requested, `captions.py`'s `.ass` file
-burned in via the `ass` filter. The multi-speaker composite is N per-pane
-crops `hstack`ed together, capped at 3 panes. Full design, including why
-each piece works the way it does:
+**`render.py`** — builds a duration-complete list of `RenderSegment`s
+covering the source video (turns, overlap windows, *and* the pauses between
+turns, so the output stays time-aligned with the source audio) minus
+anything `trim.py` says to cut, then renders it as one `ffmpeg` invocation:
+one `filter_complex` graph with a `trim`+`crop`+`scale` chain per segment,
+concatenated, and, when requested, `captions.py`'s `.ass` file burned in via
+the `ass` filter. The multi-speaker composite is N per-pane crops
+`hstack`ed together, capped at 3 panes. Audio takes one of two paths:
+untouched and stream-copied when nothing was cut (the common case — bit
+identical, zero re-encode loss), or its own mirrored trim+concat filter
+chain, forcing a real re-encode, when dead-air/filler trimming actually
+removed time — `_segments_are_contiguous()` decides which, from the segment
+list itself rather than a flag threaded through from the caller. Full
+design, including why each piece works the way it does:
 [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md).
 
 ---
@@ -512,7 +539,7 @@ no UI component library yet (plain Tailwind classes).
 | `soundfile` | reads the extracted wav as a waveform for `diarize.py` to hand `pyannote` directly | works around `pyannote` 4 reading audio through `torchcodec`, whose prebuilt libraries link against FFmpeg 4-7 and fail to load on a modern ffmpeg (9) — see Known Limitations |
 | `pysubs2` | writes the `.ass` subtitle file `captions.py` builds, for ffmpeg's `ass`/libass filter to burn in | |
 | `setuptools<81` | **pinned** to keep `pkg_resources` available | originally pinned because `resemblyzer`'s dependency `webrtcvad` did `import pkg_resources` at import time and recent `setuptools` (≥81) dropped it; `resemblyzer` is gone but the pin remains, not reverified against the current dependency set |
-| `pytest` (dev) | backend test suite (`server/tests/`, 48 tests) | |
+| `pytest` (dev) | backend test suite (`server/tests/`, 76 tests) | |
 
 **Face recognition model.** `cv2.FaceRecognizerSF` (SFace) ships inside the
 `opencv-python-headless` already installed, so identity recognition needed no
@@ -635,7 +662,7 @@ truth kept current as the pipeline changes — the list below matches it:
   is keg-only — see Setup above for `FFMPEG_BINARY`. Export checks for this
   before starting the render and refuses with that advice, rather than
   spending 15 minutes and handing back a video with no captions on it.
-- **No automated *frontend* test suite** — the backend has 48 tests
+- **No automated *frontend* test suite** — the backend has 76 tests
   (`server/tests/`, `pytest`); the frontend is verified by typecheck, build,
   and real browser sessions against real footage.
 - **Track/person IDs aren't stable across separate uploads** — re-uploading
@@ -791,9 +818,11 @@ won.
 4. **Show a full edit to a podcast host.** Still the milestone the whole
    roadmap is sequenced against, and still not done — this is genuinely
    next now that both halves of diarisation are fixed.
-5. **Smarter cutting** — trim dead air and filler words, vary shot length
-   so the edit doesn't feel metronomic. Ahead of everything below it per
-   the epic's "decision quality before decoration" principle.
+5. ~~**Smarter cutting**~~ — dead air and filler words: done, as an opt-in
+   export option (`trimDeadAir`). See [STATUS.md](STATUS.md)'s "What's
+   left" for the full writeup. Vary shot length, the other half of this
+   line, stayed deferred — no testable target for it without a real edit
+   to compare against.
 6. **Smoothing / scene-boundary layer** — the deferred crop-interpolation
    approach. Only worth it if the real-world test says crop jitter is a
    real complaint.

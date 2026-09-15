@@ -16,14 +16,16 @@ design). For measured accuracy and performance numbers, see
 | 5 | [Overlap detection](#5-overlap-detection) | Shipped |
 | 6 | [Editor](#6-editor) | Shipped |
 | 7 | [Export](#7-export) | Shipped |
-| 8 | [Burned-in captions](#8-burned-in-captions) | Shipped |
-| 9 | [Decision logging](#9-decision-logging) | Shipped, unused so far |
-| 10 | [Text/bubble annotations](#10-text-bubble-annotations) | Stub |
-| 11 | [Voice ducking for overlapping speech](#11-voice-ducking) | Not started |
-| 12 | [Style learning from corrections](#12-style-learning) | Not started |
-| 13 | [Automatic social clips](#13-automatic-social-clips) | Not started |
-| 14 | [Multi-camera support](#14-multi-camera-support) | Not started |
-| 15 | [Desktop packaging](#15-desktop-packaging) | Not started |
+| 8 | [Smarter cutting (dead air & filler words)](#8-smarter-cutting) | Shipped |
+| 9 | [Burned-in captions](#9-burned-in-captions) | Shipped |
+| 10 | [Decision logging](#10-decision-logging) | Shipped, unused so far |
+| 11 | [Text/bubble annotations](#11-text-bubble-annotations) | Stub |
+| 12 | [Voice ducking for overlapping speech](#12-voice-ducking) | Not started |
+| 13 | [Style learning from corrections](#13-style-learning) | Not started |
+| 14 | [Automatic social clips](#14-automatic-social-clips) | Not started |
+| 15 | [Multi-camera support](#15-multi-camera-support) | Not started |
+| 16 | [Desktop packaging](#16-desktop-packaging) | Not started |
+| — | [Vary shot length](#vary-shot-length-deferred) | Deferred |
 
 ---
 
@@ -108,7 +110,7 @@ A visual flag on the transcript wherever more than one person is talking at
 once — independent of what layout is currently chosen for that stretch.
 This is what actually decides when Split gets suggested automatically, and
 it's a *visual* signal only: it doesn't touch audio (see
-[#11](#11-voice-ducking) for why that's a separate, unsolved problem).
+[#12](#12-voice-ducking) for why that's a separate, unsolved problem).
 
 *Implementation:* part of the diarization pass in
 `server/pipeline/diarize.py` — community-1 finds overlapping speech in the
@@ -136,7 +138,47 @@ against real footage — see [STATUS.md](STATUS.md#measured-not-asserted).
 *Implementation:* `server/pipeline/render.py`, `POST /export` in
 `server/main.py`.
 
-### 8. Burned-in captions
+### 8. Smarter cutting
+
+An opt-in export checkbox ("Trim dead air & filler words") that cuts a real
+edit closer to what a human editor would leave in:
+
+- **Dead air.** A pause longer than about 1.2s gets trimmed down to a short
+  beat (~0.35s), not removed entirely — a hard cut to total silence reads as
+  a jump cut, so a little breathing room survives every cut.
+- **Filler words.** Standalone disfluencies (`um`, `uh`, `erm`, and similar)
+  get cut from both audio and video. Deliberately narrow: words that are
+  *sometimes* filler ("like", "so", "actually") are never touched, because
+  there's no way to tell filler "like" from a real one from the word alone,
+  and cutting the wrong one removes meaning instead of dead air.
+
+Off by default, unlike captions — this is the one export option that
+actually removes content rather than adding something on top of it. Turning
+it on forces a real audio re-encode (the source audio can no longer be
+copied through untouched once something's cut from it), and if captions are
+also on, caption timing is remapped to the trimmed timeline so the two stay
+in sync.
+
+Not measured against real footage the way [auto-framing](#4-auto-framing)'s
+constants are — there's no reference edit to tune the "how long is too long
+a pause" cutoff against yet. Treat the current thresholds as reasoned
+defaults, not settled numbers.
+
+*Implementation:* `server/pipeline/trim.py` (range detection + timeline
+remapping), `server/pipeline/render.py` (segment dropping, trimmed-audio
+render path).
+
+#### Vary shot length (deferred)
+
+The other half of the roadmap line this feature came from — varying shot
+length so the edit doesn't cut with the same rhythm every time, rather than
+just removing time. Not built: unlike dead air and filler words, there's no
+clear, testable definition of "right" here without a real edit to compare
+against, and guessing at a fix for a problem nobody's confirmed exists yet
+is exactly the kind of premature tuning this project avoids elsewhere (see
+[STATUS.md](STATUS.md)'s smoothing-layer deferral for the same reasoning).
+
+### 9. Burned-in captions
 
 Optional captions rendered directly into the video, cut from Whisper's
 word-level timestamps rather than the coarser turn boundaries — so caption
@@ -148,25 +190,25 @@ no captions after a long render.
 
 *Implementation:* `server/pipeline/captions.py`.
 
-### 9. Decision logging
+### 10. Decision logging
 
 Every successful export writes a `decisions.jsonl` log of the layout
 choices made for that episode (which turns got Zoom vs Split, and any
 manual corrections). Not surfaced anywhere in the UI yet — it exists so
 that if a future feature wants to learn from repeated manual corrections
-(see [#12](#12-style-learning)), the data already exists rather than
+(see [#13](#13-style-learning)), the data already exists rather than
 needing to be built retroactively.
 
 *Implementation:* `_log_decision()` in `server/main.py`, written to
 `server/logs/<session_id>/decisions.jsonl` (gitignored).
 
-### 10. Text/bubble annotations
+### 11. Text/bubble annotations
 
 The button exists in the editor and explains why it's disabled. No backend
 support yet. Scoped as a later roadmap item — see
 [STATUS.md § What's left](STATUS.md#whats-left).
 
-### 11. Voice ducking
+### 12. Voice ducking
 
 Lowering one person's audio so another's is clearer during overlapping
 speech. Deliberately not scoped yet: isolating one voice from a single
@@ -175,28 +217,28 @@ of this project hard) is a genuinely open source-separation research
 problem, not an engineering checkbox. Gated on a research spike, not on
 priority.
 
-### 12. Style learning
+### 13. Style learning
 
 The idea: if a future editor repeatedly makes the same kind of correction
 (e.g. always overriding Split back to Zoom in a particular situation),
 learn from that pattern instead of asking every time. Gated on there being
 evidence of repeat editors making repeat corrections — the data collection
-for this already exists ([#9](#9-decision-logging)), the learning doesn't,
+for this already exists ([#10](#10-decision-logging)), the learning doesn't,
 and building it before there's a pattern to learn from would be guessing.
 
-### 13. Automatic social clips
+### 14. Automatic social clips
 
 Auto-selecting short, shareable clips from a full episode. Planned to use
 an offline scoring heuristic (pace, silence, turn density) rather than a
 cloud LLM call, to stay consistent with the local-first design. Not
 started.
 
-### 14. Multi-camera support
+### 15. Multi-camera support
 
 Cutting between multiple camera angles, not just one fixed frame. Noted as
 a stretch goal from the start of the project; not begun.
 
-### 15. Desktop packaging
+### 16. Desktop packaging
 
 Wrapping this as a standalone desktop app (e.g. via Electron) instead of
 "run two local services and open a browser tab." The architecture already

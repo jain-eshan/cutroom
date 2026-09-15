@@ -137,17 +137,25 @@ def build_render_segments(
 	overlap_segments: list[OverlapSegment],
 	layout_choices: list[LayoutChoice],
 	people: list[Track],
+	drop_ranges: list[tuple[float, float]] | None = None,
 ) -> list[RenderSegment]:
-	"""Build a gapless, duration-complete list of segments covering
-	[0, duration] -- one per stretch of time with a single layout decision.
+	"""Build a duration-complete list of segments covering [0, duration] minus
+	any `drop_ranges` -- one per stretch of time with a single layout decision.
 
-	Gapless matters: the exported video has to stay time-aligned with the
-	source's untouched audio track, so every second of the timeline needs a
-	segment, including the pauses/silence *between* turns (rendered as the
-	untouched wide shot) -- not just the seconds a turn or overlap explicitly
-	covers. Dropping gap time here would silently shorten the video relative
-	to the audio.
+	With no `drop_ranges` (the default), this is gapless: the exported video
+	has to stay time-aligned with the source's untouched audio track, so every
+	second of the timeline needs a segment, including the pauses/silence
+	*between* turns (rendered as the untouched wide shot) -- not just the
+	seconds a turn or overlap explicitly covers. Dropping gap time here would
+	silently shorten the video relative to the audio.
+
+	`drop_ranges` (dead air / filler words -- see pipeline/trim.py) is the one
+	deliberate exception: time inside those ranges is skipped entirely rather
+	than kept as an "original" filler segment. `render_export` detects the
+	resulting non-contiguous segment list and builds a matching audio edit
+	instead of assuming the source audio can be used untouched.
 	"""
+	drop_ranges = drop_ranges or []
 	boundaries = {0.0, duration}
 	for lc in layout_choices:
 		boundaries.add(max(0.0, min(duration, lc.start)))
@@ -155,6 +163,9 @@ def build_render_segments(
 	for ov in overlap_segments:
 		boundaries.add(max(0.0, min(duration, ov.start)))
 		boundaries.add(max(0.0, min(duration, ov.end)))
+	for d0, d1 in drop_ranges:
+		boundaries.add(max(0.0, min(duration, d0)))
+		boundaries.add(max(0.0, min(duration, d1)))
 	sorted_boundaries = sorted(boundaries)
 
 	segments: list[RenderSegment] = []
@@ -162,6 +173,9 @@ def build_render_segments(
 		if b1 - b0 <= 1e-6:
 			continue
 		mid = (b0 + b1) / 2
+
+		if any(d0 <= mid < d1 for d0, d1 in drop_ranges):
+			continue  # inside a cut range -- not part of the output at all
 
 		overlap = next((ov for ov in overlap_segments if ov.start <= mid < ov.end), None)
 		turn = next((lc for lc in layout_choices if lc.start <= mid < lc.end), None)
@@ -223,14 +237,24 @@ def build_render_segments(
 
 def _merge_adjacent(segments: list[RenderSegment]) -> list[RenderSegment]:
 	"""Merge consecutive segments with an identical layout decision -- avoids
-	pointless re-encode boundaries. Not a correctness requirement, just
-	fewer filter-graph nodes for ffmpeg to chew through."""
+	pointless re-encode boundaries. Mostly not a correctness requirement, just
+	fewer filter-graph nodes for ffmpeg to chew through -- except the adjacency
+	check below, which is: without `drop_ranges` two segments in this list are
+	always time-adjacent already (the boundary-pair loop above guarantees it),
+	but a dropped range can leave two same-layout segments in the list with a
+	real gap between them. Merging those on layout equality alone would splice
+	across the cut, silently keeping the dropped time in the output -- exactly
+	the bug this exists to avoid."""
 	if not segments:
 		return []
 	merged = [segments[0]]
 	for seg in segments[1:]:
 		last = merged[-1]
-		if last.layout == seg.layout and last.speaker_bboxes == seg.speaker_bboxes:
+		if (
+			last.layout == seg.layout
+			and last.speaker_bboxes == seg.speaker_bboxes
+			and abs(last.end - seg.start) <= 1e-6
+		):
 			merged[-1] = RenderSegment(
 				start=last.start, end=seg.end, layout=last.layout, speaker_bboxes=last.speaker_bboxes
 			)
@@ -349,14 +373,35 @@ def _source_audio_codec(input_path: Path) -> str | None:
 
 def _audio_args(input_path: Path) -> list[str]:
 	"""Stream-copy the audio when the container allows it; only re-encode as
-	a fallback. Copying is bit-identical -- the audio is never edited, so
-	there is no reason to pay a generation of loss for it."""
+	a fallback. Copying is bit-identical -- when nothing is cut, the audio is
+	never edited, so there is no reason to pay a generation of loss for it.
+	Not used when segments are non-contiguous (dead-air/filler trimming) --
+	see `_segments_are_contiguous` and `render_export`, where a real audio
+	edit forces a real encode."""
 	codec = _source_audio_codec(input_path)
 	if codec is None:
 		return []
 	if codec in MP4_SAFE_AUDIO_CODECS:
 		return ["-c:a", "copy"]
 	return ["-c:a", "aac", "-b:a", AUDIO_BITRATE]
+
+
+def _segments_are_contiguous(segments: list[RenderSegment], duration: float) -> bool:
+	"""Whether the segment list covers the full [0, duration] with no gaps --
+	true for every export except one where drop_ranges (pipeline/trim.py)
+	actually cut something. Checks both the internal gaps between segments
+	*and* the outer edges: a drop_range at the very start or end of the video
+	leaves the remaining segments mutually adjacent to each other, so an
+	internal-only check would miss it and wrongly take the untouched-audio
+	path below. The segments list (plus duration) is the source of truth for
+	this, rather than a separate flag threaded through from the caller --
+	whatever built the list is what knows whether a drop happened, and this
+	only cares about the result."""
+	if not segments:
+		return duration <= 1e-6
+	if abs(segments[0].start) > 1e-6 or abs(segments[-1].end - duration) > 1e-6:
+		return False
+	return all(abs(a.end - b.start) <= 1e-6 for a, b in zip(segments, segments[1:]))
 
 
 @lru_cache(maxsize=1)
@@ -394,17 +439,25 @@ def render_export(
 	segments: list[RenderSegment],
 	frame_w: int,
 	frame_h: int,
+	duration: float,
 	ass_path: Path | None = None,
 ) -> None:
 	"""One ffmpeg invocation, one filter_complex graph: each segment gets its
 	own trim+crop+scale filter chain, all segments concat back into a single
-	video stream the same total length as the source, then muxed with the
-	source's original audio track (untouched content -- no ducking, no
-	trimming -- and stream-copied rather than re-encoded whenever the source
-	codec can live in an MP4, so audio comes through bit-identical). Captions,
-	when requested, are burned in as a last filter step on the concatenated
-	stream rather than per-segment -- one filter application instead of one
-	per segment, and cue timing is independent of segment boundaries anyway."""
+	video stream. Captions, when requested, are burned in as a last filter
+	step on the concatenated stream rather than per-segment -- one filter
+	application instead of one per segment, and cue timing is independent of
+	segment boundaries anyway.
+
+	Audio takes one of two paths. The common case -- no dead-air/filler
+	trimming, `segments` gapless and duration-complete -- muxes the source's
+	original audio track untouched (stream-copied rather than re-encoded
+	whenever the source codec can live in an MP4, so it comes through
+	bit-identical: nothing was cut, so there's no reason to pay a generation
+	of loss for it). When `segments` has gaps (pipeline/trim.py cut something),
+	the audio needs the exact same cuts or it drifts out of sync with the
+	video almost immediately -- so it gets its own trim+concat filter chain
+	mirroring the video one, which forces a real re-encode."""
 	filter_parts = [_segment_filter(i, seg, frame_w, frame_h) for i, seg in enumerate(segments)]
 	concat_inputs = "".join(f"[v{i}]" for i in range(len(segments)))
 	concat_label = "vconcat" if ass_path is not None else "vout"
@@ -412,18 +465,30 @@ def render_export(
 	if ass_path is not None:
 		filter_complex += f";[{concat_label}]ass=filename={_escape_filter_path(ass_path)}[vout]"
 
+	trimmed_audio = not _segments_are_contiguous(segments, duration)
+	if trimmed_audio:
+		audio_parts = [
+			f"[0:a]atrim=start={_fmt(seg.start)}:end={_fmt(seg.end)},asetpts=PTS-STARTPTS[a{i}]"
+			for i, seg in enumerate(segments)
+		]
+		audio_inputs = "".join(f"[a{i}]" for i in range(len(segments)))
+		filter_complex += (
+			";" + ";".join(audio_parts) + f";{audio_inputs}concat=n={len(segments)}:v=0:a=1[aout]"
+		)
+
 	cmd = [
 		FFMPEG,
 		"-y",
 		"-i", str(input_path),
 		"-filter_complex", filter_complex,
 		"-map", "[vout]",
-		"-map", "0:a?",
 		"-c:v", "libx264",
 		"-preset", VIDEO_PRESET,
 		"-crf", VIDEO_CRF,
-		*_audio_args(input_path),
-		"-movflags", "+faststart",
-		str(output_path),
 	]
+	if trimmed_audio:
+		cmd += ["-map", "[aout]", "-c:a", "aac", "-b:a", AUDIO_BITRATE]
+	else:
+		cmd += ["-map", "0:a?", *_audio_args(input_path)]
+	cmd += ["-movflags", "+faststart", str(output_path)]
 	subprocess.run(cmd, check=True, capture_output=True)

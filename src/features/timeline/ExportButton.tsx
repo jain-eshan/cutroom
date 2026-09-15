@@ -24,6 +24,7 @@ export function ExportButton({
 	overlapWindows,
 	words,
 	captionsEnabled,
+	trimDeadAirEnabled,
 	faces,
 	speakerToPerson,
 	personForTurn,
@@ -35,6 +36,7 @@ export function ExportButton({
 	overlapWindows: OverlapWindow[];
 	words: Word[];
 	captionsEnabled: boolean;
+	trimDeadAirEnabled: boolean;
 	faces: DetectFacesResponse;
 	speakerToPerson: Record<number, number>;
 	/** Resolved person for a turn, including any manual correction. */
@@ -77,6 +79,7 @@ export function ExportButton({
 				sessionId,
 				words,
 				captionsEnabled,
+				trimDeadAirEnabled,
 			);
 			const url = URL.createObjectURL(blob);
 			const baseName = file.name.replace(/\.[^.]+$/, "");

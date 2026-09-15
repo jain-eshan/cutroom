@@ -186,6 +186,7 @@ export async function exportVideo(
 	sessionId: string,
 	words: Word[],
 	captions: boolean,
+	trimDeadAir: boolean,
 ): Promise<Blob> {
 	const form = new FormData();
 	form.append("file", file);
@@ -199,6 +200,7 @@ export async function exportVideo(
 	// episode length.
 	form.append("words", new Blob([JSON.stringify(words)], { type: "application/json" }), "words.json");
 	form.append("captions", String(captions));
+	form.append("trimDeadAir", String(trimDeadAir));
 
 	const res = await fetch(new URL("/export", API_BASE), { method: "POST", body: form });
 	if (!res.ok) {

@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
 from pipeline.audio import NoAudioTrack, extract_wav
-from pipeline.captions import build_caption_cues, write_ass
+from pipeline.captions import CaptionCue, build_caption_cues, write_ass
 from pipeline.diarize import Diarization, DiarizationUnavailable, diarize
 from pipeline.faces import BBox, detect_and_track_faces, get_video_dimensions, get_video_duration
 from pipeline.fuse import fuse
@@ -30,6 +30,7 @@ from pipeline.render import (
 	render_export,
 )
 from pipeline.transcribe import Word, transcribe
+from pipeline.trim import dead_air_ranges, filler_word_ranges, merge_ranges, remap_time
 from pipeline.turns import build_turns
 
 load_dotenv()
@@ -224,6 +225,7 @@ async def export_endpoint(
 	# under the 1MB text-field cap only by luck; a two-hour one would not.
 	words: UploadFile | None = None,
 	captions: bool = Form(False),
+	trimDeadAir: bool = Form(False),
 ) -> FileResponse:
 	try:
 		layout_choices_data = json.loads(layoutChoices)
@@ -232,6 +234,7 @@ async def export_endpoint(
 		words_data = json.loads(await words.read()) if words is not None else []
 	except json.JSONDecodeError as err:
 		raise HTTPException(400, f"Malformed JSON in request field: {err}") from err
+	words_list = [Word(start=w["start"], end=w["end"], text=w["text"]) for w in words_data]
 
 	# Before the upload is saved and the render starts, not after: a full-length
 	# export is ~15 minutes of work, and silently dropping the captions someone
@@ -281,22 +284,47 @@ async def export_endpoint(
 		await _save_upload(file, input_path)
 		duration = get_video_duration(str(input_path))
 
+		# Dead air / filler words to cut, if asked for. Computed from the turns
+		# already resolved on the frontend (layout_choices) plus word-level
+		# timestamps when they're available -- filler-word detection needs
+		# them, dead-air detection alone doesn't. See pipeline/trim.py for why
+		# these are deliberately conservative.
+		drop_ranges: list[tuple[float, float]] = []
+		if trimDeadAir:
+			turn_bounds = [(lc.start, lc.end) for lc in layout_choices]
+			ranges = dead_air_ranges(turn_bounds, duration)
+			if words_list:
+				ranges += filler_word_ranges(words_list)
+			drop_ranges = merge_ranges(ranges)
+
 		segments = build_render_segments(
 			duration=duration,
 			overlap_segments=overlap_segments,
 			layout_choices=layout_choices,
 			people=people,
+			drop_ranges=drop_ranges,
 		)
 
 		ass_path: Path | None = None
-		if captions and words_data:
-			words_list = [Word(start=w["start"], end=w["end"], text=w["text"]) for w in words_data]
+		if captions and words_list:
 			cues = build_caption_cues(words_list)
+			if drop_ranges:
+				# Cue timestamps were computed against the untrimmed source;
+				# without this they'd drift out of sync with the trimmed
+				# video by however much was already cut before each cue.
+				cues = [
+					CaptionCue(
+						start=remap_time(cue.start, drop_ranges),
+						end=remap_time(cue.end, drop_ranges),
+						text=cue.text,
+					)
+					for cue in cues
+				]
 			ass_path = Path(tmp) / "captions.ass"
 			write_ass(cues, ass_path, frame_w, frame_h)
 
 		output_path = Path(tmp) / "export.mp4"
-		render_export(input_path, output_path, segments, frame_w, frame_h, ass_path=ass_path)
+		render_export(input_path, output_path, segments, frame_w, frame_h, duration, ass_path=ass_path)
 	except subprocess.CalledProcessError as err:
 		shutil.rmtree(tmp, ignore_errors=True)
 		stderr_tail = (err.stderr or b"").decode(errors="replace")[-2000:]

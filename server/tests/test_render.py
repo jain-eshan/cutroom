@@ -12,7 +12,9 @@ from pipeline.render import (
 	Keyframe,
 	LayoutChoice,
 	OverlapSegment,
+	RenderSegment,
 	Track,
+	_segments_are_contiguous,
 	build_render_segments,
 )
 
@@ -199,3 +201,71 @@ class TestBuildRenderSegments:
 		# Same speaker, same bbox (single keyframe) -> merges into one segment.
 		assert len(segments) == 1
 		assert segments[0].start == 0.0 and segments[0].end == 4.0
+
+	def test_drop_range_is_excluded_from_the_output(self):
+		# A 2s dead-air cut in the middle of an otherwise-continuous "original"
+		# stretch -- must actually disappear from the timeline, not just get
+		# relabeled.
+		segments = build_render_segments(10.0, [], [], [], drop_ranges=[(4.0, 6.0)])
+		covered = sum(s.end - s.start for s in segments)
+		assert covered == pytest.approx(8.0)
+		assert not any(s.start <= 5.0 < s.end for s in segments)
+
+	def test_drop_range_does_not_get_silently_rejoined_across_the_cut(self):
+		# Regression test for the bug this feature nearly shipped with: two
+		# "original" segments either side of a cut have the same layout and
+		# the same (empty) speaker_bboxes, which is exactly what
+		# _merge_adjacent used to merge on -- gluing them back into one
+		# continuous segment spanning the cut and silently keeping the
+		# dropped time in the render. The fix requires true time-adjacency,
+		# not just equal layout, so the cut must survive as an actual gap
+		# between two segments rather than disappearing into one merged span.
+		segments = build_render_segments(10.0, [], [], [], drop_ranges=[(4.0, 6.0)])
+		assert [(s.start, s.end) for s in segments] == [(0.0, 4.0), (6.0, 10.0)]
+
+	def test_drop_range_at_the_very_start_and_end(self):
+		tracks = [_track(0, BBOX_A)]
+		layout_choices = [LayoutChoice(0, 0, 2.0, 8.0, "zoom", "zoom")]
+		segments = build_render_segments(
+			10.0, [], layout_choices, tracks, drop_ranges=[(0.0, 1.0), (9.0, 10.0)]
+		)
+		assert segments[0].start == 1.0
+		assert segments[-1].end == 9.0
+
+	def test_no_drop_ranges_behaves_exactly_as_before(self):
+		tracks = [_track(0, BBOX_A)]
+		layout_choices = [LayoutChoice(0, 0, 0.0, 5.0, "zoom", "zoom")]
+		with_none = build_render_segments(5.0, [], layout_choices, tracks)
+		with_empty = build_render_segments(5.0, [], layout_choices, tracks, drop_ranges=[])
+		assert with_none == with_empty
+
+
+class TestSegmentsAreContiguous:
+	"""`_segments_are_contiguous` decides whether render_export can stream-copy
+	the source's whole audio track untouched, or has to build a trimmed audio
+	edit to match a cut video timeline. Getting this wrong either encodes
+	audio that didn't need it, or -- the real risk -- ships an export whose
+	audio silently doesn't match a trimmed video."""
+
+	def test_gapless_full_duration_is_contiguous(self):
+		segments = [RenderSegment(start=0.0, end=5.0, layout="original", speaker_bboxes=[])]
+		assert _segments_are_contiguous(segments, 5.0)
+
+	def test_internal_gap_is_not_contiguous(self):
+		segments = [
+			RenderSegment(start=0.0, end=4.0, layout="original", speaker_bboxes=[]),
+			RenderSegment(start=6.0, end=10.0, layout="original", speaker_bboxes=[]),
+		]
+		assert not _segments_are_contiguous(segments, 10.0)
+
+	def test_gap_at_the_start_is_not_contiguous(self):
+		# The bug this guards against: a drop at the very start/end leaves the
+		# *remaining* segments mutually adjacent, so a check that only looks
+		# at gaps *between* segments would miss this and wrongly take the
+		# untouched-audio path.
+		segments = [RenderSegment(start=1.0, end=10.0, layout="original", speaker_bboxes=[])]
+		assert not _segments_are_contiguous(segments, 10.0)
+
+	def test_gap_at_the_end_is_not_contiguous(self):
+		segments = [RenderSegment(start=0.0, end=9.0, layout="original", speaker_bboxes=[])]
+		assert not _segments_are_contiguous(segments, 10.0)

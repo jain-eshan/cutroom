@@ -63,7 +63,7 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | Export completes and is faithful | **95,436 frames in -> 95,436 out**, duration exact, 1920x1080 preserved, audio stream-copied **bit-identical** (matching MD5), 3.5GB out, peak 949MB RAM |
 | Diarisation does **not** hold up at length | 4 people -> **2 speakers, 34 turns in 53 min** (median turn 33s, longest 6.4 min). See "What's left" |
 
-**Checks:** 23 backend tests passing, `tsc` clean, `oxlint` clean (two
+**Checks:** 76 backend tests passing, `tsc` clean, `oxlint` clean (two
 deliberate, documented warnings), production build clean, full flow verified
 in a real browser against real footage.
 
@@ -149,9 +149,19 @@ Ordered by what unlocks the most, not by effort.
    two-speaker diarisation is not worth a host's time.
 
 ### Then, informed by that
-3. **Smarter cutting** — trim dead air and filler words, vary shot length so
-   the edit doesn't feel metronomic. The epic's "decision quality before
-   decoration" principle puts this ahead of everything below.
+3. ~~**Smarter cutting**~~ — dead air and filler words: **done**, ahead of
+   the host test this section is nominally gated on (built at the founder's
+   explicit direction rather than waiting). An opt-in export option trims
+   pauses over ~1.2s down to a short beat and cuts standalone disfluencies
+   (`um`, `uh`) from both audio and video — conservative by design, see
+   [FEATURES.md § Smarter cutting](FEATURES.md#8-smarter-cutting). Not
+   measured against real footage the way [framing.py](../server/pipeline/framing.py)'s
+   constants are, since there's no reference edit yet to tune the silence
+   threshold against — the numbers are reasoned defaults, not settled ones.
+   *Vary shot length*, the other half of this line, stayed deferred: unlike
+   silence/filler trimming it has no clear, testable target without a real
+   edit to compare against, so building it now would be guessing rather than
+   engineering.
 4. **Smoothing / scene-boundary layer** — the deferred Approach B. Only
    worth it if the real-world test says crop jitter is a real complaint.
 5. **Jargon info-text annotations** — genuinely novel, nothing open-source
