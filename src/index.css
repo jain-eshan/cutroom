@@ -1,9 +1,154 @@
 @import "tailwindcss";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/jetbrains-mono";
+
+/*
+ * Cutroom design tokens, from docs/design/handoff/README.md (design_handoff_cutroom).
+ * Colour is authored in OKLCH. `accent` is the one token that never flips between
+ * themes -- see the "Three theme rules" note in the handoff before changing any of this.
+ */
+@theme {
+	--font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
+	--font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+	--color-bg: oklch(0.955 0.005 85);
+	--color-panel: oklch(0.985 0.004 85);
+	--color-chrome: oklch(0.93 0.006 85);
+	--color-raised: oklch(1 0 0);
+	--color-control: oklch(0.905 0.006 85);
+	--color-line: oklch(0.875 0.006 85);
+	--color-text: oklch(0.2 0.008 70);
+	--color-text2: oklch(0.38 0.008 70);
+	--color-text3: oklch(0.47 0.008 70);
+	--color-accent: oklch(0.74 0.16 52);
+	--color-on-accent: oklch(0.2 0.02 60);
+	--color-accent-text: oklch(0.47 0.14 45);
+	--color-track: oklch(0.915 0.006 85);
+	--color-r-wide: oklch(0.845 0.008 85);
+	--color-r-close: oklch(0.83 0.08 62);
+	--color-r-mine: oklch(0.74 0.16 52);
+	--color-r-both: oklch(0.81 0.1 35);
+	--color-r-ink: oklch(0.24 0.03 60);
+	--color-r-mine-ink: oklch(0.2 0.02 60);
+	--color-handle: oklch(0.22 0.01 70);
+	--color-s1: oklch(0.56 0.16 45);
+	--color-s2: oklch(0.48 0.12 190);
+	--color-s3: oklch(0.5 0.13 290);
+	--color-plate-a: oklch(0.33 0.006 85);
+	--color-plate-b: oklch(0.285 0.006 85);
+	--color-plate-ink: oklch(0.78 0.01 80);
+	--color-ok: oklch(0.52 0.13 155);
+	--color-warn: oklch(0.48 0.15 35);
+	--color-warn-bg: oklch(0.62 0.15 30 / 0.14);
+	--color-sel: oklch(0.955 0.012 70);
+
+	--shadow-panel: 0 2px 16px rgba(0, 0, 0, 0.1);
+
+	--radius-chip: 3px;
+	--radius-control: 6px;
+	--radius-card: 8px;
+	--radius-panel: 11px;
+}
+
+/* `system` theme mode: follow the OS live, unless a manual choice was persisted. */
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		--color-bg: oklch(0.15 0.008 70);
+		--color-panel: oklch(0.17 0.008 70);
+		--color-chrome: oklch(0.2 0.008 70);
+		--color-raised: oklch(0.22 0.008 70);
+		--color-control: oklch(0.26 0.008 70);
+		--color-line: oklch(0.25 0.008 70);
+		--color-text: oklch(0.95 0.005 80);
+		--color-text2: oklch(0.8 0.01 80);
+		--color-text3: oklch(0.66 0.01 80);
+		--color-on-accent: oklch(0.2 0.02 60);
+		--color-accent-text: oklch(0.8 0.13 60);
+		--color-track: oklch(0.215 0.008 70);
+		--color-r-wide: oklch(0.3 0.01 70);
+		--color-r-close: oklch(0.44 0.09 52);
+		--color-r-mine: oklch(0.62 0.13 52);
+		--color-r-both: oklch(0.47 0.1 30);
+		--color-r-ink: oklch(0.97 0.01 70);
+		--color-handle: oklch(0.97 0.005 80);
+		--color-s1: oklch(0.74 0.16 52);
+		--color-s2: oklch(0.72 0.13 175);
+		--color-s3: oklch(0.7 0.14 285);
+		--color-plate-a: oklch(0.27 0.008 70);
+		--color-plate-b: oklch(0.23 0.008 70);
+		--color-plate-ink: oklch(0.72 0.01 80);
+		--color-ok: oklch(0.72 0.13 155);
+		--color-warn: oklch(0.8 0.13 40);
+		--color-warn-bg: oklch(0.62 0.15 30 / 0.2);
+		--color-sel: oklch(0.21 0.008 70);
+		--shadow-panel: 0 2px 16px rgba(0, 0, 0, 0.24);
+	}
+}
+
+/* Manual override, regardless of OS setting -- required, see handoff "Theme mode". */
+:root[data-theme="dark"] {
+	--color-bg: oklch(0.15 0.008 70);
+	--color-panel: oklch(0.17 0.008 70);
+	--color-chrome: oklch(0.2 0.008 70);
+	--color-raised: oklch(0.22 0.008 70);
+	--color-control: oklch(0.26 0.008 70);
+	--color-line: oklch(0.25 0.008 70);
+	--color-text: oklch(0.95 0.005 80);
+	--color-text2: oklch(0.8 0.01 80);
+	--color-text3: oklch(0.66 0.01 80);
+	--color-on-accent: oklch(0.2 0.02 60);
+	--color-accent-text: oklch(0.8 0.13 60);
+	--color-track: oklch(0.215 0.008 70);
+	--color-r-wide: oklch(0.3 0.01 70);
+	--color-r-close: oklch(0.44 0.09 52);
+	--color-r-mine: oklch(0.62 0.13 52);
+	--color-r-both: oklch(0.47 0.1 30);
+	--color-r-ink: oklch(0.97 0.01 70);
+	--color-handle: oklch(0.97 0.005 80);
+	--color-s1: oklch(0.74 0.16 52);
+	--color-s2: oklch(0.72 0.13 175);
+	--color-s3: oklch(0.7 0.14 285);
+	--color-plate-a: oklch(0.27 0.008 70);
+	--color-plate-b: oklch(0.23 0.008 70);
+	--color-plate-ink: oklch(0.72 0.01 80);
+	--color-ok: oklch(0.72 0.13 155);
+	--color-warn: oklch(0.8 0.13 40);
+	--color-warn-bg: oklch(0.62 0.15 30 / 0.2);
+	--color-sel: oklch(0.21 0.008 70);
+	--shadow-panel: 0 2px 16px rgba(0, 0, 0, 0.24);
+}
 
 :root {
 	color-scheme: light dark;
 }
 
+:root[data-theme="light"] {
+	color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+	color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+	/* The framing regions in the editor timeline are absolutely-positioned with
+	 * a percentage width plus padding/border -- without border-box they overflow
+	 * their slots. Set globally per the handoff rather than per-component. */
+	box-sizing: border-box;
+}
+
 body {
 	margin: 0;
+	background: var(--color-bg);
+	color: var(--color-text);
+	font-family: var(--font-sans);
+}
+
+/* Monospace is only for something the machine measured -- timecodes, sizes,
+ * percentages, shell commands, error strings. Never for prose. See handoff
+ * "Typography". */
+.font-mono {
+	font-feature-settings: "tnum";
 }

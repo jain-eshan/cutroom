@@ -282,9 +282,13 @@ behind it: [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md).
 ```
 src/
 ├── App.tsx                          # top-level state machine (see below)
+├── components/
+│   ├── Logo.tsx                     # Cutroom SVG mark, reduction ladder by render size
+│   └── ThemeSwitcher.tsx            # System/Light/Dark segmented control
 ├── lib/
 │   ├── api.ts                       # typed fetch wrappers for /process, /export, /progress
-│   └── faceCrop.ts                  # bbox → CSS zoom transform math + pixel-space crop math
+│   ├── faceCrop.ts                  # bbox → CSS zoom transform math + pixel-space crop math
+│   └── theme.ts                     # `useThemeMode` — persisted, live system-preference-aware
 ├── features/
 │   ├── upload/UploadScreen.tsx      # file picker + real drag-and-drop (idle / error states)
 │   ├── upload/ProcessingScreen.tsx  # upload bytes + per-stage progress
@@ -295,6 +299,13 @@ src/
 │       ├── ExportButton.tsx         # real export flow (idle/exporting/done/error)
 │       └── types.ts                 # `Layout` type (original/zoom/split)
 ```
+
+**Design tokens & theming:** colors, type, spacing and radii are CSS custom
+properties defined once in `src/index.css`'s `@theme` block (Tailwind v4's
+CSS-first config) and re-pointed under a `[data-theme]` attribute + a
+`prefers-color-scheme` media query for the three-state theme switch. See
+[DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) for the full token table, what's
+implemented vs. deferred, and where the source design files live.
 
 **State machine** (`App.tsx`): a single `Status` union type drives which
 screen renders — `idle → processing → cast → editing` (or `error` at
@@ -517,6 +528,7 @@ design, including why each piece works the way it does:
 | `@tailwindcss/vite` / `tailwindcss` v4 | styling — v4's Vite plugin, no separate PostCSS config needed |
 | `typescript` | type safety across the whole frontend, including the API response shapes |
 | `oxlint` | linting — fast, Rust-based; caught a real bug during development (see below) |
+| `@fontsource-variable/instrument-sans` / `@fontsource-variable/jetbrains-mono` | self-hosted brand typefaces — see [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) |
 
 Deliberately small. No router (single linear screen flow doesn't need
 one), no state management library (one `useState` in `App.tsx` covers it),

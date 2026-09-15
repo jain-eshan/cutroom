@@ -4,6 +4,9 @@ import type { CastResult } from "@/features/faces/CastScreen";
 import { bboxAtTime, personCrop } from "@/lib/faceCrop";
 import { ExportButton } from "@/features/timeline/ExportButton";
 import { LAYOUT_LABELS, type Layout } from "@/features/timeline/types";
+import { Logo } from "@/components/Logo";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import type { ThemeMode } from "@/lib/theme";
 
 // Two people get a side-by-side split; three or more get the speaker-focus
 // layout instead of N narrow columns. Must match render.py's DUO_SPLIT_MAX
@@ -17,12 +20,8 @@ function formatTime(seconds: number): string {
 	return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-const SPEAKER_COLORS = [
-	"border-blue-400 bg-blue-50 dark:bg-blue-950/30",
-	"border-purple-400 bg-purple-50 dark:bg-purple-950/30",
-	"border-amber-400 bg-amber-50 dark:bg-amber-950/30",
-	"border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30",
-];
+// Pane cap is 3 -- see docs/design/handoff README, speaker colour tokens.
+const SPEAKER_DOT = ["bg-s1", "bg-s2", "bg-s3"];
 
 const LAYOUTS: Layout[] = ["original", "zoom", "split"];
 
@@ -174,6 +173,8 @@ export function EditorView({
 	words,
 	faces,
 	cast,
+	themeMode,
+	onThemeModeChange,
 }: {
 	file: File;
 	sessionId: string;
@@ -182,6 +183,8 @@ export function EditorView({
 	words: Word[];
 	faces: DetectFacesResponse;
 	cast: CastResult;
+	themeMode: ThemeMode;
+	onThemeModeChange: (mode: ThemeMode) => void;
 }) {
 	const [captionsEnabled, setCaptionsEnabled] = useState(true);
 	// Off by default, unlike captions -- this one actually removes content
@@ -254,13 +257,138 @@ export function EditorView({
 	const showSingle = activeLayout === "zoom" && Boolean(bboxForPerson(activePerson));
 	const cropped = showComposite || Boolean(showSingle);
 
+	const dotExt = file.name.lastIndexOf(".");
+	const baseName = dotExt > 0 ? file.name.slice(0, dotExt) : file.name;
+	const ext = dotExt > 0 ? file.name.slice(dotExt) : "";
+	const reviewCount = turns.filter(
+		(t, i) => personForTurn(i) === null || overlapFor(overlapWindows, t.start, t.end),
+	).length;
+
 	return (
-		<div className="mx-auto flex max-w-3xl flex-col gap-4 px-6 py-10">
-			<div
-				ref={stageRef}
-				className="relative overflow-hidden rounded-lg bg-black"
-				style={{ aspectRatio: `${faces.frameWidth} / ${faces.frameHeight}` }}
-			>
+		<div className="flex h-screen flex-col bg-bg">
+			<header className="flex h-11 shrink-0 items-center gap-3 border-b border-line bg-chrome px-3">
+				<Logo size={18} className="text-text" />
+				<span className="font-mono text-[12px] text-text">
+					{baseName}
+					<span className="text-text3">{ext}</span>
+				</span>
+				<div className="flex-1" />
+				<ThemeSwitcher mode={themeMode} onChange={onThemeModeChange} />
+			</header>
+
+			<div className="flex flex-1 overflow-hidden">
+				<aside className="flex w-[404px] shrink-0 flex-col overflow-y-auto border-r border-line bg-panel">
+					<div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
+						<span className="text-[13px] font-semibold text-text">Transcript</span>
+						{reviewCount > 0 && (
+							<span className="flex items-center gap-1.5 rounded-card bg-raised px-2 py-1 font-mono text-[10px] text-text2">
+								<span className="h-2 w-2 rounded-[2px] bg-accent" />
+								{reviewCount} to review
+							</span>
+						)}
+					</div>
+					<div className="flex flex-col">
+						{turns.map((t, i) => {
+							const overlap = overlapFor(overlapWindows, t.start, t.end);
+							const assigned = personForTurn(i);
+							const corrected = personOverrides[i] !== undefined;
+							const selected = i === activeTurn;
+							const needsAttention = assigned === null;
+							const borderColor = selected
+								? "border-l-accent"
+								: overlap
+									? "border-l-r-both"
+									: needsAttention
+										? "border-l-warn"
+										: "border-l-transparent";
+							return (
+								<div
+									key={i}
+									className={`border-l-[3px] px-3 py-2.5 ${borderColor} ${selected ? "bg-sel" : ""}`}
+								>
+									<button type="button" onClick={() => playTurn(i)} className="block w-full text-left">
+										<div className="mb-1 flex flex-wrap items-center gap-2">
+											<span className={`h-[7px] w-[7px] shrink-0 rounded-full ${SPEAKER_DOT[t.speaker % SPEAKER_DOT.length]}`} />
+											<span className="text-[11.5px] font-semibold text-text">{nameOf(assigned)}</span>
+											<span className="font-mono text-[10px] text-text3">
+												{formatTime(t.start)}–{formatTime(t.end)}
+											</span>
+											{corrected && <span className="font-mono text-[10px] text-accent-text">corrected</span>}
+											{needsAttention && (
+												<span className="rounded-chip bg-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] tracking-[0.04em] text-warn">
+													NOBODY ASSIGNED
+												</span>
+											)}
+											{overlap && (
+												<span className="rounded-chip bg-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] tracking-[0.04em] text-warn">
+													TALKING OVER
+												</span>
+											)}
+										</div>
+										<p
+											className={
+												selected
+													? "text-[13.5px] leading-[1.6] text-text"
+													: "text-[12.5px] leading-[1.55] text-text3"
+											}
+										>
+											{t.text}
+										</p>
+									</button>
+									<div className="mt-2 flex flex-wrap items-center gap-2">
+										<select
+											value={assigned === null ? "" : String(assigned)}
+											onChange={(e) =>
+												setPersonOverrides((prev) => ({
+													...prev,
+													[i]: e.target.value === "" ? null : Number(e.target.value),
+												}))
+											}
+											title="Who is on screen for this turn"
+											className="rounded-control border border-line bg-control px-1.5 py-1 font-mono text-[10px] text-text"
+										>
+											<option value="">Nobody</option>
+											{faces.people.map((p) => (
+												<option key={p.id} value={p.id}>
+													{nameOf(p.id)}
+												</option>
+											))}
+										</select>
+										<div className="flex overflow-hidden rounded-control border border-line text-[10px]">
+											{LAYOUTS.map((layout) => (
+												<button
+													key={layout}
+													type="button"
+													onClick={() => setLayouts((prev) => ({ ...prev, [i]: layout }))}
+													className={`px-2 py-1 font-mono ${
+														layouts[i] === layout ? "bg-accent text-on-accent" : "bg-control text-text2"
+													}`}
+												>
+													{LAYOUT_LABELS[layout]}
+												</button>
+											))}
+										</div>
+										<button
+											type="button"
+											disabled
+											title="Annotations (text/bubbles) — not built yet, see docs/FEATURES.md"
+											className="cursor-not-allowed rounded-control border border-dashed border-line px-2 py-1 font-mono text-[10px] text-text3"
+										>
+											+ Annotation
+										</button>
+									</div>
+								</div>
+							);
+						})}
+					</div>
+				</aside>
+
+				<main className="flex flex-1 flex-col gap-3 overflow-y-auto p-6">
+					<div
+						ref={stageRef}
+						className="relative overflow-hidden rounded-card bg-black"
+						style={{ aspectRatio: `${faces.frameWidth} / ${faces.frameHeight}` }}
+					>
 				{videoUrl && (
 					<video
 						ref={videoRef}
@@ -344,121 +472,48 @@ export function EditorView({
 					</div>
 				)}
 			</div>
-			<p className="text-xs text-neutral-400">
-				Click a turn to seek there. These previews use the same framing maths as the export.
-			</p>
-			<div className="flex flex-col gap-2">
-				{turns.map((t, i) => {
-					const overlap = overlapFor(overlapWindows, t.start, t.end);
-					const assigned = personForTurn(i);
-					const corrected = personOverrides[i] !== undefined;
-					return (
-						<div
-							key={i}
-							className={`rounded-lg border-l-4 p-3 text-sm ${SPEAKER_COLORS[t.speaker % SPEAKER_COLORS.length]} ${
-								i === activeTurn ? "ring-2 ring-blue-400" : ""
-							}`}
-						>
-							<button type="button" onClick={() => playTurn(i)} className="block w-full text-left">
-								<div className="mb-1 flex flex-wrap items-center gap-2 text-xs font-medium text-neutral-500">
-									<span className="text-neutral-700 dark:text-neutral-300">{nameOf(assigned)}</span>
-									<span>
-										{formatTime(t.start)}–{formatTime(t.end)}
-									</span>
-									{corrected && <span className="text-blue-500">corrected</span>}
-									{assigned === null && <span className="text-amber-500">nobody assigned</span>}
-									{overlap && (
-										<span className="rounded bg-orange-100 px-1.5 py-0.5 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400">
-											{[...new Set(overlap.speakers.map((sp) => cast.speakerToPerson[sp]))]
-												.filter((id): id is number => id !== undefined)
-												.map((id) => nameOf(id))
-												.join(" + ")}{" "}
-											talking over each other
-										</span>
-									)}
-								</div>
-								<p>{t.text}</p>
-							</button>
-							<div className="mt-2 flex flex-wrap items-center gap-2">
-								<select
-									value={assigned === null ? "" : String(assigned)}
-									onChange={(e) =>
-										setPersonOverrides((prev) => ({
-											...prev,
-											[i]: e.target.value === "" ? null : Number(e.target.value),
-										}))
-									}
-									title="Who is on screen for this turn"
-									className="rounded border border-neutral-300 bg-transparent px-1.5 py-1 text-xs dark:border-neutral-700"
-								>
-									<option value="">Nobody</option>
-									{faces.people.map((p) => (
-										<option key={p.id} value={p.id}>
-											{nameOf(p.id)}
-										</option>
-									))}
-								</select>
-								<div className="flex overflow-hidden rounded border border-neutral-300 text-xs dark:border-neutral-700">
-									{LAYOUTS.map((layout) => (
-										<button
-											key={layout}
-											type="button"
-											onClick={() => setLayouts((prev) => ({ ...prev, [i]: layout }))}
-											className={`px-2 py-1 ${
-												layouts[i] === layout
-													? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
-													: "bg-transparent"
-											}`}
-										>
-											{LAYOUT_LABELS[layout]}
-										</button>
-									))}
-								</div>
-								<button
-									type="button"
-									disabled
-									title="Annotations (text/bubbles) — coming in a later phase"
-									className="cursor-not-allowed rounded border border-neutral-300 px-2 py-1 text-xs text-neutral-400 dark:border-neutral-700"
-								>
-									+ Annotation
-								</button>
-							</div>
-						</div>
-					);
-				})}
+				<p className="text-[11px] text-text3">
+						Click a turn to seek there. These previews use the same framing maths as the export.
+					</p>
+				</main>
 			</div>
-			<label className="flex w-fit items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-				<input
-					type="checkbox"
-					checked={captionsEnabled}
-					onChange={(e) => setCaptionsEnabled(e.target.checked)}
+
+			<footer className="flex shrink-0 items-center justify-between gap-4 border-t border-line bg-panel px-4 py-3">
+				<div className="flex items-center gap-4">
+					<label className="flex w-fit items-center gap-2 text-[12px] text-text2">
+						<input
+							type="checkbox"
+							checked={captionsEnabled}
+							onChange={(e) => setCaptionsEnabled(e.target.checked)}
+						/>
+						Captions on
+					</label>
+					<label
+						className="flex w-fit items-center gap-2 text-[12px] text-text2"
+						title="Cuts long pauses down to a short beat and removes standalone filler words (um, uh). Conservative on purpose -- see docs/FEATURES.md."
+					>
+						<input
+							type="checkbox"
+							checked={trimDeadAirEnabled}
+							onChange={(e) => setTrimDeadAirEnabled(e.target.checked)}
+						/>
+						Trim dead air &amp; filler words
+					</label>
+				</div>
+				<ExportButton
+					file={file}
+					sessionId={sessionId}
+					turns={turns}
+					layouts={layouts}
+					overlapWindows={overlapWindows}
+					words={words}
+					captionsEnabled={captionsEnabled}
+					trimDeadAirEnabled={trimDeadAirEnabled}
+					faces={faces}
+					speakerToPerson={cast.speakerToPerson}
+					personForTurn={personForTurn}
 				/>
-				Burn in captions
-			</label>
-			<label
-				className="flex w-fit items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400"
-				title="Cuts long pauses down to a short beat and removes standalone filler words (um, uh). Conservative on purpose -- see docs/FEATURES.md."
-			>
-				<input
-					type="checkbox"
-					checked={trimDeadAirEnabled}
-					onChange={(e) => setTrimDeadAirEnabled(e.target.checked)}
-				/>
-				Trim dead air &amp; filler words
-			</label>
-			<ExportButton
-				file={file}
-				sessionId={sessionId}
-				turns={turns}
-				layouts={layouts}
-				overlapWindows={overlapWindows}
-				words={words}
-				captionsEnabled={captionsEnabled}
-				trimDeadAirEnabled={trimDeadAirEnabled}
-				faces={faces}
-				speakerToPerson={cast.speakerToPerson}
-				personForTurn={personForTurn}
-			/>
+			</footer>
 		</div>
 	);
 }

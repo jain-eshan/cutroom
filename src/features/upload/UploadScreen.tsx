@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Logo } from "@/components/Logo";
 
 export function UploadScreen({
 	onFileSelected,
@@ -17,43 +18,79 @@ export function UploadScreen({
 	}
 
 	return (
-		<div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
-			<h1 className="text-3xl font-semibold">Podcast Editor</h1>
-			<p className="max-w-md text-sm text-neutral-500">
-				Drop in a podcast recording. It'll transcribe it, split it into
-				speaker turns, and suggest zoom/split-screen framing for each one —
-				you can override anything before exporting.
-			</p>
-			<label
-				onDragOver={(e) => {
-					e.preventDefault();
-					setIsDraggingOver(true);
-				}}
-				onDragLeave={() => setIsDraggingOver(false)}
-				onDrop={handleDrop}
-				className={`mt-2 cursor-pointer rounded-lg border border-dashed px-6 py-10 text-sm transition-colors ${
-					isDraggingOver
-						? "border-neutral-700 bg-neutral-100 text-neutral-700 dark:border-neutral-300 dark:bg-neutral-800 dark:text-neutral-300"
-						: "border-neutral-400 text-neutral-500 hover:border-neutral-600"
+		<div className="flex min-h-screen flex-col items-center justify-center bg-bg px-6 py-10">
+			<div
+				className={`flex w-full max-w-[412px] flex-col gap-5 rounded-panel border p-[26px] transition-colors ${
+					isDraggingOver ? "border-2 border-accent shadow-[0_0_0_6px_oklch(0.74_0.16_52/0.12)]" : "border-line"
 				}`}
 			>
-				{isDraggingOver ? "Drop it here" : "Drop a file here, or choose a video or audio file"}
-				<input
-					type="file"
-					accept="video/*,audio/*"
-					className="hidden"
-					onChange={(e) => {
-						const file = e.target.files?.[0];
-						if (file) onFileSelected(file);
+				<div
+					className={`flex flex-col items-center gap-2 text-center transition-opacity ${isDraggingOver ? "opacity-40" : ""}`}
+				>
+					<Logo size={40} className="text-text" />
+					<h1 className="text-[18px] font-semibold tracking-[-0.01em] text-text">Cutroom</h1>
+					<p className="max-w-sm text-[12.5px] leading-[1.6] text-text3">
+						Drop in a single-camera recording. It transcribes it, works out who's on camera and
+						when, and suggests framing you can change before publishing.
+					</p>
+				</div>
+
+				<label
+					onDragOver={(e) => {
+						e.preventDefault();
+						setIsDraggingOver(true);
 					}}
-				/>
-			</label>
-			{error && <p className="max-w-md text-sm text-red-500">{error}</p>}
-			<p className="max-w-md text-xs text-neutral-400">
-				Needs the local processing service running (
-				<code>cd server && uv run uvicorn main:app --port 8787</code>) — transcribes,
-				diarizes, and detects faces in one pass.
-			</p>
+					onDragLeave={() => setIsDraggingOver(false)}
+					onDrop={handleDrop}
+					className={`flex cursor-pointer flex-col items-center gap-3 rounded-[9px] border-[1.5px] border-dashed py-[30px] text-center transition-colors ${
+						isDraggingOver ? "border-2 border-accent bg-accent/9" : "border-line bg-panel"
+					}`}
+				>
+					<span className="flex h-[38px] w-[38px] items-center justify-center rounded-card bg-control text-text3">
+						↓
+					</span>
+					{isDraggingOver ? (
+						<span className="text-[13px] font-medium text-text">Let go to start</span>
+					) : (
+						<span className="text-[13px] font-medium text-text">
+							Drag a recording here
+							<br />
+							<span className="font-normal text-text3">
+								or <span className="text-accent-text">choose a file</span>
+							</span>
+						</span>
+					)}
+					<input
+						type="file"
+						accept="video/*,audio/*"
+						className="hidden"
+						onChange={(e) => {
+							const file = e.target.files?.[0];
+							if (file) onFileSelected(file);
+						}}
+					/>
+				</label>
+				{isDraggingOver && (
+					<p className="-mt-2 text-center text-[11px] text-text3">
+						A second file would replace this one — only one recording per episode.
+					</p>
+				)}
+
+				<div className="flex items-start gap-2 rounded-card border border-line bg-raised p-3">
+					<span className="mt-1 h-[7px] w-[7px] shrink-0 rounded-full bg-ok" />
+					<p className="text-[11px] leading-[1.6] text-text3">
+						Everything happens on this machine. Nothing is uploaded, and a 4 GB file doesn't cost
+						you 4 GB of bandwidth.
+					</p>
+				</div>
+
+				{error && <p className="text-[12.5px] text-warn">{error}</p>}
+
+				<p className="text-center text-[10px] leading-[1.6] text-text3">
+					Needs the local processing service running —{" "}
+					<code className="font-mono text-text2">cd server && uv run uvicorn main:app --port 8787</code>
+				</p>
+			</div>
 		</div>
 	);
 }

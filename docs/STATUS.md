@@ -184,9 +184,19 @@ side effect, and the full-episode run showed the manual cast step was
 resting on diarisation that had already lost two of the four people.
 
 ### Separate passes, not roadmap items
-- **Visual design language** — colours, typography, spacing, component
-  system. Still entirely unaddressed. The epic recommended a
-  `/design-consultation` pass after the real-world test.
+- ~~**Visual design language**~~ — a full brand + design system handoff
+  landed (2026-09-15): name (Cutroom), OKLCH color tokens, type, spacing,
+  logo, and a spec for every screen including a new Publish stage. The
+  foundation is built — tokens, three-state theme switching, the SVG logo,
+  self-hosted fonts, and a reskin of the four existing screens. What's
+  still explicitly deferred (a new Setup gate screen, the Editor's
+  region-based framing rearchitecture, the Publish screen, a Cast-screen
+  interaction change, and the landing page) is tracked in
+  [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) with the same ordering the handoff
+  itself prescribes. The region-based Editor item is the one to read
+  before touching `EditorView.tsx` or `server/pipeline/render.py` again —
+  it's a real architecture change, not a reskin, and the two have to land
+  together.
 - **Public-release readiness** — one-command setup (Docker), CI, cross-
   platform verification (macOS only so far), CONTRIBUTING.md, a demo GIF.
 - **Agent-friendly / fixture mode** — a way to load canned state directly

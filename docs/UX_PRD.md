@@ -238,9 +238,15 @@ from within a single editing session, same lifetime as everything else in
 
 ## 5. Explicitly out of scope for this PRD
 
-- Visual design system: colors, typography, spacing scale, motion,
-  component library — deferred to a `/design-consultation` pass after Next
-  Steps #3, per the roadmap's own sequencing.
+- ~~Visual design system~~ — a full brand + design system handoff (colors,
+  typography, spacing, the Cutroom name and logo, every screen including a
+  new Publish stage) has since landed; see
+  [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md). The foundation (tokens, theming,
+  logo, fonts, a reskin of the screens this PRD covers) is implemented.
+  Several pieces are still explicitly deferred — most notably the
+  region-based Editor rearchitecture in §3.4 below, which DESIGN_SYSTEM.md
+  covers in detail and which touches `server/pipeline/render.py`, not just
+  the frontend.
 - Captions, jargon annotations, audio effects, intro/outro presets — all
   later roadmap items, untouched by this phase.
 - Voice ducking / any audio-editing UI — gated on the source-separation

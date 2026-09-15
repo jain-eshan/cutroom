@@ -94,16 +94,16 @@ export function ExportButton({
 
 	if (state.status === "exporting") {
 		return (
-			<div className="flex flex-col items-start gap-1">
+			<div className="flex flex-col items-end gap-1">
 				<button
 					type="button"
 					disabled
-					className="flex items-center gap-2 rounded-lg bg-neutral-300 px-4 py-2 text-sm text-neutral-500 dark:bg-neutral-800 dark:text-neutral-500"
+					className="flex items-center gap-2 rounded-control bg-control px-4 py-2 text-[13px] font-medium text-text3"
 				>
-					<span className="h-3 w-3 animate-spin rounded-full border-2 border-neutral-400 border-t-transparent" />
+					<span className="h-3 w-3 animate-spin rounded-full border-2 border-text3 border-t-transparent" />
 					Rendering…
 				</button>
-				<p className="text-xs text-neutral-400">
+				<p className="max-w-xs text-right text-[11px] text-text3">
 					This can take a few minutes for longer episodes — the render re-encodes video per
 					segment, it isn't a quick copy.
 				</p>
@@ -113,18 +113,18 @@ export function ExportButton({
 
 	if (state.status === "done") {
 		return (
-			<div className="flex flex-col items-start gap-1">
+			<div className="flex flex-col items-end gap-1">
 				<a
 					href={state.url}
 					download={state.filename}
-					className="rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900"
+					className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
 				>
 					Download {state.filename}
 				</a>
 				<button
 					type="button"
 					onClick={() => setState({ status: "idle" })}
-					className="text-xs text-neutral-400 underline"
+					className="text-[11px] text-text3 underline"
 				>
 					Export again
 				</button>
@@ -134,15 +134,17 @@ export function ExportButton({
 
 	if (state.status === "error") {
 		return (
-			<div className="flex flex-col items-start gap-1">
+			<div className="flex flex-col items-end gap-1">
 				<button
 					type="button"
 					onClick={handleExport}
-					className="rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900"
+					className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
 				>
-					Retry export
+					Try again
 				</button>
-				<p className="max-w-md text-xs text-red-500">{state.message}</p>
+				<p className="max-w-xs rounded-control border border-warn/45 bg-warn-bg px-2 py-1.5 text-right font-mono text-[10px] text-warn">
+					{state.message}
+				</p>
 			</div>
 		);
 	}
@@ -151,9 +153,9 @@ export function ExportButton({
 		<button
 			type="button"
 			onClick={handleExport}
-			className="rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900"
+			className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
 		>
-			Export
+			Export episode
 		</button>
 	);
 }

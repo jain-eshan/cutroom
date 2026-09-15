@@ -3,6 +3,7 @@ import { CastScreen, type CastResult } from "@/features/faces/CastScreen";
 import { EditorView } from "@/features/timeline/EditorView";
 import { ProcessingScreen } from "@/features/upload/ProcessingScreen";
 import { UploadScreen } from "@/features/upload/UploadScreen";
+import { useThemeMode } from "@/lib/theme";
 import {
 	getProgress,
 	processVideo,
@@ -40,6 +41,7 @@ type Status =
 	  };
 
 function App() {
+	const [themeMode, setThemeMode] = useThemeMode();
 	const [status, setStatus] = useState<Status>({ state: "idle" });
 	const [uploadFraction, setUploadFraction] = useState(0);
 	const [progress, setProgress] = useState<JobProgress | null>(null);
@@ -151,6 +153,8 @@ function App() {
 				words={status.words}
 				faces={status.faces}
 				cast={status.cast}
+				themeMode={themeMode}
+				onThemeModeChange={setThemeMode}
 			/>
 		);
 	}

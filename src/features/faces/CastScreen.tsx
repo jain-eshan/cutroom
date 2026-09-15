@@ -5,6 +5,8 @@ import type { MatchNote, MatchResult, Person, Turn } from "@/lib/api";
  * answer. Matches pipeline/fuse.py's DOMINANT_SHARE. */
 const CONFIDENT = 0.6;
 
+const SPEAKER_TOKENS = ["bg-s1", "bg-s2", "bg-s3"];
+
 export interface CastResult {
 	names: Record<number, string>;
 	speakerToPerson: Record<number, number>;
@@ -142,154 +144,160 @@ export function CastScreen({
 	const everyVoiceAssigned = speakers.every((s) => speakerToPerson[s] !== undefined);
 
 	return (
-		<div className="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-10">
-			{mediaUrl && <video ref={audioRef} src={mediaUrl} className="hidden" preload="auto" />}
+		<div className="min-h-screen bg-bg px-6 py-10">
+			<div className="mx-auto flex max-w-2xl flex-col gap-8">
+				{mediaUrl && <video ref={audioRef} src={mediaUrl} className="hidden" preload="auto" />}
 
-			<div className="flex flex-col gap-2">
-				<h2 className="text-lg font-semibold">Who's in this episode?</h2>
-				<p className="text-sm text-neutral-500">
-					Name everyone once. These names are used everywhere else, so you never have to work
-					out which anonymous "Speaker 2" was which.
-				</p>
-			</div>
+				<div className="flex flex-col gap-2">
+					<h2 className="text-[18px] font-semibold tracking-[-0.01em] text-text">
+						Who's in this episode?
+					</h2>
+					<p className="text-[12.5px] leading-[1.6] text-text3">
+						Name everyone once. These names are used everywhere else, so you never have to work
+						out which anonymous "Speaker 2" was which.
+					</p>
+				</div>
 
-			<div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-				{people.map((person, i) => {
-					const presence = sampledFrames > 0 ? person.detectionCount / sampledFrames : 0;
-					return (
-						<div key={person.id} className="flex flex-col items-center gap-2">
-							<img
-								src={person.thumbnail}
-								alt={names[person.id] ?? defaultName(i)}
-								className="h-24 w-24 rounded-lg border border-neutral-200 object-cover dark:border-neutral-700"
-							/>
-							<input
-								value={names[person.id] ?? ""}
-								onChange={(e) => setNames((prev) => ({ ...prev, [person.id]: e.target.value }))}
-								placeholder={defaultName(i)}
-								className="w-full rounded border border-neutral-300 bg-transparent p-1 text-center text-sm dark:border-neutral-700"
-							/>
-							<span className="text-[11px] text-neutral-400">
-								{presence >= 0.5
-									? "on screen throughout"
-									: `on screen ${Math.round(presence * 100)}%`}
-							</span>
-						</div>
-					);
-				})}
-			</div>
-
-			<div className="flex flex-col gap-2">
-				<h3 className="text-base font-semibold">Which voice is which?</h3>
-				<p className="text-sm text-neutral-500">
-					We found {speakers.length} distinct {speakers.length === 1 ? "voice" : "voices"} and
-					matched {speakers.length === 1 ? "it" : "them"} to faces by watching whose mouth moves.
-					Check the ones flagged below — this is what decides who the camera cuts to.
-				</p>
-				{match.notes.length > 0 && (
-					<ul className="flex flex-col gap-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
-						{match.notes.map((note, i) => (
-							<li key={i}>{noteText(note, nameOf, voiceLabel)}</li>
-						))}
-					</ul>
-				)}
-			</div>
-
-			<div className="flex flex-col gap-3">
-				{speakers.map((speaker) => {
-					const sample = longestTurn(turns, speaker);
-					const matched = confidenceFor.get(speaker);
-					const automatic =
-						matched?.personId != null && speakerToPerson[speaker] === matched.personId;
-					return (
-						<div
-							key={speaker}
-							className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800"
-						>
-							<div className="flex items-center gap-3">
-								<span className="w-14 shrink-0 text-xs font-medium text-neutral-500">
-									{voiceLabel(speaker)}
+				<div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+					{people.map((person, i) => {
+						const presence = sampledFrames > 0 ? person.detectionCount / sampledFrames : 0;
+						return (
+							<div key={person.id} className="flex flex-col items-center gap-2">
+								<img
+									src={person.thumbnail}
+									alt={names[person.id] ?? defaultName(i)}
+									className="h-24 w-24 rounded-card border border-line object-cover"
+								/>
+								<input
+									value={names[person.id] ?? ""}
+									onChange={(e) => setNames((prev) => ({ ...prev, [person.id]: e.target.value }))}
+									placeholder={defaultName(i)}
+									className="w-full rounded-control border border-line bg-transparent p-1 text-center text-[13px] font-semibold text-text"
+								/>
+								<span className="font-mono text-[10px] text-text3">
+									{presence >= 0.5
+										? "on screen throughout"
+										: `on screen ${Math.round(presence * 100)}%`}
 								</span>
-								<button
-									type="button"
-									onClick={() => playSample(speaker)}
-									disabled={!sample}
-									className="shrink-0 rounded-full bg-neutral-900 px-3 py-1.5 text-xs text-white disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900"
-								>
-									{playing === speaker ? "Stop" : "Play"}
-								</button>
-								<select
-									value={speakerToPerson[speaker] ?? ""}
-									onChange={(e) =>
-										setSpeakerToPerson((prev) => {
-											const next = { ...prev };
-											if (e.target.value === "") delete next[speaker];
-											else next[speaker] = Number(e.target.value);
-											return next;
-										})
-									}
-									className="flex-1 rounded border border-neutral-300 bg-transparent p-1.5 text-sm dark:border-neutral-700"
-								>
-									<option value="">Who is this? —</option>
-									{people.map((p, i) => (
-										<option key={p.id} value={p.id}>
-											{names[p.id] || defaultName(i)}
-										</option>
-									))}
-								</select>
-								{automatic && matched && (
+							</div>
+						);
+					})}
+				</div>
+
+				<div className="flex flex-col gap-2">
+					<h3 className="text-[15px] font-semibold text-text">Which voice is which?</h3>
+					<p className="text-[12.5px] leading-[1.6] text-text3">
+						We found {speakers.length} distinct {speakers.length === 1 ? "voice" : "voices"} and
+						matched {speakers.length === 1 ? "it" : "them"} to faces by watching whose mouth moves.
+						Check the ones flagged below — this is what decides who the camera cuts to.
+					</p>
+					{match.notes.length > 0 && (
+						<ul className="flex flex-col gap-1 rounded-card border border-warn/45 bg-warn-bg p-3 text-[11px] leading-[1.6] text-warn">
+							{match.notes.map((note, i) => (
+								<li key={i}>{noteText(note, nameOf, voiceLabel)}</li>
+							))}
+						</ul>
+					)}
+				</div>
+
+				<div className="flex flex-col gap-3">
+					{speakers.map((speaker, speakerIndex) => {
+						const sample = longestTurn(turns, speaker);
+						const matched = confidenceFor.get(speaker);
+						const automatic =
+							matched?.personId != null && speakerToPerson[speaker] === matched.personId;
+						return (
+							<div
+								key={speaker}
+								className="flex flex-col gap-3 rounded-card border border-line bg-raised p-[13px]"
+							>
+								<div className="flex items-center gap-3">
 									<span
-										className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] ${
-											matched.confidence >= CONFIDENT
-												? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400"
-												: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
-										}`}
-										title={`Agreed on ${Math.round(matched.confidence * 100)}% of the ${matched.judgedSeconds}s where this voice spoke and a face was visibly talking`}
-									>
-										{matched.confidence >= CONFIDENT ? "matched" : "unsure"}{" "}
-										{Math.round(matched.confidence * 100)}%
+										className={`h-[7px] w-[7px] shrink-0 rounded-full ${SPEAKER_TOKENS[speakerIndex % SPEAKER_TOKENS.length]}`}
+									/>
+									<span className="w-14 shrink-0 text-[11.5px] font-semibold text-text">
+										{voiceLabel(speaker)}
 									</span>
+									<button
+										type="button"
+										onClick={() => playSample(speaker)}
+										disabled={!sample}
+										className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent disabled:opacity-40"
+									>
+										{playing === speaker ? "❚❚" : "▶"}
+									</button>
+									<select
+										value={speakerToPerson[speaker] ?? ""}
+										onChange={(e) =>
+											setSpeakerToPerson((prev) => {
+												const next = { ...prev };
+												if (e.target.value === "") delete next[speaker];
+												else next[speaker] = Number(e.target.value);
+												return next;
+											})
+										}
+										className="flex-1 rounded-control border border-line bg-control p-1.5 text-[13px] text-text"
+									>
+										<option value="">Who is this? —</option>
+										{people.map((p, i) => (
+											<option key={p.id} value={p.id}>
+												{names[p.id] || defaultName(i)}
+											</option>
+										))}
+									</select>
+									{automatic && matched && (
+										<span
+											className={`shrink-0 rounded-chip px-1.5 py-0.5 font-mono text-[10px] ${
+												matched.confidence >= CONFIDENT
+													? "bg-ok/15 text-ok"
+													: "bg-warn-bg text-warn"
+											}`}
+											title={`Agreed on ${Math.round(matched.confidence * 100)}% of the ${matched.judgedSeconds}s where this voice spoke and a face was visibly talking`}
+										>
+											Lips match {Math.round(matched.confidence * 100)}% of this clip
+										</span>
+									)}
+								</div>
+								{sample && (
+									<p className="text-[12.5px] leading-[1.6] text-text3">
+										<span className="font-mono text-[10px] text-text3">{formatTime(sample.start)}</span>{" "}
+										&ldquo;{sample.text.slice(0, 160)}
+										{sample.text.length > 160 ? "…" : ""}&rdquo;
+									</p>
 								)}
 							</div>
-							{sample && (
-								<p className="text-xs text-neutral-500">
-									<span className="text-neutral-400">{formatTime(sample.start)}</span>{" "}
-									&ldquo;{sample.text.slice(0, 160)}
-									{sample.text.length > 160 ? "…" : ""}&rdquo;
-								</p>
-							)}
-						</div>
-					);
-				})}
-			</div>
+						);
+					})}
+				</div>
 
-			<div className="flex flex-col gap-2">
-				<label htmlFor="episode-description" className="text-base font-semibold">
-					What's this episode about? <span className="text-neutral-400">(optional)</span>
-				</label>
-				<textarea
-					id="episode-description"
-					value={description}
-					onChange={(e) => setDescription(e.target.value)}
-					rows={2}
-					placeholder="A sentence or two — kept with the edit for your own reference."
-					className="rounded border border-neutral-300 bg-transparent p-2 text-sm dark:border-neutral-700"
-				/>
-			</div>
+				<div className="flex flex-col gap-2">
+					<label htmlFor="episode-description" className="text-[15px] font-semibold text-text">
+						What's this episode about? <span className="font-normal text-text3">(optional)</span>
+					</label>
+					<textarea
+						id="episode-description"
+						value={description}
+						onChange={(e) => setDescription(e.target.value)}
+						rows={2}
+						placeholder="A sentence or two — kept with the edit for your own reference."
+						className="rounded-control border border-line bg-transparent p-2 text-[13px] text-text"
+					/>
+				</div>
 
-			<div className="flex items-center gap-3">
-				<button
-					type="button"
-					onClick={() => onComplete({ names, speakerToPerson, description })}
-					className="rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900"
-				>
-					Continue
-				</button>
-				{!everyVoiceAssigned && (
-					<span className="text-xs text-neutral-400">
-						Unassigned voices just won't get a close-up — you can still fix any turn later.
-					</span>
-				)}
+				<div className="flex items-center gap-3">
+					<button
+						type="button"
+						onClick={() => onComplete({ names, speakerToPerson, description })}
+						className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
+					>
+						Continue
+					</button>
+					{!everyVoiceAssigned && (
+						<span className="text-[11px] text-text3">
+							Unassigned voices just won't get a close-up — you can still fix any turn later.
+						</span>
+					)}
+				</div>
 			</div>
 		</div>
 	);

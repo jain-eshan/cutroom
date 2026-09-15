@@ -1,10 +1,10 @@
 import type { JobProgress } from "@/lib/api";
 
-function Bar({ fraction, indeterminate }: { fraction: number; indeterminate?: boolean }) {
+function Bar({ fraction, indeterminate, done }: { fraction: number; indeterminate?: boolean; done: boolean }) {
 	return (
-		<div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+		<div className="h-[6px] w-full overflow-hidden rounded-[3px] bg-track">
 			<div
-				className={`h-full rounded-full bg-neutral-900 transition-[width] duration-300 dark:bg-neutral-100 ${
+				className={`h-full rounded-[3px] transition-[width] duration-300 ${done ? "bg-ok" : "bg-accent"} ${
 					indeterminate ? "animate-pulse" : ""
 				}`}
 				style={{ width: `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%` }}
@@ -15,27 +15,24 @@ function Bar({ fraction, indeterminate }: { fraction: number; indeterminate?: bo
 
 function Row({
 	title,
-	stage,
 	fraction,
 	done,
-	showPercent,
+	pending,
 }: {
 	title: string;
-	stage: string;
 	fraction: number;
 	done: boolean;
-	showPercent: boolean;
+	pending: boolean;
 }) {
 	return (
-		<div className="flex flex-col gap-1.5">
-			<div className="flex items-baseline justify-between gap-4 text-sm">
-				<span className="font-medium">{title}</span>
-				<span className="text-xs text-neutral-500">
-					{done ? "done" : stage}
-					{!done && showPercent && fraction > 0 ? ` · ${Math.round(fraction * 100)}%` : ""}
-				</span>
-			</div>
-			<Bar fraction={done ? 1 : fraction} indeterminate={!done && fraction === 0} />
+		<div
+			className={`grid grid-cols-[150px_1fr_46px] items-center gap-3 transition-opacity ${pending ? "opacity-50" : ""}`}
+		>
+			<span className="text-[13px] font-medium text-text">{title}</span>
+			<Bar fraction={done ? 1 : fraction} indeterminate={!done && fraction === 0 && !pending} done={done} />
+			<span className="justify-self-end font-mono text-[11px] text-text3">
+				{done ? "done" : pending ? "—" : `${Math.round(fraction * 100)}%`}
+			</span>
 		</div>
 	);
 }
@@ -43,7 +40,7 @@ function Row({
 function formatElapsed(seconds: number): string {
 	const m = Math.floor(seconds / 60);
 	const s = Math.floor(seconds % 60);
-	return m > 0 ? `${m}m ${s}s` : `${s}s`;
+	return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
 export function ProcessingScreen({
@@ -63,53 +60,46 @@ export function ProcessingScreen({
 	const megabytes = fileSizeBytes / (1024 * 1024);
 
 	return (
-		<div className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6">
-			<div className="flex flex-col gap-1">
-				<h2 className="text-lg font-semibold">
-					{uploading ? "Uploading" : "Processing"} {fileName}
-				</h2>
-				<p className="text-sm text-neutral-500">
-					{megabytes >= 1 ? `${megabytes.toFixed(0)} MB` : `${fileSizeBytes} bytes`} · everything
-					runs on your machine, nothing is uploaded anywhere
+		<div className="flex min-h-screen items-center justify-center bg-bg px-6 py-10">
+			<div className="flex w-full max-w-[640px] flex-col gap-6 rounded-panel border border-line bg-panel p-[26px]">
+				<div className="flex items-start justify-between gap-4">
+					<div className="flex flex-col gap-1">
+						<h2 className="text-[18px] font-semibold tracking-[-0.01em] text-text">{fileName}</h2>
+						<p className="text-[12.5px] text-text3">
+							{megabytes >= 1 ? `${megabytes.toFixed(0)} MB` : `${fileSizeBytes} bytes`} · this machine
+							is doing the work, not the cloud
+						</p>
+					</div>
+					<span className="shrink-0 font-mono text-[22px] text-accent">{formatElapsed(elapsedSeconds)}</span>
+				</div>
+
+				<div className="flex flex-col gap-4">
+					<Row title="Sending the file" fraction={uploadFraction} done={!uploading} pending={false} />
+					<Row
+						title="Writing the transcript"
+						fraction={progress?.transcribe.fraction ?? 0}
+						done={progress?.transcribe.done ?? false}
+						pending={uploading}
+					/>
+					<Row
+						title="Finding who's on camera"
+						fraction={progress?.faces.fraction ?? 0}
+						done={progress?.faces.done ?? false}
+						pending={uploading || !(progress?.transcribe.done ?? false)}
+					/>
+					<Row
+						title="Matching voices to faces"
+						fraction={progress?.match.fraction ?? 0}
+						done={progress?.match.done ?? false}
+						pending={uploading || !(progress?.faces.done ?? false)}
+					/>
+				</div>
+
+				<p className="border-t border-line pt-4 text-[11px] leading-[1.7] text-text3">
+					Roughly a fifth of the recording's length on a laptop. Keep this tab open — the work is
+					happening on your machine, not in the cloud.
 				</p>
 			</div>
-
-			<div className="flex flex-col gap-4">
-				<Row
-					title="Upload"
-					stage={uploading ? "sending to the local service" : "done"}
-					fraction={uploadFraction}
-					done={!uploading}
-					showPercent
-				/>
-				<Row
-					title="Transcript & speakers"
-					stage={progress?.transcribe.stage ?? "waiting"}
-					fraction={progress?.transcribe.fraction ?? 0}
-					done={progress?.transcribe.done ?? false}
-					showPercent
-				/>
-				<Row
-					title="Faces"
-					stage={progress?.faces.stage ?? "waiting"}
-					fraction={progress?.faces.fraction ?? 0}
-					done={progress?.faces.done ?? false}
-					showPercent
-				/>
-				<Row
-					title="Voices to faces"
-					stage={progress?.match.stage ?? "waiting"}
-					fraction={progress?.match.fraction ?? 0}
-					done={progress?.match.done ?? false}
-					showPercent
-				/>
-			</div>
-
-			<p className="text-xs text-neutral-400">
-				Elapsed {formatElapsed(elapsedSeconds)}. Measured on a real episode, processing runs at
-				roughly a third of real time — about 20 minutes of work for a 53-minute recording, plus
-				however long the upload itself takes.
-			</p>
 		</div>
 	);
 }
