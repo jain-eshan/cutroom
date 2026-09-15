@@ -89,6 +89,17 @@ Each landed as its own commit, in the handoff's order.
   rendering state appears with "Back to editing" disabled, the render comes
   back as a 30.0s 1280×720 MP4, the decision log records the edited region
   as `source: user`, and the screen was checked in both themes.
+- **Edge cases (`7d`)** — **Stopped while reading**
+  (`upload/ProcessingFailed.tsx`, a `failed` status) keeps the file so "Try
+  again" doesn't mean finding it again, says how far the transcript got, and
+  shows the raw error in mono with "Copy the details". **Nobody on camera**
+  (`faces/NoFacesScreen.tsx`, a `noFaces` status) replaces a cast step that
+  would have nothing to choose from; "Keep going anyway" opens the editor
+  with no regions, all wide. **Voice with no face**: the cast flow shows that
+  voice's turn count and total time and lets you name it anyway, carried as
+  `CastResult.voiceNames`, so an off-camera guest reads as their name in the
+  transcript rather than "Nobody". **Not built yet**: a disabled `+ Note` in
+  the framing toolbar. All four checked in the browser.
 
 ## Decisions made while building — read before changing these
 
@@ -128,6 +139,11 @@ Each landed as its own commit, in the handoff's order.
   `beforeunload` dialog. The in-app "Keep rendering / Close anyway" dialog
   from `7d` can't intercept a tab closing, and there's still no cancel
   button because the server doesn't kill ffmpeg when the client goes away.
+- **Voices can have names without faces.** `CastResult.voiceNames` is keyed
+  by diarisation speaker. It only changes labels and reasons in the editor;
+  framing for those turns stays wide.
+- **"Keep going anyway" skips the cast step** rather than showing it with
+  no faces, where every question would have the same non-answer.
 
 ## Known, deliberate deviations
 
@@ -154,6 +170,17 @@ Each landed as its own commit, in the handoff's order.
   rather than a mock clip.
 - **Publish is tall.** The 9:16 clips column makes the card about 850px,
   so on a small laptop screen "Render & publish" sits below the fold.
+- **No "Follow the issue" link on `+ Note`.** There's no GitHub issue for
+  annotations (searched), and a link to nothing is worse than none. Opening
+  one is a public action, so it wasn't done unasked.
+- **"Pick a different file" on the failed screen**, which the design's card
+  doesn't have. Without it, a file that fails every time is a dead end.
+- **"Give them a name anyway" is a labelled input**, not a button that
+  reveals one — a step shorter.
+- **Audio-only files are only half handled.** The editor no longer collapses
+  on a 0×0 frame and Publish says "no video track", but exporting an
+  audio-only file through `render.py` hasn't been tried and may fail. If it
+  does, the Publish error state shows why.
 
 ## What's left
 
@@ -173,12 +200,10 @@ In the handoff's implementation order:
      both `render.py` and `faceCrop.ts`). Today a both-on-screen region with
      one findable person closes on them for the whole region.
 7. ~~Publish screen and render states~~ — **done**.
-8. **Edge-case sweep (`7d`)** — next, and partly done in passing:
-   captions-unavailable is caught before a render (in the editor, and on
-   Publish with the fix), a region naming a person we can't find renders
-   wide, and closing mid-render asks first. Still to do: nobody on camera,
-   a voice with no face, four people at once (the `+1` tile), and stopped
-   while reading.
+8. ~~Edge-case sweep~~ — **done**, except two that wait on other things:
+   - **Forced split, one person** needs per-instant visibility (6b above).
+   - **Four people at once** — the handoff's 3-pane cap conflicts with a
+     deliberate, tested no-cap decision in `render.py`. See "Open questions".
 9. **Landing page (`4b`)** — last. Per-OS download buttons stay "Build from
    source" until desktop packaging exists.
 
@@ -189,12 +214,23 @@ where a silent bug changes what gets exported, so it's the first candidate if
 one is added. The editor has been verified in the browser against a synthetic
 clip instead.
 
-## Open question, not decided here
+## Open questions, not decided here
 
-The product is now named **Cutroom** in the UI (title, favicon, in-app
+**The name.** The product is now named **Cutroom** in the UI (title, favicon, in-app
 wordmark). `package.json`'s `name` field and the GitHub repo are still
 `podcast-editor` — renaming those is a bigger, more visible change
 (breaks any existing clone URLs/bookmarks, npm name if ever published) and
 wasn't made unilaterally. Worth an explicit decision before the landing page
 phase, since marketing copy throughout the handoff assumes "Cutroom"
 everywhere.
+
+**How many people fit on screen at once.** The handoff caps a shot at
+three panes and shows a dashed `+1` tile naming whoever is left out ("Three
+fit on screen. One won't."). `render.py` deliberately has no cap — its own
+comment calls a four-person podcast a normal case, not an edge case — and
+`test_a_region_is_not_capped` pins that: everyone talking is on screen, three
+or more in the speaker-focus layout. The two can't both hold. Nothing was
+changed: today nobody is ever dropped, so there's nothing to disclose and no
+`+1` tile. Adopting the cap would change what real four-person episodes
+export as, so it's the founder's call; if adopted, the cap and the tile have
+to land in `render.py`, `regions.ts` and the preview together.

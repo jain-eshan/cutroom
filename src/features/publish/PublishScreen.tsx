@@ -209,7 +209,7 @@ export function PublishScreen({
 							<span className="font-mono text-[9.5px] tracking-[0.08em] text-text3">WHAT COMES OUT</span>
 							<Artefact
 								title="The episode"
-								subline={`MP4 · ${faces.frameWidth}×${faces.frameHeight} · ${
+								subline={`MP4 · ${faces.frameWidth > 0 ? `${faces.frameWidth}×${faces.frameHeight}` : "no video track"} · ${
 									trimDeadAir ? "dead air trimmed, audio re-encoded" : "original audio untouched"
 								}`}
 								checked

@@ -11,6 +11,9 @@ const WAVEFORM_BARS = 15;
 export interface CastResult {
 	names: Record<number, string>;
 	speakerToPerson: Record<number, number>;
+	/** Names given to voices we never saw on camera, keyed by speaker. Without
+	 * these an off-camera guest reads as "Nobody" for the whole episode. */
+	voiceNames: Record<number, string>;
 }
 
 function defaultName(index: number) {
@@ -122,6 +125,7 @@ export function CastScreen({
 		() => ({ ...match.speakerToPerson }),
 	);
 	const [index, setIndex] = useState(0);
+	const [voiceNames, setVoiceNames] = useState<Record<number, string>>({});
 	const [playing, setPlaying] = useState(false);
 
 	const audioRef = useRef<HTMLVideoElement>(null);
@@ -154,6 +158,11 @@ export function CastScreen({
 	const sample = longestTurn(turns, speaker);
 	const guess = match.matches.find((m) => m.speaker === speaker);
 	const selected = choices[speaker] ?? null;
+	// The pipeline found no face that ever moves with this voice.
+	const noFace = guess?.personId == null;
+	const voiceTurns = turns.filter((t) => t.speaker === speaker);
+	const voiceSeconds = voiceTurns.reduce((total, t) => total + (t.end - t.start), 0);
+	const voiceName = voiceNames[speaker]?.trim() ?? "";
 
 	function nameOf(personId: number): string {
 		const position = people.findIndex((p) => p.id === personId);
@@ -195,12 +204,24 @@ export function CastScreen({
 			const choice = choices[s];
 			if (choice !== null && choice !== undefined) speakerToPerson[s] = choice;
 		}
-		onComplete({ names, speakerToPerson });
+		const namedVoices = Object.fromEntries(
+			Object.entries(voiceNames)
+				.filter(([, name]) => name.trim())
+				.map(([voice, name]) => [voice, name.trim()]),
+		);
+		onComplete({ names, speakerToPerson, voiceNames: namedVoices });
 	}
 
-	const notes = match.notes.filter((n) => n.speakers.includes(speaker));
+	// The no-face card below already says what a voice_unmatched note would.
+	const notes = match.notes.filter(
+		(n) => n.speakers.includes(speaker) && !(noFace && n.kind === "voice_unmatched"),
+	);
 	const confirmLabel =
-		selected === null ? "Nobody we saw" : `Yes, that's ${nameOf(selected)}`;
+		selected !== null
+			? `Yes, that's ${nameOf(selected)}`
+			: voiceName
+				? `Yes, that's ${voiceName}`
+				: "Nobody we saw";
 	const guessedName =
 		guess?.personId != null && selected === guess.personId ? nameOf(guess.personId) : null;
 
@@ -238,6 +259,30 @@ export function CastScreen({
 								{formatDuration(sample.end - sample.start)}
 							</span>
 						</div>
+					</div>
+				)}
+
+				{noFace && (
+					<div className="flex flex-col gap-2 rounded-card border border-line bg-raised p-4">
+						<span className="font-mono text-[9.5px] tracking-[0.08em] text-text3">VOICE WITH NO FACE</span>
+						<span className="text-[15px] font-semibold text-text">Someone we never saw</span>
+						<p className="text-[12.5px] leading-[1.6] text-text3">
+							This voice never lines up with a face on screen — an off-camera guest, or someone
+							behind the camera. Their turns stay wide, which is the honest choice.
+						</p>
+						<span className="font-mono text-[10px] text-text3">
+							{voiceTurns.length} {voiceTurns.length === 1 ? "turn" : "turns"} ·{" "}
+							{formatDuration(voiceSeconds)} total
+						</span>
+						<label className="mt-1 flex flex-col gap-1">
+							<span className="text-[11px] text-text3">Give them a name anyway</span>
+							<input
+								value={voiceNames[speaker] ?? ""}
+								onChange={(e) => setVoiceNames({ ...voiceNames, [speaker]: e.target.value })}
+								placeholder={voiceLabel(speaker)}
+								className="rounded-control border border-line bg-panel px-2 py-1.5 text-[13px] font-semibold text-text"
+							/>
+						</label>
 					</div>
 				)}
 

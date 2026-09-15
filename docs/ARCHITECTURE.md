@@ -316,8 +316,10 @@ src/
 ├── features/
 │   ├── setup/SetupGate.tsx          # polls /health, names which service is down, advances itself
 │   ├── upload/UploadScreen.tsx      # file picker + real drag-and-drop (idle / error states)
+│   ├── upload/ProcessingFailed.tsx  # stopped partway: how far it got, the raw error, try again
 │   ├── upload/ProcessingScreen.tsx  # per-stage progress + live transcript and faces found
 │   ├── faces/CastScreen.tsx         # one voice at a time: listen, pick the face, name inline
+│   ├── faces/NoFacesScreen.tsx      # zero faces found: keep going all wide, or pick another file
 │   ├── publish/PublishScreen.tsx    # what comes out, where it goes, and the four render states
 │   └── timeline/
 │       ├── EditorView.tsx           # transcript + preview + framing tray, one selection drives all
@@ -334,8 +336,9 @@ CSS-first config) and re-pointed under a `[data-theme]` attribute + a
 implemented vs. deferred, and where the source design files live.
 
 **State machine** (`App.tsx`): a single `Status` union type drives which
-screen renders — `checking → idle → processing → cast → editing ⇄ publishing` (or `error` at
-any point during processing). No router, no global state library; this is
+screen renders — `checking → idle → processing → cast → editing ⇄ publishing` (with `processing`
+branching to `failed`, which keeps the file for a retry, or `noFaces`, which
+skips the cast step). No router, no global state library; this is
 intentionally the simplest thing that works for a linear, single-page
 flow. `processVideo(file)` is the one call to the backend; this used to be
 `Promise.all([transcribe(file), detectFaces(file)])` against two separate

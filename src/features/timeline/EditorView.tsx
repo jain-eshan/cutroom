@@ -225,6 +225,14 @@ export function EditorView({
 		return cast.names[personId] || `Person ${personId + 1}`;
 	}
 
+	/** Who spoke a turn: their face's name, or failing that whatever the
+	 * editor called a voice we never saw on camera. */
+	function speakerName(turn: Turn): string {
+		const personId = cast.speakerToPerson[turn.speaker];
+		if (personId !== undefined) return nameOf(personId);
+		return cast.voiceNames[turn.speaker] || "Nobody";
+	}
+
 	function seek(t: number) {
 		const video = videoRef.current;
 		setCurrentTime(t);
@@ -278,11 +286,13 @@ export function EditorView({
 	function reasonFor(index: number): string {
 		const turn = turns[index];
 		const region = regionAt(regions, turn.start + 0.01);
-		const speakerName = nameOf(cast.speakerToPerson[turn.speaker] ?? null);
 
 		if (!region) {
 			if (cast.speakerToPerson[turn.speaker] === undefined) {
-				return "We couldn't see a face for this voice, so we stayed wide.";
+				const voiceName = cast.voiceNames[turn.speaker];
+				return voiceName
+					? `We never saw ${voiceName} on camera, so we stayed wide.`
+					: "We couldn't see a face for this voice, so we stayed wide.";
 			}
 			return "This stretch is wide.";
 		}
@@ -294,7 +304,7 @@ export function EditorView({
 		if (region.layout === "split") {
 			return `${region.personIds.map((id) => nameOf(id)).join(" and ")} talk over each other here, so we show both.`;
 		}
-		return `${speakerName} is talking alone here, so we cut in close.`;
+		return `${speakerName(turn)} is talking alone here, so we cut in close.`;
 	}
 
 	const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null;
@@ -368,7 +378,7 @@ export function EditorView({
 										<span
 											className={`h-[7px] w-[7px] shrink-0 rounded-full ${SPEAKER_DOT[t.speaker % SPEAKER_DOT.length]}`}
 										/>
-										<span className="text-[11.5px] font-semibold text-text">{nameOf(assigned)}</span>
+										<span className="text-[11.5px] font-semibold text-text">{speakerName(t)}</span>
 										<span className="font-mono text-[10px] text-text3">
 											{formatTime(t.start)}–{formatTime(t.end)}
 										</span>
@@ -403,7 +413,14 @@ export function EditorView({
 					<div
 						ref={stageRef}
 						className="relative min-h-0 flex-1 overflow-hidden rounded-card bg-black"
-						style={{ aspectRatio: `${faces.frameWidth} / ${faces.frameHeight}` }}
+						// An audio-only file reports a 0x0 frame; without a fallback the stage
+						// collapses to nothing.
+						style={{
+							aspectRatio:
+								faces.frameWidth > 0 && faces.frameHeight > 0
+									? `${faces.frameWidth} / ${faces.frameHeight}`
+									: "16 / 9",
+						}}
 					>
 						{videoUrl && (
 							<video
@@ -495,7 +512,7 @@ export function EditorView({
 								{framingLabel}
 							</span>
 							<span className="rounded-chip bg-black/55 px-1.5 py-0.5 font-mono text-[10px] text-plate-ink">
-								{faces.frameWidth}×{faces.frameHeight}
+								{faces.frameWidth > 0 ? `${faces.frameWidth}×${faces.frameHeight}` : "audio only"}
 							</span>
 						</div>
 						<span className="pointer-events-none absolute right-2 bottom-2 rounded-chip bg-black/55 px-1.5 py-0.5 font-mono text-[10px] text-plate-ink">
@@ -551,6 +568,16 @@ export function EditorView({
 						className="rounded-control border border-line bg-control px-2 py-1 text-[11px] text-text2 disabled:opacity-40"
 					>
 						+ {LAYOUT_LABELS.split}
+					</button>
+					{/* Not built yet, shown rather than hidden. No issue link: there is
+					    no issue for this yet, and a link to nothing is worse than none. */}
+					<button
+						type="button"
+						disabled
+						title="Notes on screen: captions for names, terms and links, drawn over the video. Not built yet — it's next after clips."
+						className="cursor-not-allowed rounded-control border border-dashed border-line px-2 py-1 text-[11px] text-text3"
+					>
+						+ Note
 					</button>
 					<div className="flex-1" />
 					<span className="flex items-center gap-1.5 font-mono text-[9.5px] tracking-[0.08em] text-text3">

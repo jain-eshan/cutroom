@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CastScreen, type CastResult } from "@/features/faces/CastScreen";
+import { NoFacesScreen } from "@/features/faces/NoFacesScreen";
 import { PublishScreen } from "@/features/publish/PublishScreen";
 import { SetupGate } from "@/features/setup/SetupGate";
 import { EditorView } from "@/features/timeline/EditorView";
 import { suggestRegions } from "@/features/timeline/regions";
 import type { FramingRegion } from "@/features/timeline/types";
+import { ProcessingFailed } from "@/features/upload/ProcessingFailed";
 import { ProcessingScreen } from "@/features/upload/ProcessingScreen";
 import { UploadScreen } from "@/features/upload/UploadScreen";
 import { useThemeMode } from "@/lib/theme";
@@ -24,7 +26,16 @@ type Status =
 	| { state: "checking" }
 	| { state: "idle" }
 	| { state: "processing"; file: File; jobId: string; startedAt: number }
-	| { state: "error"; message: string }
+	| { state: "failed"; file: File; message: string; reached: number }
+	| {
+			state: "noFaces";
+			file: File;
+			sessionId: string;
+			turns: Turn[];
+			overlapWindows: OverlapWindow[];
+			words: Word[];
+			faces: DetectFacesResponse;
+	  }
 	| {
 			state: "cast";
 			file: File;
@@ -72,6 +83,9 @@ function App() {
 	const [uploadFraction, setUploadFraction] = useState(0);
 	const [progress, setProgress] = useState<JobProgress | null>(null);
 	const [elapsed, setElapsed] = useState(0);
+	// Read from inside handleFile's catch, where the progress state would be
+	// the stale value captured when the upload began.
+	const lastPosition = useRef(0);
 
 	const processingJobId = status.state === "processing" ? status.jobId : null;
 	const processingStartedAt = status.state === "processing" ? status.startedAt : null;
@@ -84,7 +98,10 @@ function App() {
 		const tick = async () => {
 			try {
 				const p = await getProgress(processingJobId);
-				if (!cancelled) setProgress(p);
+				if (!cancelled) {
+					setProgress(p);
+					lastPosition.current = p.position;
+				}
 			} catch {
 				// Transient -- the next poll will pick it up.
 			}
@@ -115,6 +132,7 @@ function App() {
 		setUploadFraction(0);
 		setProgress(null);
 		setElapsed(0);
+		lastPosition.current = 0;
 		setStatus({ state: "processing", file, jobId, startedAt: Date.now() });
 		try {
 			const { turns, overlapWindows, words, faces, match } = await processVideo(
@@ -122,6 +140,10 @@ function App() {
 				jobId,
 				setUploadFraction,
 			);
+			if (faces.people.length === 0) {
+				setStatus({ state: "noFaces", file, sessionId: jobId, turns, overlapWindows, words, faces });
+				return;
+			}
 			setStatus({
 				state: "cast",
 				file,
@@ -134,14 +156,52 @@ function App() {
 			});
 		} catch (err) {
 			setStatus({
-				state: "error",
+				state: "failed",
+				file,
 				message: err instanceof Error ? err.message : "Something went wrong.",
+				reached: lastPosition.current,
 			});
 		}
 	}
 
 	if (status.state === "checking") {
 		return <SetupGate onReady={handleReady} />;
+	}
+
+	if (status.state === "failed") {
+		return (
+			<ProcessingFailed
+				fileName={status.file.name}
+				message={status.message}
+				reached={status.reached}
+				onRetry={() => void handleFile(status.file)}
+				onPickAnother={() => setStatus({ state: "idle" })}
+			/>
+		);
+	}
+
+	if (status.state === "noFaces") {
+		return (
+			<NoFacesScreen
+				onKeepGoing={() => {
+					// Nobody to frame, so no regions: the whole episode stays wide.
+					setRegions([]);
+					setCaptions(health?.captions ?? false);
+					setTrimDeadAir(false);
+					setStatus({
+						state: "editing",
+						file: status.file,
+						sessionId: status.sessionId,
+						turns: status.turns,
+						overlapWindows: status.overlapWindows,
+						words: status.words,
+						faces: status.faces,
+						cast: { names: {}, speakerToPerson: {}, voiceNames: {} },
+					});
+				}}
+				onPickAnother={() => setStatus({ state: "idle" })}
+			/>
+		);
 	}
 
 	if (status.state === "processing") {
@@ -228,12 +288,7 @@ function App() {
 		);
 	}
 
-	return (
-		<UploadScreen
-			onFileSelected={handleFile}
-			error={status.state === "error" ? status.message : undefined}
-		/>
-	);
+	return <UploadScreen onFileSelected={handleFile} />;
 }
 
 export default App;

@@ -1,13 +1,7 @@
 import { useState } from "react";
 import { Logo } from "@/components/Logo";
 
-export function UploadScreen({
-	onFileSelected,
-	error,
-}: {
-	onFileSelected: (file: File) => void;
-	error?: string;
-}) {
+export function UploadScreen({ onFileSelected }: { onFileSelected: (file: File) => void }) {
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
 
 	function handleDrop(e: React.DragEvent<HTMLLabelElement>) {
@@ -84,7 +78,6 @@ export function UploadScreen({
 					</p>
 				</div>
 
-				{error && <p className="text-[12.5px] text-warn">{error}</p>}
 			</div>
 		</div>
 	);
