@@ -137,6 +137,16 @@ separation (open research question, not a committed feature), captions,
 jargon annotations, audio effects, intro/outro presets, automatic social
 clips, automatic speaker-to-face matching, multi-camera, desktop packaging.
 
+(Captions and automatic speaker-to-face matching shipped in later phases
+this doc doesn't cover — `pipeline/captions.py`, `pipeline/lipsync.py`,
+`pipeline/fuse.py`. Speaker-to-face matching stayed entirely outside this
+doc's scope (nothing in the export/render pipeline needed to change).
+Captions did touch this doc's scope: `/export` gained an optional
+`captions` flag and `words` upload, and `render.py`'s ffmpeg invocation
+gained an `ass`/libass burn-in step — see §4 and §5 below for where. See
+[ARCHITECTURE.md](ARCHITECTURE.md) and [STATUS.md](STATUS.md) for the
+current design.)
+
 ---
 
 ## 3. Data model
@@ -307,6 +317,14 @@ New endpoint, `server/main.py`, same pattern as the existing two.
   speaker maps to; not derivable from `faces` alone)
 - `sessionId` — plain string, optional (for `decisions.jsonl` logging, §6.3)
 
+**Added in a later phase, outside this doc's original design:** an optional
+`captions` bool and a `words` file part (word-level timestamps, needed only
+when `captions` is true). See [ARCHITECTURE.md](ARCHITECTURE.md)'s API
+Reference for the current, accurate field list — `overlapWindows` and
+`speakerToTrack` in particular no longer match what `/export` actually
+takes, now that voice-to-face matching is automatic rather than a manual
+`Record<speakerId, trackId>` built in the cast screen.
+
 All string fields must be declared `Form(...)` in FastAPI, not plain `str` —
 a plain `str` parameter on an endpoint that also takes `UploadFile` is
 inferred as a **query** parameter, not form data, and the request 422s. Real
@@ -369,12 +387,19 @@ mux with ORIGINAL untouched full-length audio track
 output MP4 (H.264, same resolution as source: frameWidth × frameHeight)
 ```
 
+**Added in a later phase:** when `captions=true`, an `ass` filter burning in
+`captions.py`'s subtitle file is inserted into the same `filter_complex`
+graph, after concat. Needs an `ffmpeg` built with libass — see
+[ARCHITECTURE.md](ARCHITECTURE.md)'s Known Limitations.
+
 One `ffmpeg` invocation, one `filter_complex` graph — not N separate
 ffmpeg processes stitched together after the fact. This is what "expect
-per-segment re-encoding, not a stream-copy" (roadmap) means concretely: each
-segment gets its own `trim` + crop + `scale` filter nodes inside a single
-graph, then a `concat` filter joins them, then `-map` pulls in the original
-audio stream unmodified.
+per-segment re-encoding, not a stream-copy" (roadmap) means concretely for
+*video*: each segment gets its own `trim` + crop + `scale` filter nodes
+inside a single graph, then a `concat` filter joins them. Audio is a
+separate question — see §11, which was updated after this doc closed: audio
+is now stream-copied when the source codec allows it, not unconditionally
+re-encoded.
 
 ### 5.2 Bust-shot crop math (single-speaker "zoom" and each composite pane)
 
@@ -600,6 +625,12 @@ degrade versus the source.
   improvement (detect AAC-in-compatible-container and copy), not built now,
   since the always-works transcode path was the higher priority given
   editors may bring varied camera audio formats.
+
+  **Built since this doc closed:** the flagged improvement shipped.
+  `render.py` now stream-copies (`-c:a copy`) when the source audio codec is
+  one of `aac`/`mp3`/`alac`/`ac3`/`eac3`, and only falls back to the 320k
+  AAC re-encode above for anything else. Measured bit-identical on a real
+  export: 320009 bps in, 320009 bps out.
 - **Disk space, not addressed.** A 5GB upload plus its extracted WAV plus a
   same-or-larger rendered output can transiently need 10GB+ of temp disk
   space per export. No pre-flight disk-space check exists. Real operational
@@ -615,9 +646,13 @@ degrade versus the source.
 | Overlap detection approach (§1) | **Option A — adopt `pyannote.audio`** | Only option that gives the composite feature (already promoted to core scope) an honest trigger signal. Accepted the one-time HF-account setup cost. |
 | Upload/response memory handling (§11) | **Stream to/from disk, never fully buffer** | 5GB files make full in-memory buffering a real risk, not a theoretical one. |
 | Video encode quality (§11) | **CRF 16, preset medium** | Default settings (CRF 23, veryfast) were visibly lossy against 4K source; re-encoding is unavoidable given per-segment cropping. |
-| Audio encode quality (§11) | **AAC at 320k, not a stream copy** | Stream copy isn't safe across all camera audio codecs into MP4; 320k AAC is a robust, near-transparent default. |
+| Audio encode quality (§11) | **AAC at 320k, not a stream copy** | Stream copy isn't safe across all camera audio codecs into MP4; 320k AAC is a robust, near-transparent default. Superseded — see §11's "Built since this doc closed": it's now a conditional stream copy, re-encoding only for a codec that isn't MP4-safe. |
 
 This doc is closed and reflects the implementation as actually built (Phase
 4 is implemented — see `server/pipeline/render.py`, `server/main.py`'s
 `/export` endpoint, and the frontend composite/export UI). `pyannote.audio`
-integration into `diarize.py` shipped as part of this phase.
+integration into `diarize.py` shipped as part of this phase, though `diarize.py`
+has since moved past this doc's scope too: it's the full diarization model
+(`pyannote` community-1) now, not `resemblyzer` clustering with `pyannote.audio`
+bolted on for overlap only — see [ARCHITECTURE.md](ARCHITECTURE.md) and
+[STATUS.md](STATUS.md) for the current design.

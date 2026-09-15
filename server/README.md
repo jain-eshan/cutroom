@@ -7,18 +7,30 @@ leaves the machine.
 ## How diarization works here
 
 There's no per-speaker audio to lean on (single camera, one mixed track), so
-this diarizes by voice: it embeds sliding windows of the audio and clusters
-them by voice similarity (via `resemblyzer`), then merges consecutive
-same-cluster windows into speaker segments. Those get matched up against
+this diarizes by voice: `pipeline/diarize.py` runs `pyannote`'s
+**community-1** model (CC-BY-4.0) on the extracted wav, which is overlap-aware
+in a single pass — two people talking at once show up as two segments
+covering the same instant, not a separate detector to cross-reference. No
+speaker count is forced; passing one was measured to invent speakers (see
+[STATUS.md](../docs/STATUS.md)). Those segments get matched up against
 Whisper's word-level timestamps (`faster-whisper`) to build dialogue turns.
 
 This is audio-only — it doesn't know *which face* is speaking. See below for
 how that gets connected.
 
-Turn boundaries right at a speaker change can be off by a word or so — an
-accuracy ceiling of window-based clustering, not a bug. Good enough to build
-the editor UI against; can be tightened later (e.g. boundary refinement, or
-an upgrade path to `pyannote.audio` for higher accuracy — see below).
+**Needs a Hugging Face token, no fallback.** community-1 replaced
+`resemblyzer`, which was measured finding two speakers on a real four-person
+episode — a fallback that produces a quietly wrong edit is worse than an
+error that says what to do. Create a token at
+[huggingface.co/settings/tokens](https://huggingface.co/settings/tokens),
+accept the licence at
+[community-1](https://huggingface.co/pyannote/speaker-diarization-community-1),
+then put `HF_TOKEN=...` in `server/.env`. Without it, `/process` returns a
+400 naming both. Runs on GPU (MPS) when available — measured 53s vs 398s on
+CPU for the same 10-minute slice, byte-identical output either way.
+
+Turn boundaries right at a speaker change can still be off by a word or so.
+Per-turn correction in the editor exists for this.
 
 ## How face detection/tracking works here
 
@@ -31,11 +43,16 @@ new track. A track closes out if unmatched for more than a few seconds
 (handles someone leaving frame without merging them into whoever enters
 later).
 
-This gives face *tracks*, not face *identities* tied to the diarized
-speakers — that link is the one-time manual labeling step in the UI (you
-tell it which detected face is "Speaker 1", etc.). No face-recognition model
-involved, deliberately — it's more moving parts for a problem a 30-second
-one-time click solves per episode.
+Tracks then get collapsed into *people*: each track is embedded with
+`cv2.FaceRecognizerSF` (SFace, ships inside `opencv-python-headless`) and
+clustered by cosine distance (measured 0.66-0.91 between four real
+participants), so fragments of the same person — a head turn, a hand over
+the face — merge into one identity instead of staying separate tracks. A
+"person" seen in too few sampled frames is dropped as junk (the threshold
+scales with episode length; see `faces.py`).
+
+That still isn't the same as knowing which person is *talking* — linking a
+face to a voice is what `lipsync.py` and `fuse.py` do, below.
 
 Tried `mediapipe` first; its Tasks API hard-crashes on this macOS setup with
 a native `DrishtiMetalHelper`/GPU-graph error unrelated to our code, even
@@ -54,21 +71,53 @@ uv sync
 uv run uvicorn main:app --port 8787
 ```
 
-First run downloads the Whisper model (`small` by default, ~500MB) and the
-voice-embedding model (small, bundled via `resemblyzer`) — both public, no
-account needed.
+First run downloads the Whisper model (`small` by default, ~500MB), the
+SFace face-recognition weights (~38MB), and the LR-ASD lip-sync weights
+(~3.3MB) — all public, no account needed. The diarization model
+(`pyannote` community-1) is the exception: see above, it needs `HF_TOKEN`.
 
-## Optional: overlap detection (`pyannote.audio`)
+## Overlap detection
 
-**Currently non-functional on the installed `pyannote.audio` 4.0.7.**
-`pipeline/diarize.py`'s `detect_overlap()` loads
-`pyannote/overlapped-speech-detection`, whose config points at an
-`OverlappedSpeechDetection` pipeline class that pyannote 4 removed (4 also
-renamed `use_auth_token` to `token`). Loading therefore raises, and the code
-reports overlap as unavailable rather than failing the request — verified
-with a real token configured: `/process` still returns a transcript, with an
-empty `overlapWindows` list and a one-line notice.
+Shipped, not optional. community-1's diarisation pass is overlap-aware, so
+two people talking at once show up directly as two segments covering the
+same instant — there's no separate overlap model to configure or fail.
+Measured on a 10-minute slice: 10 overlaps totalling 2.65s, every one
+between 0.02s and 0.56s (interjections, not long enough to cut a composite
+for on that episode).
 
-The replacement is `pyannote` community-1, whose diarisation is overlap-aware
-in a single pass, so a separate overlap model is no longer needed. See
-[STATUS.md](../docs/STATUS.md)'s "What's left".
+This replaced an actual `pyannote.audio` 4.0.7 pipeline
+(`pyannote/overlapped-speech-detection`) that was non-functional — its
+config pointed at an `OverlappedSpeechDetection` pipeline class pyannote 4
+had removed, so it raised on load and `/process` silently returned an empty
+`overlapWindows` list. community-1 folding overlap into the main diarisation
+pass made that separate, broken pipeline unnecessary rather than something
+to fix.
+
+## Lip-sync and voice-to-face matching
+
+Diarization says *when* a voice talks; it has no idea whose face that is.
+`pipeline/lipsync.py` runs an LR-ASD model (MIT, AVA weights, downloaded to
+`pipeline/lrasd/` on first use) against each detected face, scoring how well
+its mouth movement matches the audio in sliding windows — per second, which
+face is most likely talking. `pipeline/fuse.py` then does Hungarian matching
+between diarization's voices and lip-sync's per-second "who's on screen
+talking" to assign each voice to a person, using each signal to catch the
+other's mistake (one voice landing on two faces means diarization merged two
+people; two voices landing on one face means it split someone in half).
+
+The cast screen starts pre-filled with these matches; the user confirms them,
+with low-confidence ones flagged rather than guessed at silently. Measured
+end to end on a 3-minute clip: 97-100% agreement with a human-verified
+benchmark, ~80s total including transcription, diarisation, faces, lip-sync,
+and matching (see [STATUS.md](../docs/STATUS.md)).
+
+## Captions
+
+`pipeline/captions.py` cuts caption cues from Whisper's word-level
+timestamps, not turn boundaries, so a cue starts and ends when speech
+actually does. `/export` burns them in via ffmpeg's `ass`/libass filter when
+`captions=true` is passed. This needs an ffmpeg built with libass — Homebrew's
+default `ffmpeg` formula doesn't have it, `ffmpeg-full` does — see the root
+[README.md](../README.md) for the `FFMPEG_BINARY` setup. Without it,
+`/export` refuses the job up front with that instruction rather than
+rendering 15 minutes of video with no captions on it.

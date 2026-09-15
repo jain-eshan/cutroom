@@ -12,17 +12,27 @@ recording, this handles the edit.
 **[Full documentation](docs/ARCHITECTURE.md)** — the plan, architecture,
 every dependency and why, setup, and limitations.
 
+**Docs map:** [Product](docs/PRODUCT.md) (what this is, who it's for) ·
+[Features](docs/FEATURES.md) (every feature, status, where it's implemented) ·
+[Market research](docs/MARKET_RESEARCH.md) (competitive landscape) ·
+[Business model](docs/BUSINESS_MODEL.md) (why it's free, and stays that way) ·
+[Architecture](docs/ARCHITECTURE.md) (system design, API, dependencies) ·
+[Technical architecture](docs/TECHNICAL_ARCHITECTURE.md) (export/render
+pipeline design) · [UX PRD](docs/UX_PRD.md) (UI requirements, Phase 4) ·
+[Status](docs/STATUS.md) (current state, measured results, what's next)
+
 ## Status
 
 **Working end-to-end, including real export:** upload a recording (with live
 progress) → the local service transcribes it, diarizes speakers on the mixed
-track, and *recognises* the distinct people on screen → you name everyone
-once and match each voice to a person by ear → the editor shows turns with
-real names, a live preview using the same framing maths as the export,
-per-turn layout override and per-turn correction of who's on screen →
-Export renders an actual MP4 with medium-shot framing, multi-person
-composites, source resolution preserved and the original audio
-stream-copied.
+track, *recognises* the distinct people on screen, and matches each voice to
+a face automatically via lip-sync → you name everyone once and confirm the
+matches, with the uncertain ones flagged → the editor shows turns with real
+names, a live preview using the same framing maths as the export, per-turn
+layout override and per-turn correction of who's on screen → Export renders
+an actual MP4 with medium-shot framing, multi-person composites, source
+resolution preserved, the original audio stream-copied, and optional
+burned-in captions.
 
 Annotations remain a stub. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 for the full picture and [docs/TECHNICAL_ARCHITECTURE.md](docs/TECHNICAL_ARCHITECTURE.md)
