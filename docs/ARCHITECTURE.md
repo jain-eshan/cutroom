@@ -609,7 +609,7 @@ no UI component library yet (plain Tailwind classes).
 | `soundfile` | reads the extracted wav as a waveform for `diarize.py` to hand `pyannote` directly | works around `pyannote` 4 reading audio through `torchcodec`, whose prebuilt libraries link against FFmpeg 4-7 and fail to load on a modern ffmpeg (9) — see Known Limitations |
 | `pysubs2` | writes the `.ass` subtitle file `captions.py` builds, for ffmpeg's `ass`/libass filter to burn in | |
 | `setuptools<81` | **pinned** to keep `pkg_resources` available | originally pinned because `resemblyzer`'s dependency `webrtcvad` did `import pkg_resources` at import time and recent `setuptools` (≥81) dropped it; `resemblyzer` is gone but the pin remains, not reverified against the current dependency set |
-| `pytest` (dev) | backend test suite (`server/tests/`, 76 tests) | |
+| `pytest` (dev) | backend test suite (`server/tests/`, 119 tests) | |
 
 **Face recognition model.** `cv2.FaceRecognizerSF` (SFace) ships inside the
 `opencv-python-headless` already installed, so identity recognition needed no
@@ -905,15 +905,13 @@ item. Re-planned on 2026-09-15.
 split-screen in both preview and export; speaker diarisation, voices and faces
 both (`pyannote` community-1 plus LR-ASD lip-sync and Hungarian matching);
 smarter cutting (dead air and filler words, opt-in); burned-in captions; the
-Cutroom design system and the region-based framing editor.
+Cutroom design system and the region-based framing editor; editor navigation
+(zoom, ruler, overview, shortcuts, undo, snapping).
 
 **Next** (founder decisions: editing basics, then the desktop app, before the
 host test):
 
-1. **Editing basics, navigation:** a timecode ruler, a draggable playhead,
-   timeline zoom and scroll with an overview of the whole episode above a
-   zoomed detail view, keyboard transport, undo and redo, and snapping to
-   words, turns and the playhead.
+1. ~~**Editing basics, navigation**~~: done 2026-09-15.
 2. **Editing basics, precision:** split at the playhead, waveforms and
    thumbnails, review markers, and an inspector for the selected shot.
 3. **Processing that survives closing the window, plus saved episodes.** A job
@@ -935,3 +933,6 @@ repo rename.
 social clips.
 
 **Cut from this horizon:** voice ducking, multi-camera support, Docker setup.
+
+**Not placed yet:** the automatic framing rules, and the edge cases and
+decisions behind them, in [EDGE_CASES.md](EDGE_CASES.md).

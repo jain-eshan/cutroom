@@ -85,20 +85,24 @@ recognition), `lipsync.py` (who's talking, from lip movement),
 
 ### 4. Auto-framing
 
-Three ways to show a turn, computed live from real detected face positions
-and kept in sync with playback — not a fixed template:
+Framing is a set of shots on a timeline, not a layout per turn. A shot can
+start partway through a line and run through several, and anything no shot
+covers is the wide shot. There are three kinds, computed from real detected
+face positions:
 
-- **Original** — the untouched wide shot.
-- **Zoom** — a medium shot on whoever's talking, framed the way a
-  professional podcast edit actually frames a seated subject (measured from
-  real reference edits, not guessed — see
-  [STATUS.md](STATUS.md#measured-not-asserted)).
-- **Split** — a real multi-person composite, up to three people tiled
-  side by side, for turns where more than one person needs to be on
-  screen.
+- **Wide**: the untouched frame.
+- **Close-up**: a medium shot on one person, framed the way a professional
+  podcast edit frames a seated subject (measured from real reference edits;
+  see [STATUS.md](STATUS.md#measured-not-asserted)).
+- **Both on screen**: a real multi-person composite. Two people sit side by
+  side; three or more get one large pane with the others stacked beside it.
+  There's no cap on how many.
 
-Layout is chosen automatically per turn (single speaker → Zoom, overlapping
-speech → Split) and can be overridden per turn in the editor.
+The suggested shots are simple today: a close-up of whoever says each line,
+everyone involved wherever people talk over each other for a second or more,
+and wide in between. That cuts to people who only say a word and flashes the
+wide shot at every pause. The rules meant to replace it, and every known edge
+case, are in [EDGE_CASES.md](EDGE_CASES.md).
 
 *Implementation:* `src/lib/faceCrop.ts` (live preview math),
 `server/pipeline/framing.py` + `render.py` (export render math — same
@@ -118,17 +122,36 @@ same pass that identifies speakers, rather than needing a second model.
 
 ### 6. Editor
 
-A turn-by-turn transcript, with real names (not anonymous speaker IDs), a
-live video preview using the exact same framing math the export will use, a
-per-turn layout override, and a per-turn fix for who's actually on screen
-(diarization occasionally gets a turn wrong; this is the one-click
-correction for that).
+Three panels driven by one selection: the transcript, with real names and a
+one-line reason for each automatic decision; a live preview that uses the
+same framing maths as the export; and the framing timeline.
 
-*Implementation:* `src/features/timeline/EditorView.tsx`.
+The timeline works like a video editor's, cut down to what a podcast needs:
+
+- An overview strip of the whole episode above a zoomable detail view. Zoom
+  with the buttons, `=` and `−`, or pinch / ⌘-scroll; "Show all" zooms out.
+- A timecode ruler to scrub along, and a playhead that pages the view when it
+  runs off screen.
+- Shots you pick and drag by either edge. Edges snap to words, line
+  boundaries, other shots and the playhead, and Option drags freely. The
+  picked shot's exact start and end show underneath.
+- Add a close-up or a both-on-screen shot for the current line, make a shot
+  wide, or reset to the suggestions.
+- Undo and redo with ⌘Z and ⇧⌘Z, or the buttons.
+- Keyboard: Space, J (back 5 s), K, L (2×, 4×), the arrows, ↑/↓ between
+  shots, Delete and Esc. The Shortcuts button lists them.
+
+Not built yet: split at the playhead, waveforms, stepping through the review
+flags, and a settings panel for the picked shot that would let you choose
+exactly who's on screen. See [STATUS.md](STATUS.md).
+
+*Implementation:* `src/features/timeline/EditorView.tsx`, `TimelineTray.tsx`,
+`regions.ts` (shot suggestions and edits, mirrors `render.py`) and
+`timelineView.ts` (zoom, ruler and snapping maths, tested with `npm test`).
 
 ### 7. Export
 
-Renders a real MP4: hard cuts at turn boundaries, the medium-shot framing
+Renders a real MP4: hard cuts where the framing changes, the medium-shot framing
 from [#4](#4-auto-framing), real multi-person composites, source resolution
 preserved, and the original audio stream-copied (not re-encoded — a
 podcast's audio is never actually edited, so there's no reason to pay a
@@ -244,4 +267,5 @@ Wrapping this as a standalone desktop app (e.g. via Electron) instead of
 "run two local services and open a browser tab." The architecture already
 supports this without a rewrite — the frontend only ever talks to
 `localhost` over HTTP, so where that service actually runs doesn't change
-anything about how the frontend is built. Not started.
+anything about how the frontend is built. Not started, but planned as a macOS
+`.dmg` after the editing basics and saved episodes. See [STATUS.md](STATUS.md).

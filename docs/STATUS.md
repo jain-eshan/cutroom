@@ -23,7 +23,8 @@ setup screen covers the one-time Hugging Face token.
 4. **Edit** — the transcript with real names beside a live preview that uses
    the same framing maths as the export, and a timeline of framing regions
    (close-up, both on screen, wide) whose edges can be dragged independently
-   of turn boundaries.
+   of turn boundaries. The timeline zooms and scrolls, has a ruler and an
+   overview strip, snaps edges to words, and has undo and keyboard shortcuts.
 5. **Publish** — a real MP4: hard cuts where the framing changes, medium-shot
    framing, multi-person composites, source resolution preserved, original
    audio stream-copied, and optional burned-in captions cut from the Whisper
@@ -64,7 +65,7 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | Export completes and is faithful | **95,436 frames in -> 95,436 out**, duration exact, 1920x1080 preserved, audio stream-copied **bit-identical** (matching MD5), 3.5GB out, peak 949MB RAM |
 | Diarisation does **not** hold up at length | 4 people -> **2 speakers, 34 turns in 53 min** (median turn 33s, longest 6.4 min). See "What's left" |
 
-**Checks:** 119 backend tests passing, `tsc` clean, `oxlint` clean (two
+**Checks:** 119 backend tests and 15 frontend tests (`npm test`) passing, `tsc` clean, `oxlint` clean (two
 deliberate, documented warnings), production build clean, full flow verified
 in a real browser against real footage.
 
@@ -282,14 +283,16 @@ with the decisions they need. They aren't placed on this list yet.
   fallback. `/process` returns a 400 naming the token and the licence page.
 - **Diarisation is still not perfect.** It can mis-assign a turn, and only
   finds speakers who actually speak in the window analysed. This is why
-  per-turn correction exists in the editor.
+  every shot can be changed in the editor. See
+  [EDGE_CASES.md](EDGE_CASES.md) B1.
 - **pyannote 4 cannot read audio files on FFmpeg 9.** It decodes through
   torchcodec, whose prebuilt libraries link against FFmpeg 4-7, so on a
   modern ffmpeg every one of them fails to load. Worked around by decoding
   the wav ourselves and handing the pipeline a waveform, which is free — the
   pipeline already extracts a 16kHz mono wav before this point.
-- **No automated frontend tests.** Backend has 23; the frontend is verified
-  by typecheck, build, and real browser sessions.
+- **Few automated frontend tests.** 15, all on the timeline maths
+  (`npm test`). The rest of the frontend is verified by typecheck, build, and
+  real browser sessions. The backend has 119.
 - **Caption burn-in needs an ffmpeg the standard install doesn't give you.**
   Homebrew's regular `ffmpeg` formula (9.0) ships without libass — and
   without freetype, so `drawtext` is not a fallback — so the `ass` filter

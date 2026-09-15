@@ -225,10 +225,12 @@ In the handoff's implementation order:
 
 ## Frontend testing gap
 
-There is no frontend test runner. `regions.ts` is pure and is the one module
-where a silent bug changes what gets exported, so it's the first candidate if
-one is added. The editor has been verified in the browser against a synthetic
-clip instead.
+`npm test` runs Node's built-in test runner over `src/**/*.test.ts`, with no
+test library. So far it only covers the timeline maths (`timelineView.ts`).
+`regions.ts` is next: it's pure, and it's the one module where a silent bug
+changes what gets exported. It imports through the `@/` path shortcut, which
+Node can't follow, so that has to be sorted first. The rest of the editor is
+verified in the browser against a synthetic clip.
 
 ## Open questions, not decided here
 

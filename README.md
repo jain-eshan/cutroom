@@ -19,7 +19,8 @@ every dependency and why, setup, and limitations.
 [Architecture](docs/ARCHITECTURE.md) (system design, API, dependencies) ·
 [Technical architecture](docs/TECHNICAL_ARCHITECTURE.md) (export/render
 pipeline design) · [UX PRD](docs/UX_PRD.md) (UI requirements, Phase 4) ·
-[Status](docs/STATUS.md) (current state, measured results, what's next)
+[Status](docs/STATUS.md) (current state, measured results, what's next) ·
+[Edge cases](docs/EDGE_CASES.md) (framing rules and known edge cases)
 
 ## Status
 
@@ -28,8 +29,8 @@ progress) → the local service transcribes it, diarizes speakers on the mixed
 track, *recognises* the distinct people on screen, and matches each voice to
 a face automatically via lip-sync → you name everyone once and confirm the
 matches, with the uncertain ones flagged → the editor shows turns with real
-names, a live preview using the same framing maths as the export, per-turn
-layout override and per-turn correction of who's on screen → Export renders
+names, a live preview using the same framing maths as the export, and a
+framing timeline you can zoom, scrub, drag, snap and undo → Export renders
 an actual MP4 with medium-shot framing, multi-person composites, source
 resolution preserved, the original audio stream-copied, and optional
 burned-in captions.
@@ -118,6 +119,9 @@ stops it when you quit, so there's no second terminal. The first start installs
 the service's Python dependencies, which takes a few minutes; the setup screen
 shows it working and moves on by itself. (To run the service on its own, see
 `server/README.md`.)
+
+To run the tests, `npm test` covers the timeline maths and
+`uv run --directory server pytest` covers the processing service.
 
 ## License
 
