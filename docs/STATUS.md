@@ -10,7 +10,8 @@ export phase see [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md) and
 ## What works end to end, today
 
 Drop in a recording and you get an edited MP4 out. The whole loop runs
-locally, nothing is uploaded anywhere.
+locally, nothing is uploaded anywhere. `npm run dev` starts everything, and a
+setup screen covers the one-time Hugging Face token.
 
 1. **Upload** — click or drag-and-drop, with real byte-level progress.
 2. **Process** — one upload feeds transcription, speaker diarisation,
@@ -19,11 +20,11 @@ locally, nothing is uploaded anywhere.
 3. **Cast** — name each recognised person once. Voices are already matched to
    faces by lip-sync, so this is a confirmation with the uncertain ones
    flagged, not a grid of anonymous voices to work out by ear.
-4. **Edit** — turn-by-turn transcript with real names, a live preview that
-   uses the same framing maths as the export, per-turn layout override
-   (wide / single / multi-person) and per-turn correction of who is on
-   screen.
-5. **Export** — a real MP4: hard cuts at turn boundaries, medium-shot
+4. **Edit** — the transcript with real names beside a live preview that uses
+   the same framing maths as the export, and a timeline of framing regions
+   (close-up, both on screen, wide) whose edges can be dragged independently
+   of turn boundaries.
+5. **Publish** — a real MP4: hard cuts where the framing changes, medium-shot
    framing, multi-person composites, source resolution preserved, original
    audio stream-copied, and optional burned-in captions cut from the Whisper
    word timestamps (not the coarser turn boundaries).
@@ -63,7 +64,7 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | Export completes and is faithful | **95,436 frames in -> 95,436 out**, duration exact, 1920x1080 preserved, audio stream-copied **bit-identical** (matching MD5), 3.5GB out, peak 949MB RAM |
 | Diarisation does **not** hold up at length | 4 people -> **2 speakers, 34 turns in 53 min** (median turn 33s, longest 6.4 min). See "What's left" |
 
-**Checks:** 76 backend tests passing, `tsc` clean, `oxlint` clean (two
+**Checks:** 119 backend tests passing, `tsc` clean, `oxlint` clean (two
 deliberate, documented warnings), production build clean, full flow verified
 in a real browser against real footage.
 
@@ -94,114 +95,145 @@ Two things the epic listed as open questions are now answered:
 
 ## What's left
 
-Ordered by what unlocks the most, not by effort.
+Re-planned on 2026-09-15 from the product owner's side, after the first real
+recordings ran through the whole pipeline. Ordered by the customer problem each
+item solves, not by feature or effort. This is the source of truth for
+ordering; [ARCHITECTURE.md](ARCHITECTURE.md)'s Roadmap mirrors it.
 
-### Next
-1. **Fix speaker diarisation.** *Voices: done. Which face: next.*
+### Where things stand
 
-   The full-episode run (2026-09-12) found this is the blocker in front of
-   everything else: on a four-person episode the pipeline heard **two**
-   speakers and cut 34 turns in 53 minutes, so two participants never get a
-   close-up. `resemblyzer` has now been replaced by community-1 on the GPU,
-   which removed the separate overlap model as well. What remains is the
-   other half of the fused design — lip-sync for *which face*, and the
-   Hungarian matching that joins the two. Measured on the real episode:
+- **Speaker diarisation, voices and faces both: done.** This sat at #1 here as
+  unfinished; lip-sync plus Hungarian matching (`lipsync.py`, `fuse.py`) closed
+  it. See [ARCHITECTURE.md](ARCHITECTURE.md).
+- **Smarter cutting (dead air, filler words): done**, as an opt-in export
+  option. Vary shot length stays deferred: no testable target without a real
+  edit to compare against.
+- **Real footage so far.** A 6-minute iPhone recording surfaced two bugs, both
+  fixed: a missing Hugging Face token was only caught mid-job, and lip-sync
+  crashed on the recording's last window while the app reported it as "Could
+  not reach the local processing service" (ARCHITECTURE.md bugs #15 and #16).
+  A 47-minute, four-person iPhone recording then processed end to end on the
+  fixed code: all three stages finished and four people were found. How editing
+  and export went on it hasn't been written up yet.
+- **The host test still hasn't happened.** A host is lined up within two weeks.
 
-   | Approach | Result |
-   |---|---|
-   | `resemblyzer` + average-linkage clustering (was shipping) | 99.5% of speech in one cluster at every k from 2 to 6. Removed |
-   | WeSpeaker embeddings + k-means / spectral / Ward | stable labels (2-3% flips) but never a clean four-way split |
-   | `sherpa-onnx` (pyannote segmentation 3.0 ONNX + WeSpeaker, no HF token) | 3 speakers when asked for 4 (89% in one), or 22 fragments unconstrained |
-   | `pyannote` **community-1** (CC-BY-4.0, HF token) — **now shipping** | best of the audio-only options. On a 10-min slice, unconstrained: **3 speakers, 90 turns** (the old pipeline managed 34 in the whole episode). The speed objection is gone: **0.089x on MPS, 4.7 min per episode**, same output as CPU. Overlap-aware in one pass, so the separate overlap model is deleted |
-   | **LR-ASD lip-sync** (MIT, AVA weights) | **validated on real footage** — tracked all four faces 100% of sampled frames, and its "who is speaking" call was confirmed correct by a human watching an annotated 3-minute clip. Independently showed the single dominant "voice" is really two different people |
+### How progress is measured
 
-   **Cross-checking the two settles the design.** On the same 10 minutes,
-   community-1's voices versus the lip-sync model's "who is on screen
-   talking":
+No usage data is collected (local-first is the premise), so every measure
+comes from test sessions:
 
-   | community-1 voice | face the lip model picks |
-   |---|---|
-   | SPEAKER_00 | p0, 100% of 71s |
-   | SPEAKER_01 | p2, 100% of 39s |
-   | SPEAKER_02 | p0 again, 100% of 36s |
+- **North Star (proposed):** episodes a host would publish without asking for
+  help.
+- **Supporting measures:** runs on real recordings that finish; time from
+  opening the app to the first export; share of framing decisions the editor
+  changed (already recorded per region in `decisions.jsonl` as `source`).
+- **Capacity rule:** roughly 80% new build, 20% fixes found by real footage.
+  Two of the last four commits were such fixes, and longer recordings will
+  find more. If fixes pass 40% of a cycle, new features stop until they're
+  paid down.
 
-   Two voices map cleanly onto one face each; the third is the same person as
-   the first, split in two because `num_speakers=4` was forced on a window
-   where the fourth participant barely speaks. So each signal catches the
-   other's failure: one voice pointing at two faces means merged speakers
-   (split them), two voices pointing at one face means an over-split speaker
-   (merge them). Neither can see its own error.
+### Next: the desktop app, then one host test
 
-   No speaker count is forced any more, which removes the cause of that
-   particular over-split. The roster gets confirmed by the one party that
-   actually knows — the human at the cast step, who is already there naming
-   faces — rather than guessed at by the model.
+The founder's call on 2026-09-15 is the desktop app before any host sees the
+product. (The recommendation was the host test first; the decision was app
+first.) One risk to watch: the app is the largest item here, and the host is
+free within two weeks.
 
-   **Still to build:** "which face" from lip-sync, paired to the voices with
-   Hungarian matching (the approach in Adobe's patent US12125501B2). That
-   also removes the manual voice-to-face step in the cast screen. Cost
-   measured on a 3-minute clip: ~15 min per 53-min episode for the lip-sync
-   pass, plus dense face detection (64 min unoptimised, expected to drop a
-   lot by searching only where each seated person already is).
+1. **Processing that survives closing the window, and saved episodes.** Today
+   a whole job lives inside one browser request, so closing or refreshing the
+   tab loses up to an hour of work, and nothing about an edited episode is
+   saved. Jobs move to the background with results saved to disk, and an
+   episode reopens without reprocessing. The desktop app needs this anyway.
+   - Problem: a long recording can't be processed reliably.
+   - Evidence (founder, testing): "the localhost stopped again midway".
+   - Measure: runs that finish.
+2. **The desktop app (.dmg).** No terminal, `uv` or `ffmpeg` install. It reads
+   the recording where it is instead of copying a 3 GB file into the service,
+   renders to a folder instead of holding the whole MP4 in browser memory, and
+   can use native notifications. Costs: an Apple Developer account for signing
+   and notarisation, a 2 to 3 GB download, Apple Silicon in practice, and care
+   with `ffmpeg`'s licence.
+   - Problem: getting it running needs a terminal.
+   - Evidence (founder): "make the tool in a way that the user does not have
+     to leave the env in anyway".
+   - Measure: time from opening the app to the first export.
+   - **Licence check, done 2026-09-15.** `pyannote` community-1 is CC-BY-4.0,
+     and every file the pipeline loads (segmentation, embedding, PLDA, config)
+     is in that one repo. The Hugging Face gate is an automatic form that asks
+     for contact details and a use case; its own text says the pipeline is
+     CC-BY-4.0 and will stay freely accessible. It adds no licence term.
+     CC-BY-4.0 allows redistribution with attribution, so the app can ship the
+     weights, credit pyannote with a link to the licence, and drop the Hugging
+     Face step entirely. This is a reading of the licence, not legal advice:
+     confirm before release. The Whisper, YuNet/SFace and LR-ASD weights need
+     the same check.
+3. **Waiting that keeps people.** A notification when processing finishes, a
+   live video preview that follows the transcript, a time estimate weighted by
+   how long each stage really takes (on the 47-minute run, faces finished well
+   before the transcript, and matching runs last), and visible progress for
+   the first-run model downloads. Small, and fits alongside item 2.
+   - Problem: a 35 to 40 minute wait with nothing to do.
+   - Evidence (founder): "keep the users hooked instead of them coming back in
+     an hour or so or maybe not returning at all".
+   - Measure: runs that finish and then get opened.
+4. **Host test, unassisted, with the app.** The milestone this project has
+   always been sequenced against, now combined with the setup question
+   [BUSINESS_MODEL.md](BUSINESS_MODEL.md) names: can a non-technical host
+   install it, process their own episode, and get an edit they'd publish
+   without help? If the app isn't ready inside the host's window, run the
+   session on the founder's machine instead and keep the unassisted install
+   for the next one. This is where the first real customer quotes come from,
+   and everything below needs them.
 
-2. **Then show a full edit to a podcast host.** Still the milestone the whole
-   roadmap is sequenced against, and still not done — an edit built on
-   two-speaker diarisation is not worth a host's time.
+### Then, ordered by what the host test shows
 
-### Then, informed by that
-3. ~~**Smarter cutting**~~ — dead air and filler words: **done**, ahead of
-   the host test this section is nominally gated on (built at the founder's
-   explicit direction rather than waiting). An opt-in export option trims
-   pauses over ~1.2s down to a short beat and cuts standalone disfluencies
-   (`um`, `uh`) from both audio and video — conservative by design, see
-   [FEATURES.md § Smarter cutting](FEATURES.md#8-smarter-cutting). Not
-   measured against real footage the way [framing.py](../server/pipeline/framing.py)'s
-   constants are, since there's no reference edit yet to tune the silence
-   threshold against — the numbers are reasoned defaults, not settled ones.
-   *Vary shot length*, the other half of this line, stayed deferred: unlike
-   silence/filler trimming it has no clear, testable target without a real
-   edit to compare against, so building it now would be guessing rather than
-   engineering.
-4. **Smoothing / scene-boundary layer** — the deferred Approach B. Only
-   worth it if the real-world test says crop jitter is a real complaint.
-5. **Jargon info-text annotations** — genuinely novel, nothing open-source
-   covers it.
-6. **Audio effects, intro/outro presets.**
-7. **Voice ducking for overlapping speech** — still gated on a source-
-   separation research spike. Isolating one voice from a single mixed track
-   is a different, harder ML problem than anything in the pipeline today.
-   Not a checkbox.
-8. **Style learning from corrections** — the `decisions.jsonl` data is
-   already being captured. Gated on evidence of repeat editors making repeat
-   corrections; before that there is no pattern to learn from.
-9. **Automatic social clips** — own offline scoring heuristic (pace,
-   silence, turn density), deliberately avoiding a cloud-LLM dependency.
-10. **Multi-camera support, desktop packaging (Electron).**
+- **Batched processing for long recordings**, if the wait loses people. The
+  hard part isn't cutting the file into chunks; it's keeping voice and face
+  identities consistent across them.
+- **Editor speed** (undo, keyboard shortcuts, a review queue you can step
+  through), if fixing an edit feels slow. Today dragging a shot overwrites its
+  neighbours and "Reset to suggested" is the only way back.
+- **Text-based editing** (delete words in the transcript to cut them), if
+  hosts want to cut content and not just framing. Word-level timings already
+  exist.
+- **Per-instant face visibility and crop smoothing**, if framing gets
+  complaints. See [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) item 6b.
+- **The 3-pane cap**, decided with feedback from a real four-person show. See
+  DESIGN_SYSTEM.md's open questions.
+- **Real render progress.** The desktop app removes the re-upload on export;
+  the render itself still reports nothing while it runs.
+- **Landing page, and renaming the repo to Cutroom**, once the app exists, so
+  the download button is true.
 
-Automatic speaker-to-face matching used to sit at the bottom of this list as
-"the hard one, deferred". It is now item 1: the fused design does it as a
-side effect, and the full-episode run showed the manual cast step was
-resting on diarisation that had already lost two of the four people.
+### Parked, with the reason
+
+- **Jargon info-text annotations**: novel, but no evidence anyone needs them
+  yet.
+- **Audio effects, intro/outro presets**: no problem evidence yet.
+- **Style learning from corrections**: needs repeat editors making repeat
+  corrections. The `decisions.jsonl` data keeps being captured meanwhile.
+- **Automatic social clips**: revisit after the host test. Publish already
+  shows them as unbuilt.
+- **Smoothing as a standalone layer**: folded into the framing item above.
+
+### Cut from this horizon
+
+- **Voice ducking for overlapping speech**: a source-separation research spike
+  nobody has asked for.
+- **Multi-camera support**: single camera is the whole positioning, and
+  multi-track tools already serve that case better (see
+  [MARKET_RESEARCH.md](MARKET_RESEARCH.md)).
+- **Docker one-command setup**: replaced by the desktop app. Two install paths
+  would be double the work.
 
 ### Separate passes, not roadmap items
-- ~~**Visual design language**~~ — a full brand + design system handoff
-  landed (2026-09-15): name (Cutroom), OKLCH color tokens, type, spacing,
-  logo, and a spec for every screen including a new Publish stage. The
-  foundation is built — tokens, three-state theme switching, the SVG logo,
-  self-hosted fonts, and a reskin of the four existing screens. What's
-  still explicitly deferred (a new Setup gate screen, the Editor's
-  region-based framing rearchitecture, the Publish screen, a Cast-screen
-  interaction change, and the landing page) is tracked in
-  [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) with the same ordering the handoff
-  itself prescribes. The region-based Editor item is the one to read
-  before touching `EditorView.tsx` or `server/pipeline/render.py` again —
-  it's a real architecture change, not a reskin, and the two have to land
-  together.
-- **Public-release readiness** — one-command setup (Docker), CI, cross-
-  platform verification (macOS only so far), CONTRIBUTING.md, a demo GIF.
-- **Agent-friendly / fixture mode** — a way to load canned state directly
-  into the editor so UI changes can be checked without walking the whole
-  upload flow. Would have saved real time during this phase.
+
+- ~~**Visual design language**~~: done. See
+  [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
+- **Public-release readiness**: CI, cross-platform checks, CONTRIBUTING.md, a
+  demo GIF. (Docker setup is cut above.)
+- **Agent-friendly fixture mode**: a way to load canned state into the editor
+  without walking the whole upload flow. Still worth doing.
 
 ---
 

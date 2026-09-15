@@ -894,57 +894,34 @@ re-discovers them the hard way.
 
 ## Roadmap
 
-Synced to [STATUS.md](STATUS.md)'s "What's left", which is the current
-source of truth for ordering — read it for the measured comparisons behind
-each call. Where this list and an older draft of it disagreed, STATUS.md
-won.
+Synced to [STATUS.md](STATUS.md)'s "What's left", which is the source of truth
+for ordering: read it for the problem, the evidence and the measure behind each
+item. Re-planned on 2026-09-15.
 
-1. ~~**Export**~~ — done. `POST /export` renders a real MP4 with hard cuts,
-   bust-shot zoom, and a real multi-speaker composite.
-2. ~~**Split-screen, for real**~~ — done, both live preview (two synced
-   `<video>` elements) and export (real ffmpeg composite, capped at 3 panes).
-3. ~~**Fix speaker diarisation, voices and faces both**~~ — done.
-   `resemblyzer` (99.5% of speech in one cluster, on a real episode) was
-   replaced by `pyannote` community-1 on the GPU (3 speakers/90 turns on a
-   10-minute slice the old pipeline never approached, 0.089x realtime on
-   MPS), which also removed the separate broken overlap model. LR-ASD
-   lip-sync + Hungarian matching (`lipsync.py`, `fuse.py`) then closed the
-   other half — automatic voice-to-face matching, validated at 97-100%
-   agreement with a human-checked benchmark. The cast screen starts
-   pre-filled instead of built from scratch.
-4. **Show a full edit to a podcast host.** Still the milestone the whole
-   roadmap is sequenced against, and still not done — this is genuinely
-   next now that both halves of diarisation are fixed.
-5. ~~**Smarter cutting**~~ — dead air and filler words: done, as an opt-in
-   export option (`trimDeadAir`). See [STATUS.md](STATUS.md)'s "What's
-   left" for the full writeup. Vary shot length, the other half of this
-   line, stayed deferred — no testable target for it without a real edit
-   to compare against.
-6. **Smoothing / scene-boundary layer** — the deferred crop-interpolation
-   approach. Only worth it if the real-world test says crop jitter is a
-   real complaint.
-7. **Jargon info-text annotations** — genuinely novel, nothing open-source
-   covers it.
-8. **Audio effects, intro/outro presets.**
-9. **Voice ducking for overlapping speech** — still gated on a
-   source-separation research spike; isolating one voice from a single
-   mixed track is a different, harder ML problem than anything else in the
-   pipeline. Not a checkbox.
-10. **Style learning from corrections** — the `decisions.jsonl` data is
-    already being captured. Gated on evidence of repeat editors making
-    repeat corrections; no pattern to learn from before that.
-11. **Automatic social clips** — an offline scoring heuristic (pace,
-    silence, turn density), deliberately avoiding a cloud-LLM dependency.
-12. **Multi-camera support, desktop packaging (Electron).**
+**Done:** export (hard cuts, bust-shot framing, multi-speaker composite);
+split-screen in both preview and export; speaker diarisation, voices and faces
+both (`pyannote` community-1 plus LR-ASD lip-sync and Hungarian matching);
+smarter cutting (dead air and filler words, opt-in); burned-in captions; the
+Cutroom design system and the region-based framing editor.
 
-**Captions** shipped ahead of this list's original ordering (word-level
-cues, burned in via ffmpeg's `ass` filter) — not because it was
-reprioritized above the real-world test, but because it was cheap once
-Whisper's word timestamps were already being captured for other reasons.
+**Next** (the founder's call: the desktop app before the host test):
 
-**Separate passes, not roadmap items** (per STATUS.md): visual design
-language (colours, typography, spacing, component system — entirely
-unaddressed); public-release readiness (one-command Docker setup, CI,
-cross-platform verification, CONTRIBUTING.md, a demo GIF); an
-agent-friendly/fixture mode for loading canned state into the editor
-without walking the whole upload flow.
+1. **Processing that survives closing the window, plus saved episodes.** A job
+   currently lives inside one browser request. This is also the foundation the
+   desktop app needs.
+2. **Desktop app (.dmg).** The licence check is done: community-1 is CC-BY-4.0
+   and all of its weights live in one repo, so the app can ship them with
+   attribution and drop the Hugging Face step.
+3. **Waiting that keeps people:** a done notification, a live preview, a time
+   estimate weighted by stage, and visible first-run model downloads.
+4. **Host test, unassisted, with the app.**
+
+**Then, ordered by what the host test shows:** batched processing for long
+recordings, editor speed (undo, shortcuts, a review queue), text-based editing,
+per-instant face visibility and crop smoothing, the 3-pane cap decision, real
+render progress, and the landing page with the repo rename.
+
+**Parked:** jargon annotations, audio effects and presets, style learning,
+social clips.
+
+**Cut from this horizon:** voice ducking, multi-camera support, Docker setup.

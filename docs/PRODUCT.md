@@ -100,10 +100,11 @@ Two decisions shaped everything else:
 Full detail and current priority order lives in
 [STATUS.md § What's left](STATUS.md#whats-left) — that's the living
 roadmap and it's kept current; this section is deliberately short so it
-doesn't drift out of sync with it. In one line: finish automatic
-speaker-to-face matching (the last piece of removing manual guesswork from
-casting), then run a real episode past an actual podcast host and find out
-if the edit is good enough to matter before building anything past that.
+doesn't drift out of sync with it. In one line: automatic
+speaker-to-face matching is done; next is a desktop app that needs no
+terminal and survives closing the window, then an unassisted test with a
+real podcast host to find out whether the edit is good enough to matter
+before building much past that.
 
 ## Related docs
 
