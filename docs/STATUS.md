@@ -141,6 +141,11 @@ app, scoped to navigation and precision: Cutroom stays a podcast auto-editor,
 not a general video editor. One risk to watch: the host is free within two
 weeks, and the app is still the largest item.
 
+The automatic framing rules (short lines, overlaps, who holds the shot, how
+many people fit on screen, a wide-only style) and every other known edge
+case in the core product are catalogued in [EDGE_CASES.md](EDGE_CASES.md),
+with the decisions they need. They aren't placed on this list yet.
+
 1. **Editing basics: navigation.** A timecode ruler and a playhead you can drag
    to scrub; timeline zoom and horizontal scroll with zoom-to-fit, plus a thin
    overview of the whole episode above a zoomed detail view (the idea behind
