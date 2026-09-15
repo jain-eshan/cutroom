@@ -259,7 +259,8 @@ export function FramingDemo() {
 					<span className="absolute top-3 left-3 rounded-chip bg-black/55 px-2 py-1 text-[12px] text-white">
 						{shotLabel(shot)}
 					</span>
-					<span className="absolute right-3 bottom-3 rounded-chip bg-black/55 px-2 py-1 font-mono text-[11px] text-white">
+					{/* Hidden on phones, where it would sit on top of the caption. */}
+					<span className="absolute right-3 bottom-3 hidden rounded-chip bg-black/55 px-2 py-1 font-mono text-[11px] text-white sm:inline">
 						{formatTime(t)}
 					</span>
 					<p className="absolute inset-x-0 bottom-[9%] mx-auto w-fit max-w-[80%] rounded-[6px] bg-black/70 px-3 py-1.5 text-center text-[clamp(11px,1.7vw,17px)] leading-snug text-white">
@@ -282,7 +283,10 @@ export function FramingDemo() {
 									}`}
 									style={{ left: pct(s.start), width: pct(s.end - s.start) }}
 								>
-									<span className="truncate text-[10px] font-medium whitespace-nowrap text-r-ink">{shotLabel(s)}</span>
+									{/* Too narrow to read on a phone; the colours still show the cuts. */}
+									<span className="hidden truncate text-[10px] font-medium whitespace-nowrap text-r-ink sm:inline">
+										{shotLabel(s)}
+									</span>
 								</button>
 							))}
 						</div>

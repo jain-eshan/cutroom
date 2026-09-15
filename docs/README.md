@@ -39,5 +39,5 @@ the written spec: tokens, typography, copy rules and each screen's layout.
 
 - [`server/README.md`](../server/README.md): the processing service on its
   own, and how speaker detection, face tracking and lip-sync work.
-- [`site/README.md`](../site/README.md): the website at cutroom's public
-  address, and how to change or deploy it.
+- [`site/README.md`](../site/README.md): the website, live at
+  https://cutroom-ruddy.vercel.app, and how to change or deploy it.

@@ -6,6 +6,8 @@ import { Waitlist } from "./Waitlist";
 const REPO = "https://github.com/jain-eshan/cutroom";
 const doc = (path: string) => `${REPO}/blob/main/${path}`;
 
+const SHADOW = "shadow-[0_18px_50px_-24px_rgba(40,30,20,0.35)]";
+
 function Section({ id, className = "", children }: { id?: string; className?: string; children: React.ReactNode }) {
 	return (
 		<section id={id} className={`px-5 sm:px-8 ${className}`}>
@@ -18,18 +20,37 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 	return <p className="font-mono text-[12px] tracking-[0.08em] text-accent-text uppercase">{children}</p>;
 }
 
+/** Anything that leaves the page (GitHub, docs) opens in a new tab, so the
+ * landing page stays where the visitor left it. */
+function Out({ href, className, children }: { href: string; className?: string; children: React.ReactNode }) {
+	return (
+		<a href={href} target="_blank" rel="noopener noreferrer" className={className}>
+			{children}
+			<span className="sr-only"> (opens in a new tab)</span>
+		</a>
+	);
+}
+
+function GitHubMark() {
+	return (
+		<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden fill="currentColor" className="shrink-0">
+			<path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.23 1.88.87 2.34.67.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.13 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.11.16 1.93.08 2.13.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+		</svg>
+	);
+}
+
 function Nav() {
 	return (
 		<header className="sticky top-0 z-30 border-b border-line/70 bg-panel/85 backdrop-blur-md">
-			<div className="mx-auto flex h-16 max-w-[1120px] items-center gap-4 px-5 sm:px-8">
-				<a href="#top" className="flex items-center gap-2.5" aria-label="Cutroom, back to top">
-					<Logo size={30} className="text-text" />
-					<span className="text-[17px] font-semibold tracking-[-0.01em]">Cutroom</span>
+			<div className="mx-auto flex h-14 max-w-[1120px] items-center gap-3 px-4 sm:h-16 sm:gap-4 sm:px-8">
+				<a href="#top" className="flex shrink-0 items-center gap-2.5" aria-label="Cutroom, back to top">
+					<Logo size={28} className="text-text" />
+					<span className="text-[16px] font-semibold tracking-[-0.01em] sm:text-[17px]">Cutroom</span>
 				</a>
 				<span className="hidden rounded-full border border-line bg-raised px-2.5 py-0.5 text-[12px] text-text2 sm:inline">
 					Developer preview
 				</span>
-				<nav className="ml-auto hidden items-center gap-7 text-[14px] text-text2 md:flex">
+				<nav className="ml-auto hidden items-center gap-6 text-[14px] text-text2 lg:flex">
 					<a href="#how" className="hover:text-text">
 						How it works
 					</a>
@@ -39,16 +60,19 @@ function Nav() {
 					<a href="#contribute" className="hover:text-text">
 						Contribute
 					</a>
+					<a href="#waitlist" className="hover:text-text">
+						Waitlist
+					</a>
 				</nav>
-				<a
+				<Out
 					href={REPO}
-					className="ml-auto flex items-center gap-2 rounded-[9px] border border-line bg-raised px-3 py-1.5 text-[14px] font-medium hover:bg-chrome md:ml-0"
+					className="ml-auto flex items-center gap-2 rounded-[9px] border border-line bg-raised px-3 py-1.5 text-[14px] font-medium whitespace-nowrap hover:bg-chrome lg:ml-0"
 				>
-					<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden fill="currentColor">
-						<path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.23 1.88.87 2.34.67.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.13 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.11.16 1.93.08 2.13.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
-					</svg>
-					Star on GitHub
-				</a>
+					<GitHubMark />
+					<span>
+						Star <span className="hidden sm:inline">on GitHub</span>
+					</span>
+				</Out>
 			</div>
 		</header>
 	);
@@ -56,19 +80,19 @@ function Nav() {
 
 function Hero() {
 	return (
-		<Section id="top" className="pt-14 pb-16 sm:pt-20">
+		<Section id="top" className="pt-12 pb-16 sm:pt-16 lg:pt-20">
 			<div className="mx-auto max-w-[860px] text-center">
-				<p className="mx-auto w-fit rounded-full border border-line bg-raised px-3.5 py-1.5 text-[13px] text-text2">
+				<p className="mx-auto w-fit rounded-full border border-line bg-raised px-3.5 py-1.5 text-[12px] text-text2 sm:text-[13px]">
 					Free and open source · runs on your own computer
 				</p>
-				<h1 className="mt-6 text-[clamp(2.6rem,7.2vw,4.4rem)] leading-[1.02] font-semibold tracking-[-0.035em] text-balance">
+				<h1 className="mt-6 text-[clamp(2.4rem,7vw,4.25rem)] leading-[1.03] font-semibold tracking-[-0.035em] text-balance">
 					Podcast video that cuts itself
 				</h1>
-				<p className="mx-auto mt-5 max-w-[640px] text-[clamp(1.05rem,2.2vw,1.25rem)] leading-relaxed text-pretty text-text2">
+				<p className="mx-auto mt-5 max-w-[620px] text-[clamp(1rem,2.1vw,1.2rem)] leading-relaxed text-pretty text-text2">
 					Drop in one wide recording of two, three or four people. Cutroom writes the transcript, works out who's
 					speaking, and cuts in close on them. Then it hands you every decision to change.
 				</p>
-				<div className="mt-8 flex flex-wrap justify-center gap-3">
+				<div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
 					<a
 						href="#waitlist"
 						className="rounded-[10px] bg-handle px-5 py-3 text-[15px] font-medium text-panel hover:opacity-90"
@@ -84,7 +108,9 @@ function Hero() {
 				</div>
 				<p className="mt-4 text-[13px] text-text3">Free forever · MIT licence · your recording never leaves your machine</p>
 			</div>
-			<div className="mx-auto mt-14 max-w-[1000px]">
+			{/* Sized so the whole demo, timeline included, fits on screen under the
+			    nav on a laptop, rather than filling the width of a large monitor. */}
+			<div className="mx-auto mt-12 w-full max-w-[min(800px,calc((100svh_-_280px)*16/9))] sm:mt-14">
 				<FramingDemo />
 			</div>
 		</Section>
@@ -94,10 +120,10 @@ function Hero() {
 function Problem() {
 	return (
 		<Section className="border-y border-line bg-panel py-16 sm:py-20">
-			<div className="grid gap-8 md:grid-cols-[1fr_1.3fr] md:gap-16">
+			<div className="grid gap-6 md:grid-cols-[1fr_1.3fr] md:gap-16">
 				<div>
 					<Eyebrow>Why it exists</Eyebrow>
-					<h2 className="mt-3 text-[clamp(1.7rem,3.6vw,2.4rem)] leading-tight font-semibold tracking-[-0.025em] text-balance">
+					<h2 className="mt-3 text-[clamp(1.6rem,3.6vw,2.4rem)] leading-tight font-semibold tracking-[-0.025em] text-balance">
 						Most shows are one camera and one mixed track
 					</h2>
 				</div>
@@ -119,47 +145,56 @@ function Problem() {
 	);
 }
 
-function Screenshot({ src, alt, title }: { src: string; alt: string; title: string }) {
+/**
+ * Every feature visual sits in the same frame: a title bar and a 16:10 body.
+ * Equal shapes at equal widths make the three feature rows the same height,
+ * whatever each one shows.
+ */
+function Window({ title, children }: { title: string; children: React.ReactNode }) {
 	return (
-		<figure className="overflow-hidden rounded-[12px] border border-line bg-raised shadow-[0_18px_50px_-24px_rgba(40,30,20,0.35)]">
+		<figure className={`overflow-hidden rounded-[12px] border border-line bg-raised ${SHADOW}`}>
 			<div className="flex h-8 items-center gap-1.5 border-b border-line bg-chrome px-3">
 				<span className="h-2.5 w-2.5 rounded-full bg-[#e2685c]" />
 				<span className="h-2.5 w-2.5 rounded-full bg-[#e6b54c]" />
 				<span className="h-2.5 w-2.5 rounded-full bg-[#6cc070]" />
 				<span className="ml-2 truncate font-mono text-[11px] text-text3">{title}</span>
 			</div>
-			<img src={src} alt={alt} loading="lazy" className="block w-full" />
+			<div className="relative aspect-[16/10] overflow-hidden bg-bg">{children}</div>
 		</figure>
 	);
 }
 
-function ShotStrip() {
-	const frames = [
-		{ label: "Close on Maya", body: <CloseUp id="maya" aspect={16 / 9} className="h-full w-full" /> },
-		{
-			label: "Maya + Dev",
-			body: (
-				<div className="flex h-full">
-					<CloseUp id="maya" aspect={8 / 9} className="h-full w-1/2" />
-					<CloseUp id="dev" aspect={8 / 9} className="h-full w-1/2 border-l-2 border-black" />
-				</div>
-			),
-		},
-		{ label: "Wide", body: <WideShot className="h-full w-full" /> },
-	];
-	// The composite large on top, the two simpler shots side by side below it.
-	const [closeUp, both, wide] = frames;
+function Cell({ label, children }: { label: string; children: React.ReactNode }) {
 	return (
-		<div className="grid grid-cols-2 gap-3 rounded-[12px] border border-line bg-raised p-3 shadow-[0_18px_50px_-24px_rgba(40,30,20,0.35)]">
-			{[both, closeUp, wide].map((f, i) => (
-				<div
-					key={f.label}
-					className={`relative aspect-video overflow-hidden rounded-[7px] bg-black ${i === 0 ? "col-span-2" : ""}`}
-				>
-					{f.body}
-					<span className="absolute top-2 left-2 rounded-chip bg-black/55 px-1.5 py-0.5 text-[11px] text-white">{f.label}</span>
+		<div className="relative overflow-hidden rounded-[6px] bg-black">
+			{children}
+			<span className="absolute top-1.5 left-1.5 rounded-chip bg-black/55 px-1.5 py-0.5 text-[10px] text-white sm:text-[11px]">
+				{label}
+			</span>
+		</div>
+	);
+}
+
+function ShotGrid() {
+	// Cells are close to 16:10, so the crops ask for that shape; a pane of a
+	// two-person shot is half as wide.
+	return (
+		<div className="grid h-full grid-cols-2 grid-rows-2 gap-2 p-2">
+			<Cell label="Close on Maya">
+				<CloseUp id="maya" aspect={1.6} className="h-full w-full" />
+			</Cell>
+			<Cell label="Maya + Dev">
+				<div className="flex h-full">
+					<CloseUp id="maya" aspect={0.8} className="h-full w-1/2" />
+					<CloseUp id="dev" aspect={0.8} className="h-full w-1/2 border-l-2 border-black" />
 				</div>
-			))}
+			</Cell>
+			<Cell label="Close on Sam">
+				<CloseUp id="sam" aspect={1.6} className="h-full w-full" />
+			</Cell>
+			<Cell label="Wide">
+				<WideShot className="h-full w-full" />
+			</Cell>
 		</div>
 	);
 }
@@ -170,18 +205,28 @@ function Features() {
 			eyebrow: "Automatic framing",
 			title: "It cuts to whoever's talking",
 			body: "Faces are found and recognised across the whole episode, and each voice is matched to a face by lip movement. Close-ups are framed the way professional podcast edits frame a seated person, and when two people talk over each other, both go on screen.",
-			visual: <ShotStrip />,
+			visual: (
+				<Window title="Shots">
+					<ShotGrid />
+				</Window>
+			),
 		},
 		{
 			eyebrow: "The editor",
 			title: "Every cut is yours to move",
 			body: "The suggested shots sit on a timeline beside the transcript. Drag an edge, hold a close-up through an interruption, or clear a shot and go wide. Edges snap to words, the timeline zooms down to a fraction of a second, and everything can be undone.",
 			visual: (
-				<Screenshot
-					src="/shots/editor.jpg"
-					alt="The Cutroom editor: transcript on the left, video preview on the right, and a framing timeline along the bottom."
-					title="ep12_maya_dev_sam.mp4"
-				/>
+				<Window title="ep12_maya_dev_sam.mp4">
+					<img
+						src="/shots/editor.jpg"
+						width={1400}
+						height={875}
+						loading="lazy"
+						decoding="async"
+						alt="The Cutroom editor: transcript on the left, video preview on the right, and a framing timeline along the bottom."
+						className="h-full w-full object-cover object-top"
+					/>
+				</Window>
 			),
 		},
 		{
@@ -189,27 +234,37 @@ function Features() {
 			title: "You name everyone once",
 			body: "Cutroom groups each person's face and guesses which voice belongs to them. You confirm the names one voice at a time, and it tells you which guesses it isn't sure about.",
 			visual: (
-				<Screenshot
-					src="/shots/cast.jpg"
-					alt="The Cutroom cast screen, asking which person a voice belongs to."
-					title="Who's who"
-				/>
+				<Window title="Who's who">
+					<img
+						src="/shots/cast.jpg"
+						width={1400}
+						height={875}
+						loading="lazy"
+						decoding="async"
+						alt="The Cutroom cast screen, asking which person a voice belongs to, with its guess highlighted."
+						className="h-full w-full object-cover object-top"
+					/>
+					{/* The card carries on below the frame; fade it out rather than cut it. */}
+					<div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-bg to-transparent" />
+				</Window>
 			),
 		},
 	];
 	return (
-		<Section className="py-20 sm:py-28">
-			<div className="flex flex-col gap-20 sm:gap-28">
+		<Section className="py-20 sm:py-24 lg:py-28">
+			<div className="flex flex-col gap-16 sm:gap-20 lg:gap-24">
 				{rows.map((row, i) => (
-					<div key={row.title} className="grid items-center gap-10 md:grid-cols-2 md:gap-16">
-						<div className={i % 2 ? "md:order-2" : ""}>
+					<div key={row.title} className="grid items-center gap-8 lg:grid-cols-2 lg:gap-16">
+						<div className={`max-w-[560px] ${i % 2 ? "lg:order-2" : ""}`}>
 							<Eyebrow>{row.eyebrow}</Eyebrow>
-							<h3 className="mt-3 text-[clamp(1.6rem,3.2vw,2.2rem)] leading-tight font-semibold tracking-[-0.025em]">
+							<h3 className="mt-3 text-[clamp(1.5rem,3.2vw,2.2rem)] leading-tight font-semibold tracking-[-0.025em]">
 								{row.title}
 							</h3>
 							<p className="mt-4 text-[16px] leading-relaxed text-text2">{row.body}</p>
 						</div>
-						<div className={i % 2 ? "md:order-1" : ""}>{row.visual}</div>
+						<div className={`w-full max-w-[640px] ${i % 2 ? "lg:order-1" : "lg:justify-self-end"}`}>
+							{row.visual}
+						</div>
 					</div>
 				))}
 			</div>
@@ -243,10 +298,10 @@ function HowItWorks() {
 	return (
 		<Section id="how" className="border-y border-line bg-panel py-20 sm:py-24">
 			<Eyebrow>How it works</Eyebrow>
-			<h2 className="mt-3 max-w-[640px] text-[clamp(1.7rem,3.6vw,2.4rem)] leading-tight font-semibold tracking-[-0.025em]">
+			<h2 className="mt-3 max-w-[640px] text-[clamp(1.6rem,3.6vw,2.4rem)] leading-tight font-semibold tracking-[-0.025em]">
 				Four steps, all on your own computer
 			</h2>
-			<ol className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+			<ol className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4">
 				{steps.map((step, i) => (
 					<li key={step.title} className="flex flex-col rounded-[12px] border border-line bg-raised p-5">
 						<span className="font-mono text-[13px] text-accent-text">0{i + 1}</span>
@@ -271,7 +326,7 @@ function Numbers() {
 		<Section className="py-20 sm:py-24">
 			<div className="grid gap-px overflow-hidden rounded-[14px] border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
 				{numbers.map((n) => (
-					<div key={n.value} className="bg-raised p-6">
+					<div key={n.value} className="bg-raised p-5 sm:p-6">
 						<p className="font-mono text-[clamp(1.5rem,3vw,2rem)] font-medium tracking-[-0.02em]">{n.value}</p>
 						<p className="mt-2 text-[14px] leading-snug text-text2">{n.label}</p>
 					</div>
@@ -279,9 +334,9 @@ function Numbers() {
 			</div>
 			<p className="mt-4 text-[13px] text-text3">
 				Measured on real recordings, not estimated. The method and the rest of the numbers are in{" "}
-				<a href={doc("docs/STATUS.md")} className="underline decoration-line underline-offset-2 hover:text-text">
+				<Out href={doc("docs/STATUS.md")} className="underline decoration-line underline-offset-2 hover:text-text">
 					STATUS.md
-				</a>
+				</Out>
 				.
 			</p>
 		</Section>
@@ -319,28 +374,28 @@ function Limits() {
 	];
 	return (
 		<Section id="limits" className="pb-20 sm:pb-28">
-			<div className="grid gap-10 md:grid-cols-[1fr_1.6fr] md:gap-16">
+			<div className="grid gap-8 lg:grid-cols-[1fr_1.6fr] lg:gap-16">
 				<div>
 					<Eyebrow>Honest about it</Eyebrow>
-					<h2 className="mt-3 text-[clamp(1.7rem,3.6vw,2.4rem)] leading-tight font-semibold tracking-[-0.025em]">
+					<h2 className="mt-3 text-[clamp(1.6rem,3.6vw,2.4rem)] leading-tight font-semibold tracking-[-0.025em]">
 						What it can't do yet
 					</h2>
-					<p className="mt-4 text-[16px] leading-relaxed text-text2">
+					<p className="mt-4 max-w-[520px] text-[16px] leading-relaxed text-text2">
 						This is early software. Here's where it falls short today, and each one is a good place to help.
 					</p>
 				</div>
 				<ul className="divide-y divide-line overflow-hidden rounded-[14px] border border-line bg-raised">
 					{rows.map((row) => (
 						<li key={row.what}>
-							<a
+							<Out
 								href={row.href}
-								className="flex flex-col gap-2 px-5 py-4 hover:bg-panel sm:flex-row sm:items-center sm:justify-between sm:gap-6"
+								className="flex flex-col gap-2 px-4 py-4 hover:bg-panel sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-5"
 							>
 								<span className="text-[15px]">{row.what}</span>
 								<span className={`w-fit shrink-0 rounded-full px-2.5 py-1 text-[12px] font-medium ${TONE[row.tone]}`}>
 									{row.status}
 								</span>
-							</a>
+							</Out>
 						</li>
 					))}
 				</ul>
@@ -369,17 +424,17 @@ function DeveloperPreview() {
 			{/* min-w-0 on both columns: a grid item won't shrink below its widest
 			    content otherwise, and the long clone command pushed the page wider
 			    than a phone screen. */}
-			<div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
+			<div className="grid gap-10 lg:grid-cols-2 lg:gap-16">
 				<div className="min-w-0">
 					<Eyebrow>Developer preview</Eyebrow>
-					<h2 className="mt-3 text-[clamp(1.7rem,3.6vw,2.4rem)] leading-tight font-semibold tracking-[-0.025em]">
+					<h2 className="mt-3 text-[clamp(1.6rem,3.6vw,2.4rem)] leading-tight font-semibold tracking-[-0.025em]">
 						Run it today
 					</h2>
-					<p className="mt-4 text-[16px] leading-relaxed text-text2">
+					<p className="mt-4 max-w-[560px] text-[16px] leading-relaxed text-text2">
 						If you're comfortable in a terminal, you can run the whole thing now. One command starts the app and its
 						local processing service, and the app walks you through the rest.
 					</p>
-					<ul className="mt-6 space-y-3 text-[15px] leading-relaxed text-text2">
+					<ul className="mt-6 max-w-[560px] space-y-3 text-[15px] leading-relaxed text-text2">
 						{[
 							<>A Mac with Apple silicon. It's the only setup tested so far.</>,
 							<>
@@ -399,12 +454,12 @@ function DeveloperPreview() {
 							</li>
 						))}
 					</ul>
-					<a
+					<Out
 						href={`${REPO}#readme`}
 						className="mt-7 inline-block text-[15px] font-medium text-accent-text underline decoration-accent/40 underline-offset-4 hover:decoration-accent"
 					>
 						Read the full setup guide
-					</a>
+					</Out>
 				</div>
 
 				<div className="min-w-0 self-center">
@@ -414,12 +469,12 @@ function DeveloperPreview() {
 							<button
 								type="button"
 								onClick={copy}
-								className="rounded-[6px] border border-white/15 px-2 py-1 font-mono text-[11px] text-white/70 hover:bg-white/10"
+								className="rounded-[6px] border border-white/15 px-2.5 py-1 font-mono text-[11px] text-white/70 hover:bg-white/10"
 							>
 								{copied ? "Copied" : "Copy"}
 							</button>
 						</div>
-						<pre className="overflow-x-auto p-5 font-mono text-[13.5px] leading-7 text-white/90">
+						<pre className="overflow-x-auto p-4 font-mono text-[12.5px] leading-7 text-white/90 sm:p-5 sm:text-[13.5px]">
 							{COMMANDS.map((c) => (
 								<div key={c}>
 									<span className="text-accent select-none">$ </span>
@@ -462,7 +517,7 @@ function Contribute() {
 		<Section id="contribute" className="py-20 sm:py-28">
 			<div className="max-w-[680px]">
 				<Eyebrow>Contribute</Eyebrow>
-				<h2 className="mt-3 text-[clamp(1.7rem,3.6vw,2.4rem)] leading-tight font-semibold tracking-[-0.025em]">
+				<h2 className="mt-3 text-[clamp(1.6rem,3.6vw,2.4rem)] leading-tight font-semibold tracking-[-0.025em]">
 					Built in the open. Come help.
 				</h2>
 				<p className="mt-4 text-[16px] leading-relaxed text-text2">
@@ -470,21 +525,21 @@ function Contribute() {
 					deciding when a cut is worth making. If any of that sounds fun, there's a clear place to start.
 				</p>
 			</div>
-			<div className="mt-10 grid gap-4 sm:grid-cols-2">
+			<div className="mt-10 grid gap-4 md:grid-cols-2">
 				{cards.map((card) => (
-					<a
+					<Out
 						key={card.title}
 						href={card.href}
 						className="group rounded-[12px] border border-line bg-raised p-5 transition-colors hover:border-text3"
 					>
-						<p className="flex items-center justify-between text-[17px] font-semibold tracking-[-0.01em]">
+						<span className="flex items-center justify-between gap-4 text-[17px] font-semibold tracking-[-0.01em]">
 							{card.title}
 							<span className="text-text3 transition-transform group-hover:translate-x-0.5" aria-hidden>
-								→
+								↗
 							</span>
-						</p>
-						<p className="mt-2 text-[15px] leading-relaxed text-text2">{card.body}</p>
-					</a>
+						</span>
+						<span className="mt-2 block text-[15px] leading-relaxed text-text2">{card.body}</span>
+					</Out>
 				))}
 			</div>
 		</Section>
@@ -494,13 +549,13 @@ function Contribute() {
 function WaitlistSection() {
 	return (
 		<Section id="waitlist" className="border-t border-line bg-panel py-20 sm:py-24">
-			<div className="grid gap-10 lg:grid-cols-[1fr_1.1fr] lg:gap-16">
+			<div className="grid gap-8 lg:grid-cols-[1fr_1.1fr] lg:gap-16">
 				<div>
 					<Eyebrow>Waitlist</Eyebrow>
-					<h2 className="mt-3 text-[clamp(1.7rem,3.6vw,2.4rem)] leading-tight font-semibold tracking-[-0.025em] text-balance">
+					<h2 className="mt-3 text-[clamp(1.6rem,3.6vw,2.4rem)] leading-tight font-semibold tracking-[-0.025em] text-balance">
 						Try it on your own episode
 					</h2>
-					<p className="mt-4 text-[16px] leading-relaxed text-text2">
+					<p className="mt-4 max-w-[560px] text-[16px] leading-relaxed text-text2">
 						We're looking for podcast hosts who record on one camera to try Cutroom on a real episode, and tell us
 						where the edit falls short. We'll write when there's a version you can install without a terminal.
 					</p>
@@ -515,17 +570,24 @@ function Closing() {
 	return (
 		<section className="bg-terminal px-5 py-20 text-white sm:px-8 sm:py-24">
 			<div className="mx-auto max-w-[820px] text-center">
-				<p className="text-[clamp(1.4rem,3.2vw,2.1rem)] leading-snug font-medium tracking-[-0.02em] text-balance">
+				<p className="text-[clamp(1.3rem,3.2vw,2.1rem)] leading-snug font-medium tracking-[-0.02em] text-balance">
 					Free, because the expensive parts (the GPU, the storage, the render) are already on your desk. There's
 					nothing to host, so there's nothing to charge for.
 				</p>
-				<div className="mt-9 flex flex-wrap justify-center gap-3">
-					<a href="#waitlist" className="rounded-[10px] bg-accent px-5 py-3 text-[15px] font-semibold text-on-accent hover:brightness-105">
+				<div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
+					<a
+						href="#waitlist"
+						className="rounded-[10px] bg-accent px-5 py-3 text-[15px] font-semibold text-on-accent hover:brightness-105"
+					>
 						Join the waitlist
 					</a>
-					<a href={REPO} className="rounded-[10px] border border-white/20 px-5 py-3 text-[15px] font-medium hover:bg-white/10">
+					<Out
+						href={REPO}
+						className="flex items-center justify-center gap-2 rounded-[10px] border border-white/20 px-5 py-3 text-[15px] font-medium hover:bg-white/10"
+					>
+						<GitHubMark />
 						Star on GitHub
-					</a>
+					</Out>
 				</div>
 			</div>
 		</section>
@@ -535,28 +597,28 @@ function Closing() {
 function Footer() {
 	return (
 		<footer className="px-5 py-10 sm:px-8">
-			<div className="mx-auto flex max-w-[1120px] flex-col gap-6 text-[13px] text-text3 md:flex-row md:items-start md:justify-between">
+			<div className="mx-auto flex max-w-[1120px] flex-col gap-6 text-[13px] text-text3 lg:flex-row lg:items-start lg:justify-between">
 				<div className="flex items-center gap-2.5">
 					<Logo size={22} className="text-text" />
 					<span>Cutroom · MIT licence</span>
 				</div>
 				<p className="max-w-[560px] leading-relaxed">
 					Built on faster-whisper, pyannote community-1 (CC BY 4.0), OpenCV's YuNet and SFace, LR-ASD and FFmpeg. See{" "}
-					<a href={doc("README.md#credits")} className="underline decoration-line underline-offset-2 hover:text-text2">
+					<Out href={`${REPO}#credits`} className="underline decoration-line underline-offset-2 hover:text-text2">
 						credits
-					</a>
+					</Out>
 					.
 				</p>
-				<nav className="flex gap-5">
-					<a href={REPO} className="hover:text-text2">
+				<nav className="flex flex-wrap gap-x-5 gap-y-2">
+					<Out href={REPO} className="hover:text-text2">
 						GitHub
-					</a>
-					<a href={doc("CONTRIBUTING.md")} className="hover:text-text2">
+					</Out>
+					<Out href={doc("CONTRIBUTING.md")} className="hover:text-text2">
 						Contributing
-					</a>
-					<a href={doc("docs/README.md")} className="hover:text-text2">
+					</Out>
+					<Out href={doc("docs/README.md")} className="hover:text-text2">
 						Docs
-					</a>
+					</Out>
 				</nav>
 			</div>
 		</footer>
@@ -565,7 +627,7 @@ function Footer() {
 
 export function Landing() {
 	return (
-		<div className="min-h-screen bg-bg text-text">
+		<div className="min-h-screen overflow-x-clip bg-bg text-text">
 			<a
 				href="#waitlist"
 				className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-control focus:bg-raised focus:px-3 focus:py-2"

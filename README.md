@@ -9,7 +9,7 @@ recording of two, three or four people. Cutroom writes the transcript, works
 out who's speaking, and cuts in close on them. Then it hands you every
 decision to change.
 
-[Website](https://cutroom.vercel.app) · [Join the waitlist](https://cutroom.vercel.app/#waitlist) ·
+[Website](https://cutroom-ruddy.vercel.app) · [Join the waitlist](https://cutroom-ruddy.vercel.app/#waitlist) ·
 [Quick start](#quick-start) · [Contributing](CONTRIBUTING.md) · [Docs](docs/README.md)
 
 [![CI](https://github.com/jain-eshan/cutroom/actions/workflows/ci.yml/badge.svg)](https://github.com/jain-eshan/cutroom/actions/workflows/ci.yml)

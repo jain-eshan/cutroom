@@ -30,7 +30,17 @@ export function Waitlist() {
 			<div className="rounded-[14px] border border-line bg-raised p-6 sm:p-8">
 				<p className="text-[18px] font-semibold tracking-[-0.01em]">The waitlist opens very soon.</p>
 				<p className="mt-2 text-[15px] leading-relaxed text-text2">
-					Until then, star the project on GitHub to follow along, or run the developer preview today.
+					Until then,{" "}
+					<a
+						href="https://github.com/jain-eshan/cutroom"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="font-medium text-accent-text underline decoration-accent/40 underline-offset-4 hover:decoration-accent"
+					>
+						star the project on GitHub
+						<span className="sr-only"> (opens in a new tab)</span>
+					</a>{" "}
+					to follow along, or run the developer preview today.
 				</p>
 			</div>
 		);

@@ -51,9 +51,10 @@ repository.
 
 ## Deploying
 
-The site is hosted on Vercel. `vercel.json` in the repository root tells
-Vercel to install with `npm ci`, build with `npm run site:build` and publish
-`site/dist`. Every push to `main` redeploys it.
+The site is live at https://cutroom-ruddy.vercel.app, hosted on Vercel.
+`vercel.json` in the repository root tells Vercel to install with `npm ci`,
+build with `npm run site:build` and publish `site/dist`. Every push to `main`
+redeploys it.
 
 ## Writing rules
 
