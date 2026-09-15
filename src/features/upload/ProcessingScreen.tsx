@@ -1,4 +1,5 @@
 import { faceThumbnailUrl, type JobProgress } from "@/lib/api";
+import { formatClock } from "@/lib/format";
 
 const SPEAKER_RING = ["border-s1", "border-s2", "border-s3"];
 
@@ -41,12 +42,6 @@ function Row({
 			</span>
 		</div>
 	);
-}
-
-function formatClock(seconds: number): string {
-	const m = Math.floor(seconds / 60);
-	const s = Math.floor(seconds % 60);
-	return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
 /** Extrapolated from how far the job has actually got, not from a tuned

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { exportVideo, type DetectFacesResponse, type Health, type Turn, type Word } from "@/lib/api";
+import { formatDuration } from "@/lib/format";
 import type { FramingRegion } from "@/features/timeline/types";
 
 type RenderState =
@@ -7,12 +8,6 @@ type RenderState =
 	| { status: "rendering" }
 	| { status: "done"; url: string; filename: string }
 	| { status: "error"; message: string };
-
-function formatLength(seconds: number): string {
-	const m = Math.floor(seconds / 60);
-	const s = Math.floor(seconds % 60);
-	return `${m}:${s.toString().padStart(2, "0")}`;
-}
 
 function Tick() {
 	return (
@@ -190,7 +185,7 @@ export function PublishScreen({
 					<div className="flex min-w-0 flex-col gap-1">
 						<h2 className="text-[19px] font-semibold tracking-[-0.01em] text-text">Publish</h2>
 						<span className="truncate font-mono text-[10.5px] text-text3">
-							{stem} · {formatLength(duration)} · {turns.length} turns · {changed} you changed
+							{stem} · {formatDuration(duration)} · {turns.length} turns · {changed} you changed
 						</span>
 					</div>
 					<button

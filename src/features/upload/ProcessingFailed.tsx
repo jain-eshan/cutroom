@@ -1,10 +1,5 @@
 import { useState } from "react";
-
-function formatClock(seconds: number): string {
-	const m = Math.floor(seconds / 60);
-	const s = Math.floor(seconds % 60);
-	return `${m}:${s.toString().padStart(2, "0")}`;
-}
+import { formatDuration } from "@/lib/format";
 
 /**
  * Processing failed partway. Follows the edge-case pattern from the handoff:
@@ -31,7 +26,7 @@ export function ProcessingFailed({
 	async function copyDetails() {
 		const details = [
 			`File: ${fileName}`,
-			reached > 0 ? `Transcript reached: ${formatClock(reached)}` : "Transcript: not started",
+			reached > 0 ? `Transcript reached: ${formatDuration(reached)}` : "Transcript: not started",
 			`Error: ${message}`,
 		].join("\n");
 		try {
@@ -54,7 +49,7 @@ export function ProcessingFailed({
 				</code>
 				<p className="text-[12.5px] leading-[1.6] text-text3">
 					{reached > 0
-						? `The transcript got as far as ${formatClock(reached)}.`
+						? `The transcript got as far as ${formatDuration(reached)}.`
 						: "It stopped before the transcript got started."}{" "}
 					Nothing was lost — it starts from the top on a retry.
 				</p>

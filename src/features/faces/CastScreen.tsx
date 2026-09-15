@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { MatchNote, MatchResult, Person, Turn, Word } from "@/lib/api";
+import { formatDuration } from "@/lib/format";
 
 /** Below this, the automatic match is shown as a guess to check rather than an
  * answer. Matches pipeline/fuse.py's DOMINANT_SHARE. */
@@ -28,12 +29,6 @@ function longestTurn(turns: Turn[], speaker: number): Turn | undefined {
 		if (!best || t.end - t.start > best.end - best.start) best = t;
 	}
 	return best;
-}
-
-function formatDuration(seconds: number): string {
-	const m = Math.floor(seconds / 60);
-	const s = Math.floor(seconds % 60);
-	return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 function list(items: string[]): string {

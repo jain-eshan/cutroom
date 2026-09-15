@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getHealth, saveHfToken, type Health } from "@/lib/api";
+import { formatDuration } from "@/lib/format";
 import { Logo } from "@/components/Logo";
 
 const SERVICE_COMMAND = "cd server && uv run uvicorn main:app --port 8787";
@@ -28,12 +29,6 @@ async function getService(): Promise<Service | null> {
 		// Includes a static host returning index.html for the path.
 		return null;
 	}
-}
-
-function formatClock(seconds: number): string {
-	const m = Math.floor(seconds / 60);
-	const s = Math.floor(seconds % 60);
-	return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 function Heading({ title, children }: { title: string; children: React.ReactNode }) {
@@ -256,7 +251,7 @@ export function SetupGate({ onReady }: { onReady: (health: Health) => void }) {
 				<div className="h-[5px] w-full overflow-hidden rounded-full bg-track">
 					<div className="h-full w-full animate-pulse rounded-full bg-accent/60" />
 				</div>
-				<span className="font-mono text-[10.5px] text-text3">{formatClock((now - startedAt) / 1000)}</span>
+				<span className="font-mono text-[10.5px] text-text3">{formatDuration((now - startedAt) / 1000)}</span>
 			</>
 		);
 	}
