@@ -904,22 +904,29 @@ both (`pyannote` community-1 plus LR-ASD lip-sync and Hungarian matching);
 smarter cutting (dead air and filler words, opt-in); burned-in captions; the
 Cutroom design system and the region-based framing editor.
 
-**Next** (the founder's call: the desktop app before the host test):
+**Next** (founder decisions: editing basics, then the desktop app, before the
+host test):
 
-1. **Processing that survives closing the window, plus saved episodes.** A job
+1. **Editing basics, navigation:** a timecode ruler, a draggable playhead,
+   timeline zoom and scroll with an overview of the whole episode above a
+   zoomed detail view, keyboard transport, undo and redo, and snapping to
+   words, turns and the playhead.
+2. **Editing basics, precision:** split at the playhead, waveforms and
+   thumbnails, review markers, and an inspector for the selected shot.
+3. **Processing that survives closing the window, plus saved episodes.** A job
    currently lives inside one browser request. This is also the foundation the
    desktop app needs.
-2. **Desktop app (.dmg).** The licence check is done: community-1 is CC-BY-4.0
+4. **Desktop app (.dmg).** The licence check is done: community-1 is CC-BY-4.0
    and all of its weights live in one repo, so the app can ship them with
    attribution and drop the Hugging Face step.
-3. **Waiting that keeps people:** a done notification, a live preview, a time
+5. **Waiting that keeps people:** a done notification, a live preview, a time
    estimate weighted by stage, and visible first-run model downloads.
-4. **Host test, unassisted, with the app.**
+6. **Host test, unassisted, with the app.**
 
 **Then, ordered by what the host test shows:** batched processing for long
-recordings, editor speed (undo, shortcuts, a review queue), text-based editing,
-per-instant face visibility and crop smoothing, the 3-pane cap decision, real
-render progress, and the landing page with the repo rename.
+recordings, text-based editing, per-instant face visibility and crop smoothing,
+the 3-pane cap decision, real render progress, and the landing page with the
+repo rename.
 
 **Parked:** jargon annotations, audio effects and presets, style learning,
 social clips.

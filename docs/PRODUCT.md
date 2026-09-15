@@ -91,9 +91,12 @@ Two decisions shaped everything else:
   sent to, no account, no subscription. That's a constraint, not just a
   feature — it's what keeps this free to run. See
   [BUSINESS_MODEL.md](BUSINESS_MODEL.md).
-- **Not a general video editor.** No timeline scrubbing of arbitrary cuts,
-  no multi-project library, no effects beyond what the auto-edit produces.
-  It does one specific job.
+- **Not a general video editor.** No multiple video tracks, effects, colour
+  grading or transitions; the framing is the edit. Navigating and adjusting
+  that framing precisely (a time ruler, scrubbing, zoom, shortcuts, undo,
+  snapping) is the basic toolkit anyone editing video expects, so it is in
+  scope. Content gets cut through the transcript, not a blade tool, and a
+  list of saved episodes is planned but a general media library isn't.
 
 ## Where it's headed
 

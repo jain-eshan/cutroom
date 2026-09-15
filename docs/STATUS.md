@@ -132,14 +132,34 @@ comes from test sessions:
   find more. If fixes pass 40% of a cycle, new features stop until they're
   paid down.
 
-### Next: the desktop app, then one host test
+### Next: editing basics, then the desktop app, then one host test
 
-The founder's call on 2026-09-15 is the desktop app before any host sees the
-product. (The recommendation was the host test first; the decision was app
-first.) One risk to watch: the app is the largest item here, and the host is
-free within two weeks.
+Two founder decisions on 2026-09-15. First, the desktop app before any host
+sees the product (the recommendation was the host test first). Then, after
+reviewing the editor against DaVinci Resolve, the editing basics before the
+app, scoped to navigation and precision: Cutroom stays a podcast auto-editor,
+not a general video editor. One risk to watch: the host is free within two
+weeks, and the app is still the largest item.
 
-1. **Processing that survives closing the window, and saved episodes.** Today
+1. **Editing basics: navigation.** A timecode ruler and a playhead you can drag
+   to scrub; timeline zoom and horizontal scroll with zoom-to-fit, plus a thin
+   overview of the whole episode above a zoomed detail view (the idea behind
+   Resolve's Cut page); keyboard transport (space, J/K/L, arrow keys to step,
+   up/down for the previous or next shot); undo and redo; shot edges that snap
+   to word boundaries, turn boundaries and the playhead.
+   - Problem: on a long episode, shots can't be found or adjusted. A 46:56
+     episode fits one strip about 1,250px wide, roughly 2.3 seconds per pixel,
+     so a shot needs to be about 30 seconds long before both drag handles fit
+     on it.
+   - Evidence (founder, testing): "We have to improve the video editing a
+     lot".
+   - Measure: time to find and adjust a given shot on a 45-minute episode.
+2. **Editing basics: precision.** Split a shot at the playhead; waveforms on
+   the speaker lanes and thumbnails on the overview; the review flags as
+   markers you step through; an inspector for the selected shot (who it
+   frames, its layout, exact start and end times, a small crop nudge). Cutting
+   content stays with text-based editing, below, rather than a blade tool.
+3. **Processing that survives closing the window, and saved episodes.** Today
    a whole job lives inside one browser request, so closing or refreshing the
    tab loses up to an hour of work, and nothing about an edited episode is
    saved. Jobs move to the background with results saved to disk, and an
@@ -147,7 +167,7 @@ free within two weeks.
    - Problem: a long recording can't be processed reliably.
    - Evidence (founder, testing): "the localhost stopped again midway".
    - Measure: runs that finish.
-2. **The desktop app (.dmg).** No terminal, `uv` or `ffmpeg` install. It reads
+4. **The desktop app (.dmg).** No terminal, `uv` or `ffmpeg` install. It reads
    the recording where it is instead of copying a 3 GB file into the service,
    renders to a folder instead of holding the whole MP4 in browser memory, and
    can use native notifications. Costs: an Apple Developer account for signing
@@ -167,16 +187,16 @@ free within two weeks.
      Face step entirely. This is a reading of the licence, not legal advice:
      confirm before release. The Whisper, YuNet/SFace and LR-ASD weights need
      the same check.
-3. **Waiting that keeps people.** A notification when processing finishes, a
+5. **Waiting that keeps people.** A notification when processing finishes, a
    live video preview that follows the transcript, a time estimate weighted by
    how long each stage really takes (on the 47-minute run, faces finished well
    before the transcript, and matching runs last), and visible progress for
-   the first-run model downloads. Small, and fits alongside item 2.
+   the first-run model downloads. Small, and fits alongside item 4.
    - Problem: a 35 to 40 minute wait with nothing to do.
    - Evidence (founder): "keep the users hooked instead of them coming back in
      an hour or so or maybe not returning at all".
    - Measure: runs that finish and then get opened.
-4. **Host test, unassisted, with the app.** The milestone this project has
+6. **Host test, unassisted, with the app.** The milestone this project has
    always been sequenced against, now combined with the setup question
    [BUSINESS_MODEL.md](BUSINESS_MODEL.md) names: can a non-technical host
    install it, process their own episode, and get an edit they'd publish
@@ -190,9 +210,6 @@ free within two weeks.
 - **Batched processing for long recordings**, if the wait loses people. The
   hard part isn't cutting the file into chunks; it's keeping voice and face
   identities consistent across them.
-- **Editor speed** (undo, keyboard shortcuts, a review queue you can step
-  through), if fixing an edit feels slow. Today dragging a shot overwrites its
-  neighbours and "Reset to suggested" is the only way back.
 - **Text-based editing** (delete words in the transcript to cut them), if
   hosts want to cut content and not just framing. Word-level timings already
   exist.
