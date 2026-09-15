@@ -127,6 +127,7 @@ function App() {
 		setStatus({ state: "idle" });
 	}, []);
 
+
 	async function handleFile(file: File) {
 		const jobId = crypto.randomUUID();
 		setUploadFraction(0);
@@ -252,6 +253,7 @@ function App() {
 			<EditorView
 				file={status.file}
 				turns={status.turns}
+				words={status.words}
 				overlapWindows={status.overlapWindows}
 				faces={status.faces}
 				cast={status.cast}

@@ -23,5 +23,7 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests run under Node (`npm test`), not in the browser bundle.
+  "exclude": ["src/**/*.test.ts"]
 }

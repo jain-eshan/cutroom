@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BBox, DetectFacesResponse, Health, OverlapWindow, Turn } from "@/lib/api";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { BBox, DetectFacesResponse, Health, OverlapWindow, Turn, Word } from "@/lib/api";
 import type { CastResult } from "@/features/faces/CastScreen";
 import { personCrop } from "@/lib/faceCrop";
 import { TimelineTray } from "@/features/timeline/TimelineTray";
@@ -12,6 +12,14 @@ import {
 	resolveFraming,
 	suggestRegions,
 } from "@/features/timeline/regions";
+import {
+	MIN_VIEW_S,
+	formatTimecode as formatTime,
+	reveal,
+	stepToEdge,
+	zoomView,
+	type TimeSpan,
+} from "@/features/timeline/timelineView";
 import { Logo } from "@/components/Logo";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import type { ThemeMode } from "@/lib/theme";
@@ -25,11 +33,24 @@ const SPEAKER_FOCUS_MAIN_FRACTION = 0.68;
 // Pane cap is 3 -- see docs/design/handoff README, speaker colour tokens.
 const SPEAKER_DOT = ["bg-s1", "bg-s2", "bg-s3"];
 
-function formatTime(seconds: number): string {
-	const m = Math.floor(seconds / 60);
-	const s = Math.floor(seconds % 60);
-	return `${m}:${s.toString().padStart(2, "0")}`;
-}
+/** Enough to take a real slip back, not so much it holds every drag frame forever. */
+const HISTORY_LIMIT = 200;
+
+// J is a jump back rather than Resolve's reverse play: browsers can't play
+// video backwards smoothly.
+const SHORTCUTS: [string, string][] = [
+	["Space", "Play or pause"],
+	["K", "Pause"],
+	["L", "Play. Press again for 2× or 4×"],
+	["J", "Back 5 seconds"],
+	["← →", "Back or forward 1 second, 10 with Shift"],
+	["↑ ↓", "Previous or next shot"],
+	["= −", "Zoom the timeline in or out"],
+	["Shift Z", "Show the whole episode"],
+	["⌘Z", "Undo. With Shift, redo"],
+	["Delete", "Make the picked shot wide"],
+	["Esc", "Unpick the shot"],
+];
 
 function overlapFor(overlapWindows: OverlapWindow[], start: number, end: number): OverlapWindow | undefined {
 	return overlapWindows.find((w) => w.start < end && w.end > start);
@@ -93,16 +114,17 @@ function CroppedVideo({
 			if (Math.abs(pane.currentTime - driver.currentTime) > 0.15) {
 				pane.currentTime = driver.currentTime;
 			}
+			pane.playbackRate = driver.playbackRate;
 			if (driver.paused && !pane.paused) pane.pause();
 			else if (!driver.paused && pane.paused) pane.play().catch(() => {});
 		};
 
-		for (const ev of ["timeupdate", "seeked", "play", "pause"]) {
+		for (const ev of ["timeupdate", "seeked", "play", "pause", "ratechange"]) {
 			driver.addEventListener(ev, sync);
 		}
 		sync();
 		return () => {
-			for (const ev of ["timeupdate", "seeked", "play", "pause"]) {
+			for (const ev of ["timeupdate", "seeked", "play", "pause", "ratechange"]) {
 				driver.removeEventListener(ev, sync);
 			}
 		};
@@ -143,6 +165,7 @@ function CroppedVideo({
 export function EditorView({
 	file,
 	turns,
+	words,
 	overlapWindows,
 	faces,
 	cast,
@@ -158,6 +181,8 @@ export function EditorView({
 }: {
 	file: File;
 	turns: Turn[];
+	/** Word timings, so a dragged shot edge can snap between words. */
+	words: Word[];
 	overlapWindows: OverlapWindow[];
 	faces: DetectFacesResponse;
 	cast: CastResult;
@@ -192,6 +217,21 @@ export function EditorView({
 	// Until the file's metadata loads, the last turn is the best length we
 	// have; the video's own duration is authoritative once it arrives.
 	const [duration, setDuration] = useState(() => Math.max(0, ...turns.map((t) => t.end)));
+	const [rate, setRate] = useState(1);
+	// null while the whole episode is on screen, so the timeline keeps fitting
+	// when the file's real length arrives.
+	const [zoomed, setZoomed] = useState<TimeSpan | null>(null);
+	const view = zoomed ?? { start: 0, end: duration };
+	// Undo covers framing edits. It lives with the editor, so it starts fresh
+	// after a trip to the publish screen.
+	const [history, setHistory] = useState<{ past: FramingRegion[][]; future: FramingRegion[][] }>({
+		past: [],
+		future: [],
+	});
+	// The regions as they were when a drag began. They go onto the history at
+	// the drag's first move, so a whole drag is one undo step and a click on a
+	// handle that doesn't move it is none.
+	const dragStart = useRef<FramingRegion[] | null>(null);
 
 	useEffect(() => {
 		const url = URL.createObjectURL(file);
@@ -202,23 +242,39 @@ export function EditorView({
 	useEffect(() => {
 		const video = videoRef.current;
 		if (!video) return;
-		const onTime = () => setCurrentTime(video.currentTime);
+		const onTime = () => {
+			setCurrentTime(video.currentTime);
+			followTo(video.currentTime);
+		};
 		const onMeta = () => {
 			if (Number.isFinite(video.duration) && video.duration > 0) setDuration(video.duration);
 		};
 		const onPlay = () => setPlaying(true);
 		const onPause = () => setPlaying(false);
+		const onRate = () => setRate(video.playbackRate);
 		video.addEventListener("timeupdate", onTime);
 		video.addEventListener("loadedmetadata", onMeta);
 		video.addEventListener("play", onPlay);
 		video.addEventListener("pause", onPause);
+		video.addEventListener("ratechange", onRate);
 		return () => {
 			video.removeEventListener("timeupdate", onTime);
 			video.removeEventListener("loadedmetadata", onMeta);
 			video.removeEventListener("play", onPlay);
 			video.removeEventListener("pause", onPause);
+			video.removeEventListener("ratechange", onRate);
 		};
 	}, [videoUrl]);
+
+	const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
+	useEffect(() => {
+		keyHandler.current = handleKey;
+	});
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => keyHandler.current(e);
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, []);
 
 	function nameOf(personId: number | null): string {
 		if (personId === null) return "Nobody";
@@ -233,9 +289,17 @@ export function EditorView({
 		return cast.voiceNames[turn.speaker] || "Nobody";
 	}
 
+	/** Page the timeline so `t` is on screen, if it's zoomed in. Called wherever
+	 * the playhead moves, but not when the editor scrolls away from it on purpose. */
+	function followTo(t: number) {
+		const length = videoRef.current?.duration;
+		setZoomed((z) => (z ? reveal(z, t, Number.isFinite(length) && length ? length : Infinity) : z));
+	}
+
 	function seek(t: number) {
 		const video = videoRef.current;
 		setCurrentTime(t);
+		followTo(t);
 		if (video) video.currentTime = t;
 	}
 
@@ -249,8 +313,153 @@ export function EditorView({
 	function togglePlay() {
 		const video = videoRef.current;
 		if (!video) return;
-		if (video.paused) void video.play();
-		else video.pause();
+		if (video.paused) {
+			video.playbackRate = 1;
+			void video.play();
+		} else video.pause();
+	}
+
+	/** The live position: the currentTime state trails playback by up to a quarter second. */
+	function now(): number {
+		return videoRef.current?.currentTime ?? currentTime;
+	}
+
+	function seekFromKeys(t: number) {
+		// Otherwise "+ Close-up" would keep acting on a transcript line left behind.
+		setSelectedTurn(null);
+		seek(Math.max(0, Math.min(duration, t)));
+	}
+
+	/** Takes a function as well, so key repeats that land before a re-render
+	 * each build on the last instead of all starting from the same view. */
+	function changeView(next: TimeSpan | ((current: TimeSpan) => TimeSpan)) {
+		setZoomed((z) => {
+			const v = typeof next === "function" ? next(z ?? { start: 0, end: duration }) : next;
+			return v.start <= 0 && v.end >= duration ? null : v;
+		});
+	}
+
+	/** Zoom around the playhead when it's on screen, else around the middle. */
+	function zoomBy(factor: number) {
+		const t = now();
+		changeView((v) => {
+			const anchor = t >= v.start && t <= v.end ? t : (v.start + v.end) / 2;
+			return zoomView(v, factor, anchor, duration);
+		});
+	}
+
+	function jumpToShotEdge(direction: 1 | -1) {
+		const edges = [...new Set([0, duration, ...regions.flatMap((r) => [r.start, r.end])])].sort(
+			(a, b) => a - b,
+		);
+		const t = stepToEdge(edges, now(), direction);
+		if (t === undefined) return;
+		seekFromKeys(t);
+		setSelectedRegionId(regionAt(regions, t)?.id ?? null);
+	}
+
+	/** Apply a framing change as one undo step. */
+	function edit(next: FramingRegion[]) {
+		setHistory((h) => ({ past: [...h.past, regions].slice(-HISTORY_LIMIT), future: [] }));
+		onRegionsChange(next);
+	}
+
+	function resize(id: string, edge: "start" | "end", to: number) {
+		const before = dragStart.current;
+		const was = before?.find((r) => r.id === id);
+		const after = before && resizeRegion(before, id, edge, to, duration).find((r) => r.id === id);
+		// Recorded only once the edge really moves: a handle pushed against its
+		// limit changes nothing and shouldn't leave an undo step that does nothing.
+		if (before && was && after && (after.start !== was.start || after.end !== was.end)) {
+			dragStart.current = null;
+			setHistory((h) => ({ past: [...h.past, before].slice(-HISTORY_LIMIT), future: [] }));
+		}
+		onRegionsChange((rs) => resizeRegion(rs, id, edge, to, duration));
+	}
+
+	function undo() {
+		const previous = history.past.at(-1);
+		if (!previous) return;
+		dragStart.current = null;
+		setHistory({ past: history.past.slice(0, -1), future: [regions, ...history.future] });
+		onRegionsChange(previous);
+	}
+
+	function redo() {
+		const [next, ...rest] = history.future;
+		if (!next) return;
+		dragStart.current = null;
+		setHistory({ past: [...history.past, regions], future: rest });
+		onRegionsChange(next);
+	}
+
+	function handleKey(e: KeyboardEvent) {
+		if (e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]")) return;
+		const mod = e.metaKey || e.ctrlKey;
+		if (mod && e.key.toLowerCase() === "z") {
+			e.preventDefault();
+			if (e.shiftKey) redo();
+			else undo();
+			return;
+		}
+		if (mod && e.key.toLowerCase() === "y") {
+			e.preventDefault();
+			redo();
+			return;
+		}
+		if (mod || e.altKey) return;
+
+		const video = videoRef.current;
+		switch (e.key) {
+			case " ":
+				togglePlay();
+				break;
+			case "k":
+			case "K":
+				video?.pause();
+				break;
+			case "l":
+			case "L":
+				if (!video) break;
+				if (video.paused) togglePlay();
+				else video.playbackRate = Math.min(video.playbackRate * 2, 4);
+				break;
+			case "j":
+			case "J":
+				seekFromKeys(now() - 5);
+				break;
+			case "ArrowLeft":
+			case "ArrowRight": {
+				const step = e.shiftKey ? 10 : 1;
+				seekFromKeys(now() + (e.key === "ArrowRight" ? step : -step));
+				break;
+			}
+			case "ArrowUp":
+			case "ArrowDown":
+				jumpToShotEdge(e.key === "ArrowDown" ? 1 : -1);
+				break;
+			case "=":
+			case "+":
+				zoomBy(0.5);
+				break;
+			case "-":
+			case "_":
+				zoomBy(2);
+				break;
+			case "Z":
+				setZoomed(null);
+				break;
+			case "Delete":
+			case "Backspace":
+				if (selectedRegion) goWide(selectedRegion.id);
+				break;
+			case "Escape":
+				setSelectedRegionId(null);
+				break;
+			default:
+				return;
+		}
+		e.preventDefault();
 	}
 
 	const framing = resolveFraming(regions, faces.people, currentTime);
@@ -264,7 +473,7 @@ export function EditorView({
 
 	function addCloseUp() {
 		if (!targetTurn || targetPerson === undefined) return;
-		onRegionsChange(addRegion(regions, targetTurn.start, targetTurn.end, "zoom", [targetPerson]));
+		edit(addRegion(regions, targetTurn.start, targetTurn.end, "zoom", [targetPerson]));
 	}
 
 	function addBothOnScreen() {
@@ -272,11 +481,11 @@ export function EditorView({
 		const other = otherSpeakerNear(turns, cast.speakerToPerson, targetTurn.start, targetPerson);
 		const ids = [targetPerson, other].filter((id): id is number => id !== undefined);
 		if (ids.length < 2) return;
-		onRegionsChange(addRegion(regions, targetTurn.start, targetTurn.end, "split", ids));
+		edit(addRegion(regions, targetTurn.start, targetTurn.end, "split", ids));
 	}
 
 	function goWide(id: string) {
-		onRegionsChange(regions.filter((r) => r.id !== id));
+		edit(regions.filter((r) => r.id !== id));
 		setSelectedRegionId(null);
 	}
 
@@ -526,11 +735,13 @@ export function EditorView({
 							onClick={togglePlay}
 							className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-on-accent"
 							aria-label={playing ? "Pause" : "Play"}
+							title={`${playing ? "Pause" : "Play"} (Space)`}
 						>
 							{playing ? "❚❚" : "▶"}
 						</button>
 						<span className="font-mono text-[11px] text-text2">
 							{formatTime(currentTime)} / {formatTime(duration)}
+							{rate !== 1 && <span className="ml-2 text-accent-text">{rate}×</span>}
 						</span>
 						<div className="flex-1" />
 						<span
@@ -580,6 +791,62 @@ export function EditorView({
 						+ Note
 					</button>
 					<div className="flex-1" />
+					<div className="flex items-center gap-1">
+						<button
+							type="button"
+							onClick={() => zoomBy(2)}
+							disabled={!zoomed}
+							aria-label="Zoom out"
+							title="Zoom out (−). Pinch or ⌘-scroll on the timeline works too."
+							className="h-6 w-6 rounded-control border border-line bg-control text-[12px] text-text2 disabled:opacity-40"
+						>
+							−
+						</button>
+						<button
+							type="button"
+							onClick={() => zoomBy(0.5)}
+							disabled={view.end - view.start <= MIN_VIEW_S}
+							aria-label="Zoom in"
+							title="Zoom in (=). Pinch or ⌘-scroll on the timeline works too."
+							className="h-6 w-6 rounded-control border border-line bg-control text-[12px] text-text2 disabled:opacity-40"
+						>
+							+
+						</button>
+						<button
+							type="button"
+							onClick={() => setZoomed(null)}
+							disabled={!zoomed}
+							title="Show the whole episode (Shift Z)"
+							className="rounded-control border border-line px-2 py-1 text-[11px] text-text2 disabled:opacity-40"
+						>
+							Show all
+						</button>
+						<button
+							type="button"
+							popoverTarget="editor-shortcuts"
+							className="rounded-control border border-line px-2 py-1 text-[11px] text-text2"
+						>
+							Shortcuts
+						</button>
+						<div
+							id="editor-shortcuts"
+							popover="auto"
+							className="m-auto rounded-card border border-line bg-panel p-4 text-text shadow-lg"
+						>
+							<p className="mb-3 text-[13px] font-semibold">Keyboard shortcuts</p>
+							<dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5">
+								{SHORTCUTS.map(([keys, what]) => (
+									<Fragment key={keys}>
+										<dt>
+											<kbd className="rounded-chip bg-raised px-1.5 py-0.5 text-[11px] text-text2">{keys}</kbd>
+										</dt>
+										<dd className="text-[12px] text-text3">{what}</dd>
+									</Fragment>
+								))}
+							</dl>
+						</div>
+					</div>
+					<div className="w-2" />
 					<span className="flex items-center gap-1.5 font-mono text-[9.5px] tracking-[0.08em] text-text3">
 						<span className="h-[9px] w-[9px] rounded-[2px] bg-r-close" />
 						SUGGESTED
@@ -592,13 +859,19 @@ export function EditorView({
 
 				<TimelineTray
 					duration={duration}
+					view={view}
 					regions={regions}
 					turns={turns}
+					words={words}
 					selectedRegionId={selectedRegionId}
 					currentTime={currentTime}
 					nameOf={(id) => nameOf(id)}
+					onViewChange={changeView}
 					onSelectRegion={setSelectedRegionId}
-					onResize={(id, edge, to) => onRegionsChange((rs) => resizeRegion(rs, id, edge, to, duration))}
+					onEditStart={() => {
+						dragStart.current = regions;
+					}}
+					onResize={resize}
 					onSeek={seek}
 				/>
 
@@ -606,8 +879,11 @@ export function EditorView({
 					<div className="flex items-center gap-3">
 						{selectedRegion ? (
 							<>
+								<span className="font-mono text-[11px] text-text2">
+									{formatTime(selectedRegion.start, true)}–{formatTime(selectedRegion.end, true)}
+								</span>
 								<span className="text-[11px] text-text3">
-									Drag either edge to change where this shot starts and ends.
+									Drag either edge. It snaps to the nearest word; hold Option to place it freely.
 								</span>
 								<button
 									type="button"
@@ -638,8 +914,26 @@ export function EditorView({
 						</label>
 						<button
 							type="button"
+							onClick={undo}
+							disabled={history.past.length === 0}
+							title="Undo (⌘Z)"
+							className="rounded-control border border-line px-2 py-1 text-[11px] text-text2 disabled:opacity-40"
+						>
+							Undo
+						</button>
+						<button
+							type="button"
+							onClick={redo}
+							disabled={history.future.length === 0}
+							title="Redo (⇧⌘Z)"
+							className="rounded-control border border-line px-2 py-1 text-[11px] text-text2 disabled:opacity-40"
+						>
+							Redo
+						</button>
+						<button
+							type="button"
 							onClick={() => {
-								onRegionsChange(suggested);
+								edit(suggested);
 								setSelectedRegionId(null);
 							}}
 							className="rounded-control border border-line px-2 py-1 text-[11px] text-text2"

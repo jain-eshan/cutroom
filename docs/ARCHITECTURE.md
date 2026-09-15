@@ -342,7 +342,8 @@ src/
 │   ├── publish/PublishScreen.tsx    # what comes out, where it goes, and the four render states
 │   └── timeline/
 │       ├── EditorView.tsx           # transcript + preview + framing tray, one selection drives all
-│       ├── TimelineTray.tsx         # framing lane with draggable region edges + speaker lanes
+│       ├── TimelineTray.tsx         # overview strip, ruler, framing lane with snapping edges, speaker lanes
+│       ├── timelineView.ts          # zoom / scroll / ruler / snapping maths (no React; `npm test`)
 │       ├── regions.ts               # suggest / resize / resolve regions — mirrors render.py
 │       └── types.ts                 # `FramingRegion` and plain-English shot labels
 ```
@@ -731,9 +732,11 @@ truth kept current as the pipeline changes — the list below matches it:
   is keg-only — see Setup above for `FFMPEG_BINARY`. Export checks for this
   before starting the render and refuses with that advice, rather than
   spending 15 minutes and handing back a video with no captions on it.
-- **No automated *frontend* test suite** — the backend has 76 tests
-  (`server/tests/`, `pytest`); the frontend is verified by typecheck, build,
-  and real browser sessions against real footage.
+- **Almost no automated *frontend* tests.** The backend has its `pytest`
+  suite (`server/tests/`). On the frontend, only the timeline maths
+  (`timelineView.test.ts`) is tested, with Node's built-in runner through
+  `npm test` and no test library. Everything else is verified by typecheck,
+  build, and real browser sessions.
 - **Track/person IDs aren't stable across separate uploads** — re-uploading
   the same video reruns detection from scratch; there's no caching or
   project-file concept yet (Recordly-style `.recordly` project persistence

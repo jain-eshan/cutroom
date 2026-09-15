@@ -222,8 +222,8 @@ export function addRegion(
  * That is the whole point of the model rather than an accident of it: holding
  * a close-up *through* a short interjection means growing over the region that
  * covers the interjection. Clamping at the neighbour would make the one move
- * the design exists for impossible. What's overwritten is gone -- "Reset to
- * suggested" is the way back.
+ * the design exists for impossible. What's overwritten is gone from the
+ * regions; undo, or "Reset to suggested", is the way back.
  */
 export function resizeRegion(
 	regions: FramingRegion[],

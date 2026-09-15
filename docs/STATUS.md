@@ -154,6 +154,15 @@ weeks, and the app is still the largest item.
    - Evidence (founder, testing): "We have to improve the video editing a
      lot".
    - Measure: time to find and adjust a given shot on a 45-minute episode.
+   - **Built 2026-09-15.** Overview strip, ruler, scrubbable playhead, zoom
+     (`=`/`−`, pinch or ⌘-scroll, Show all) and scroll, a playhead that pages
+     the view when it runs off screen, Space/J/K/L, arrows, ↑/↓ between shot
+     edges, Delete to go wide, ⌘Z/⇧⌘Z with Undo and Redo buttons, snapping to
+     words, turns, other shots' edges and the playhead (Option drags freely),
+     and a Shortcuts sheet. Two differences from Resolve: J jumps back five
+     seconds, because browsers can't play video backwards smoothly, and the
+     undo history starts fresh after a visit to the publish screen. Verified
+     on a synthetic 47-minute episode, not yet on real footage.
 2. **Editing basics: precision.** Split a shot at the playhead; waveforms on
    the speaker lanes and thumbnails on the overview; the review flags as
    markers you step through; an inspector for the selected shot (who it
