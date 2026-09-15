@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DetectFacesResponse, OverlapWindow, Turn, Word } from "@/lib/api";
+import type { DetectFacesResponse, Health, OverlapWindow, Turn, Word } from "@/lib/api";
 import type { CastResult } from "@/features/faces/CastScreen";
 import { bboxAtTime, personCrop } from "@/lib/faceCrop";
 import { ExportButton } from "@/features/timeline/ExportButton";
@@ -173,6 +173,7 @@ export function EditorView({
 	words,
 	faces,
 	cast,
+	health,
 	themeMode,
 	onThemeModeChange,
 }: {
@@ -183,10 +184,12 @@ export function EditorView({
 	words: Word[];
 	faces: DetectFacesResponse;
 	cast: CastResult;
+	health: Health | null;
 	themeMode: ThemeMode;
 	onThemeModeChange: (mode: ThemeMode) => void;
 }) {
-	const [captionsEnabled, setCaptionsEnabled] = useState(true);
+	const captionsAvailable = health?.captions ?? true;
+	const [captionsEnabled, setCaptionsEnabled] = useState(captionsAvailable);
 	// Off by default, unlike captions -- this one actually removes content
 	// (dead air, filler words) rather than adding something on top, so it
 	// shouldn't be a silent default. See pipeline/trim.py.
@@ -274,6 +277,12 @@ export function EditorView({
 				</span>
 				<div className="flex-1" />
 				<ThemeSwitcher mode={themeMode} onChange={onThemeModeChange} />
+				<span
+					className={`h-[7px] w-[7px] rounded-full ${health ? "bg-ok" : "bg-text3"}`}
+					title={
+						health ? "The processing service is running" : "The processing service is not answering"
+					}
+				/>
 			</header>
 
 			<div className="flex flex-1 overflow-hidden">
@@ -480,13 +489,21 @@ export function EditorView({
 
 			<footer className="flex shrink-0 items-center justify-between gap-4 border-t border-line bg-panel px-4 py-3">
 				<div className="flex items-center gap-4">
-					<label className="flex w-fit items-center gap-2 text-[12px] text-text2">
+					<label
+						className={`flex w-fit items-center gap-2 text-[12px] ${captionsAvailable ? "text-text2" : "text-text3"}`}
+						title={
+							captionsAvailable
+								? undefined
+								: "This ffmpeg was built without libass, so it can't burn in subtitles. `brew install ffmpeg-full`, then set FFMPEG_BINARY in server/.env."
+						}
+					>
 						<input
 							type="checkbox"
-							checked={captionsEnabled}
+							checked={captionsEnabled && captionsAvailable}
+							disabled={!captionsAvailable}
 							onChange={(e) => setCaptionsEnabled(e.target.checked)}
 						/>
-						Captions on
+						{captionsAvailable ? "Captions on" : "Captions need ffmpeg with libass"}
 					</label>
 					<label
 						className="flex w-fit items-center gap-2 text-[12px] text-text2"
@@ -507,7 +524,7 @@ export function EditorView({
 					layouts={layouts}
 					overlapWindows={overlapWindows}
 					words={words}
-					captionsEnabled={captionsEnabled}
+					captionsEnabled={captionsEnabled && captionsAvailable}
 					trimDeadAirEnabled={trimDeadAirEnabled}
 					faces={faces}
 					speakerToPerson={cast.speakerToPerson}

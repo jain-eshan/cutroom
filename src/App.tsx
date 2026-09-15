@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CastScreen, type CastResult } from "@/features/faces/CastScreen";
+import { SetupGate } from "@/features/setup/SetupGate";
 import { EditorView } from "@/features/timeline/EditorView";
 import { ProcessingScreen } from "@/features/upload/ProcessingScreen";
 import { UploadScreen } from "@/features/upload/UploadScreen";
@@ -8,6 +9,7 @@ import {
 	getProgress,
 	processVideo,
 	type DetectFacesResponse,
+	type Health,
 	type JobProgress,
 	type MatchResult,
 	type OverlapWindow,
@@ -16,6 +18,7 @@ import {
 } from "@/lib/api";
 
 type Status =
+	| { state: "checking" }
 	| { state: "idle" }
 	| { state: "processing"; file: File; jobId: string; startedAt: number }
 	| { state: "error"; message: string }
@@ -42,7 +45,10 @@ type Status =
 
 function App() {
 	const [themeMode, setThemeMode] = useThemeMode();
-	const [status, setStatus] = useState<Status>({ state: "idle" });
+	const [status, setStatus] = useState<Status>({ state: "checking" });
+	// What the local install can actually do, learned at the setup gate and
+	// carried forward so later screens can say so before a render, not after.
+	const [health, setHealth] = useState<Health | null>(null);
 	const [uploadFraction, setUploadFraction] = useState(0);
 	const [progress, setProgress] = useState<JobProgress | null>(null);
 	const [elapsed, setElapsed] = useState(0);
@@ -77,6 +83,13 @@ function App() {
 		return () => clearInterval(id);
 	}, [processingStartedAt]);
 
+	// Identity-stable: SetupGate schedules its own advance off this prop, so a
+	// new function every render would restart that timer on every poll.
+	const handleReady = useCallback((result: Health) => {
+		setHealth(result);
+		setStatus({ state: "idle" });
+	}, []);
+
 	async function handleFile(file: File) {
 		const jobId = crypto.randomUUID();
 		setUploadFraction(0);
@@ -105,6 +118,10 @@ function App() {
 				message: err instanceof Error ? err.message : "Something went wrong.",
 			});
 		}
+	}
+
+	if (status.state === "checking") {
+		return <SetupGate onReady={handleReady} />;
 	}
 
 	if (status.state === "processing") {
@@ -153,6 +170,7 @@ function App() {
 				words={status.words}
 				faces={status.faces}
 				cast={status.cast}
+				health={health}
 				themeMode={themeMode}
 				onThemeModeChange={setThemeMode}
 			/>

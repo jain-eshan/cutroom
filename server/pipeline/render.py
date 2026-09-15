@@ -405,8 +405,14 @@ def _segments_are_contiguous(segments: list[RenderSegment], duration: float) -> 
 
 
 @lru_cache(maxsize=1)
+@lru_cache
 def has_ass_filter() -> bool:
 	"""Whether this ffmpeg can burn in subtitles at all.
+
+	Cached: FFMPEG is resolved from the environment at import time, so the
+	answer cannot change while the process runs, and /health is polled every
+	two seconds by the setup gate -- one `ffmpeg -filters` subprocess per
+	poll is pure waste.
 
 	Homebrew's regular `ffmpeg` formula is built without libass -- and without
 	freetype, so `drawtext` is not a fallback either -- which means a plain

@@ -85,11 +85,6 @@ export function UploadScreen({
 				</div>
 
 				{error && <p className="text-[12.5px] text-warn">{error}</p>}
-
-				<p className="text-center text-[10px] leading-[1.6] text-text3">
-					Needs the local processing service running —{" "}
-					<code className="font-mono text-text2">cd server && uv run uvicorn main:app --port 8787</code>
-				</p>
 			</div>
 		</div>
 	);

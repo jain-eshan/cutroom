@@ -37,6 +37,10 @@
 	--color-plate-a: oklch(0.33 0.006 85);
 	--color-plate-b: oklch(0.285 0.006 85);
 	--color-plate-ink: oklch(0.78 0.01 80);
+	/* Console surface -- shell commands and raw server messages. Stays dark in
+	 * both themes, same reasoning as the video plate: it is a quotation of a
+	 * terminal, not a surface of the app. */
+	--color-terminal: oklch(0.11 0.008 70);
 	--color-ok: oklch(0.52 0.13 155);
 	--color-warn: oklch(0.48 0.15 35);
 	--color-warn-bg: oklch(0.62 0.15 30 / 0.14);

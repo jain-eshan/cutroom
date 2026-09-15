@@ -57,8 +57,14 @@ async def _save_upload(file: UploadFile, dest: Path) -> None:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-	return {"status": "ok"}
+def health() -> dict[str, object]:
+	"""Liveness, plus which optional capabilities this install actually has.
+
+	The setup gate shows one row per capability so it can name what is
+	missing instead of reporting a generic connection failure, and captions
+	being unavailable is a normal state of a macOS ffmpeg, not a fault.
+	"""
+	return {"status": "ok", "captions": has_ass_filter()}
 
 
 @app.get("/progress/{job_id}")

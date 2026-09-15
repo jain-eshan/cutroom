@@ -144,6 +144,20 @@ export interface JobProgress {
 	match: StageProgress;
 }
 
+export interface Health {
+	status: string;
+	/** Whether this install's ffmpeg was built with libass. A normal macOS
+	 * `brew install ffmpeg` is not, so the setup gate says so up front rather
+	 * than letting a 15-minute export fail at the end. */
+	captions: boolean;
+}
+
+export async function getHealth(): Promise<Health> {
+	const res = await fetch(new URL("/health", API_BASE));
+	if (!res.ok) throw new Error(`Processing service unhealthy (${res.status})`);
+	return res.json();
+}
+
 export async function getProgress(jobId: string): Promise<JobProgress> {
 	const res = await fetch(new URL(`/progress/${jobId}`, API_BASE));
 	if (!res.ok) throw new Error(`Progress unavailable (${res.status})`);
