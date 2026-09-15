@@ -59,7 +59,12 @@ Each landed as its own commit, in the handoff's order.
   by itself; the footer button is deliberately inert. `/health` now also
   reports `captions` (whether this ffmpeg has libass, cached for the life of
   the process), and that flows into the editor so captions are refused
-  before an export rather than 15 minutes into one.
+  before an export rather than 15 minutes into one. It also reports
+  `diarization` (whether `HF_TOKEN` is set); the gate has a required
+  "Speaker detection" row with the three setup steps and won't advance
+  without it, after a real run failed on a missing token six minutes into
+  transcription. The title changed from "Two things need to be running" to
+  "A few things need to be ready" since there are now three required rows.
 - **Processing evidence (`2e`)** — `/progress/{job_id}` carries the
   transcript tail as faster-whisper yields it, plus the ids of recognised
   people. Face images come from `GET /progress/{job_id}/face/{person_id}`, so

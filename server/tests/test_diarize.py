@@ -86,3 +86,26 @@ class TestOverlapWindows:
 		assert len(windows) == 1
 		assert windows[0].start == 4.0
 		assert windows[0].end == 5.2
+
+
+class TestDiarizationConfigured:
+	"""The check the setup gate and /process rely on to refuse a job up front
+	rather than after a multi-minute transcription."""
+
+	def test_missing_token_is_not_configured(self, monkeypatch):
+		from pipeline.diarize import diarization_configured
+
+		monkeypatch.delenv("HF_TOKEN", raising=False)
+		assert diarization_configured() is False
+
+	def test_empty_token_counts_as_missing(self, monkeypatch):
+		from pipeline.diarize import diarization_configured
+
+		monkeypatch.setenv("HF_TOKEN", "")
+		assert diarization_configured() is False
+
+	def test_any_token_counts_as_configured(self, monkeypatch):
+		from pipeline.diarize import diarization_configured
+
+		monkeypatch.setenv("HF_TOKEN", "hf_example")
+		assert diarization_configured() is True

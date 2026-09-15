@@ -15,7 +15,13 @@ from starlette.background import BackgroundTask
 
 from pipeline.audio import NoAudioTrack, extract_wav
 from pipeline.captions import CaptionCue, build_caption_cues, write_ass
-from pipeline.diarize import Diarization, DiarizationUnavailable, diarize
+from pipeline.diarize import (
+	MISSING_TOKEN_MESSAGE,
+	Diarization,
+	DiarizationUnavailable,
+	diarization_configured,
+	diarize,
+)
 from pipeline.faces import BBox, detect_and_track_faces, get_video_dimensions, get_video_duration
 from pipeline.fuse import fuse
 from pipeline.lipsync import analyse
@@ -63,7 +69,13 @@ def health() -> dict[str, object]:
 	missing instead of reporting a generic connection failure, and captions
 	being unavailable is a normal state of a macOS ffmpeg, not a fault.
 	"""
-	return {"status": "ok", "captions": has_ass_filter()}
+	return {
+		"status": "ok",
+		# Required, unlike captions: without speaker turns there is nothing to
+		# edit, so the setup gate won't let anyone past until this is true.
+		"diarization": diarization_configured(),
+		"captions": has_ass_filter(),
+	}
 
 
 @app.get("/progress/{job_id}")
@@ -200,6 +212,11 @@ async def process_endpoint(file: UploadFile, jobId: str | None = None) -> dict:
 	upload, then both analyses run concurrently in threads (OpenCV and
 	CTranslate2 both release the GIL, so they genuinely overlap).
 	"""
+	# Before the upload is saved, not after transcription: diarisation runs
+	# second, so a missing token used to surface minutes into the job.
+	if not diarization_configured():
+		raise HTTPException(400, MISSING_TOKEN_MESSAGE)
+
 	with tempfile.TemporaryDirectory() as tmp:
 		input_path = Path(tmp) / (file.filename or "input")
 		report(jobId, "transcribe", "receiving upload")

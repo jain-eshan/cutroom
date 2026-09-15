@@ -183,7 +183,11 @@ transfer for a 5GB file). They're gone; `POST /process` below replaced both.
 
 ### `GET /health`
 
-Returns `{"status": "ok", "captions": bool}`. The setup gate polls it every
+Returns `{"status": "ok", "diarization": bool, "captions": bool}`.
+`diarization` is whether `HF_TOKEN` is set — required, so the setup gate
+blocks on it, and `/process` refuses a job without it before the upload is
+saved (it used to surface only after transcription finished). It can't
+confirm the model licence was accepted; that still shows at first load. The setup gate polls it every
 2s and doesn't show the app until it answers. `captions` is whether this
 ffmpeg was built with libass — cached for the life of the process, since the
 binary is fixed at import — and the editor uses it to refuse captions before a

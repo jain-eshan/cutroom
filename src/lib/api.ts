@@ -123,7 +123,16 @@ function postFile<T>(
 					reject(new Error(`Could not parse response: ${String(err)}`));
 				}
 			} else {
-				reject(new Error(`Processing failed (${xhr.status}): ${xhr.responseText}`));
+				// FastAPI wraps the actionable sentence in {"detail": ...}; the
+				// envelope is noise in the one line the user is meant to read.
+				let detail = xhr.responseText;
+				try {
+					const parsed = (JSON.parse(xhr.responseText) as { detail?: unknown }).detail;
+					if (typeof parsed === "string") detail = parsed;
+				} catch {
+					// Not JSON -- show it as-is.
+				}
+				reject(new Error(`Processing failed (${xhr.status}): ${detail}`));
 			}
 		};
 		xhr.onerror = () => reject(new Error("Could not reach the local processing service."));
@@ -162,6 +171,9 @@ export function faceThumbnailUrl(jobId: string, personId: number): string {
 
 export interface Health {
 	status: string;
+	/** Whether the Hugging Face token speaker diarisation needs is set.
+	 * Required: /process refuses the job without it. */
+	diarization: boolean;
 	/** Whether this install's ffmpeg was built with libass. A normal macOS
 	 * `brew install ffmpeg` is not, so the setup gate says so up front rather
 	 * than letting a 15-minute export fail at the end. */

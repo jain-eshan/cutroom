@@ -88,6 +88,18 @@ then put `HF_TOKEN=...` in `server/.env`.
 
 Needs Node, [uv](https://docs.astral.sh/uv/), and `ffmpeg` on your PATH.
 
+Speaker detection needs a free Hugging Face token, set once. Create a read
+token at https://huggingface.co/settings/tokens, accept the model licence at
+https://huggingface.co/pyannote/speaker-diarization-community-1 with the same
+account, then create `server/.env` with:
+
+```
+HF_TOKEN=hf_your_token_here
+```
+
+The app's setup screen checks for it and won't let a job start without it,
+rather than failing after the transcript is written.
+
 Burned-in captions need an `ffmpeg` built with libass. Homebrew's regular
 `ffmpeg` formula is not — `brew install ffmpeg-full` is, and because that
 formula is keg-only it does not replace your existing ffmpeg. Point the

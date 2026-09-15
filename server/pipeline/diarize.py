@@ -48,6 +48,25 @@ class DiarizationUnavailable(Exception):
 	without speaker turns there is nothing to edit."""
 
 
+MISSING_TOKEN_MESSAGE = (
+	"HF_TOKEN is not set. Speaker diarisation needs a Hugging Face access "
+	"token: create one at https://huggingface.co/settings/tokens, accept the "
+	f"model licence at {DIARIZATION_SETUP_URL}, then set HF_TOKEN in "
+	"server/.env and restart the service."
+)
+
+
+def diarization_configured() -> bool:
+	"""Whether the token diarisation needs is set at all.
+
+	This can't prove the model licence was accepted -- that only shows when
+	the model loads -- but it catches the common case (no token) before a
+	multi-minute transcription instead of after it. Cheap enough to call on
+	every health poll.
+	"""
+	return bool(os.environ.get("HF_TOKEN"))
+
+
 _pipeline = None
 
 
@@ -66,14 +85,9 @@ def _best_device():
 def _get_pipeline():
 	global _pipeline
 	if _pipeline is None:
-		token = os.environ.get("HF_TOKEN")
-		if not token:
-			raise DiarizationUnavailable(
-				"HF_TOKEN is not set. Speaker diarisation needs a Hugging Face access "
-				"token: create one at https://huggingface.co/settings/tokens, accept the "
-				f"model licence at {DIARIZATION_SETUP_URL}, then set HF_TOKEN in "
-				"server/.env and restart the service."
-			)
+		if not diarization_configured():
+			raise DiarizationUnavailable(MISSING_TOKEN_MESSAGE)
+		token = os.environ["HF_TOKEN"]
 		from pyannote.audio import Pipeline
 
 		try:
