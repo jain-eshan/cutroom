@@ -32,31 +32,29 @@ class Track:
 
 
 @dataclass
-class LayoutChoice:
-	"""One per turn. `start`/`end` are the turn's own time range -- needed
-	here (not just the turn index) because the render step has to place this
-	choice on the shared timeline alongside overlap windows and gaps."""
+class Region:
+	"""One framing decision over a stretch of the timeline.
 
-	turn_index: int
-	# Who is actually on screen for this turn. Resolved in the UI (diarisation
-	# suggests it, the user can override any turn), so the renderer never has
-	# to reason about anonymous diarisation clusters. None = nobody is
-	# assigned, which renders as the untouched wide shot.
-	person_id: int | None
-	start: float
-	end: float
-	default_layout: Literal["original", "zoom"]
-	final_layout: Layout
+	Deliberately *not* tied to turn boundaries. A region can start mid-turn
+	and run through several, which is what lets an editor hold a close-up
+	through a short interjection -- a human editor does that constantly and a
+	per-turn model cannot express it at all.
 
+	Time not covered by any region renders as the untouched wide shot, so
+	"go wide here" is the absence of a region rather than a third kind of one.
 
-@dataclass
-class OverlapSegment:
-	"""A stretch where more than one person is talking, already resolved to
-	people rather than diarisation speakers."""
+	`person_ids` is who the region is about, already resolved to people by the
+	UI, so the renderer never reasons about anonymous diarisation clusters.
+	`source` records whether this is what the pipeline proposed or what the
+	editor made it -- the difference is the only signal we have about where
+	the automatic decisions are wrong.
+	"""
 
 	start: float
 	end: float
+	layout: Literal["zoom", "split"]
 	person_ids: list[int]
+	source: Literal["suggested", "user"] = "suggested"
 
 
 @dataclass
@@ -110,32 +108,9 @@ def _person(person_id: int | None, people: list[Track]) -> Track | None:
 	return next((p for p in people if p.id == person_id), None)
 
 
-def _fallback_second_person(
-	exclude_person_id: int | None,
-	before: float,
-	layout_choices: list[LayoutChoice],
-	people: list[Track],
-) -> tuple[int, Track] | None:
-	"""For a turn manually forced to "split" with no real overlap: whichever
-	*other* person most recently had a turn before this point."""
-	candidates = [
-		lc
-		for lc in layout_choices
-		if lc.person_id is not None and lc.person_id != exclude_person_id and lc.end <= before
-	]
-	if not candidates:
-		return None
-	nearest = max(candidates, key=lambda lc: lc.end)
-	person = _person(nearest.person_id, people)
-	if person is None or nearest.person_id is None:
-		return None
-	return nearest.person_id, person
-
-
 def build_render_segments(
 	duration: float,
-	overlap_segments: list[OverlapSegment],
-	layout_choices: list[LayoutChoice],
+	regions: list[Region],
 	people: list[Track],
 	drop_ranges: list[tuple[float, float]] | None = None,
 ) -> list[RenderSegment]:
@@ -144,10 +119,9 @@ def build_render_segments(
 
 	With no `drop_ranges` (the default), this is gapless: the exported video
 	has to stay time-aligned with the source's untouched audio track, so every
-	second of the timeline needs a segment, including the pauses/silence
-	*between* turns (rendered as the untouched wide shot) -- not just the
-	seconds a turn or overlap explicitly covers. Dropping gap time here would
-	silently shorten the video relative to the audio.
+	second of the timeline needs a segment, including the stretches no region
+	covers (rendered as the untouched wide shot). Dropping that time here
+	would silently shorten the video relative to the audio.
 
 	`drop_ranges` (dead air / filler words -- see pipeline/trim.py) is the one
 	deliberate exception: time inside those ranges is skipped entirely rather
@@ -157,16 +131,16 @@ def build_render_segments(
 	"""
 	drop_ranges = drop_ranges or []
 	boundaries = {0.0, duration}
-	for lc in layout_choices:
-		boundaries.add(max(0.0, min(duration, lc.start)))
-		boundaries.add(max(0.0, min(duration, lc.end)))
-	for ov in overlap_segments:
-		boundaries.add(max(0.0, min(duration, ov.start)))
-		boundaries.add(max(0.0, min(duration, ov.end)))
+	for region in regions:
+		boundaries.add(max(0.0, min(duration, region.start)))
+		boundaries.add(max(0.0, min(duration, region.end)))
 	for d0, d1 in drop_ranges:
 		boundaries.add(max(0.0, min(duration, d0)))
 		boundaries.add(max(0.0, min(duration, d1)))
 	sorted_boundaries = sorted(boundaries)
+
+	def wide(b0: float, b1: float) -> RenderSegment:
+		return RenderSegment(start=b0, end=b1, layout="original", speaker_bboxes=[])
 
 	segments: list[RenderSegment] = []
 	for b0, b1 in zip(sorted_boundaries, sorted_boundaries[1:]):
@@ -177,60 +151,38 @@ def build_render_segments(
 		if any(d0 <= mid < d1 for d0, d1 in drop_ranges):
 			continue  # inside a cut range -- not part of the output at all
 
-		overlap = next((ov for ov in overlap_segments if ov.start <= mid < ov.end), None)
-		turn = next((lc for lc in layout_choices if lc.start <= mid < lc.end), None)
+		# Regions are not supposed to overlap -- the editor keeps them
+		# disjoint -- but if two ever do, the later one wins rather than the
+		# result depending on list order.
+		covering = [r for r in regions if r.start <= mid < r.end]
+		region = max(covering, key=lambda r: r.start) if covering else None
 
-		if overlap is not None:
-			bboxes = []
-			for person_id in overlap.person_ids:
-				person = _person(person_id, people)
-				if person is not None:
-					bboxes.append((person_id, bbox_at_time(person, b0)))
-			if len(bboxes) >= 2:
-				segments.append(RenderSegment(start=b0, end=b1, layout="split", speaker_bboxes=bboxes))
-				continue
-			# Nobody recognisable in this overlap -- fall through to the turn.
-
-		if turn is not None:
-			if turn.final_layout == "zoom":
-				person = _person(turn.person_id, people)
-				if person is not None and turn.person_id is not None:
-					segments.append(
-						RenderSegment(
-							start=b0,
-							end=b1,
-							layout="zoom",
-							speaker_bboxes=[(turn.person_id, bbox_at_time(person, b0))],
-						)
-					)
-					continue
-				segments.append(RenderSegment(start=b0, end=b1, layout="original", speaker_bboxes=[]))
-				continue
-
-			if turn.final_layout == "split":
-				own = _person(turn.person_id, people)
-				bboxes = (
-					[(turn.person_id, bbox_at_time(own, b0))]
-					if own is not None and turn.person_id is not None
-					else []
-				)
-				second = _fallback_second_person(turn.person_id, b0, layout_choices, people)
-				if second is not None:
-					second_id, second_person = second
-					bboxes.append((second_id, bbox_at_time(second_person, b0)))
-				if len(bboxes) >= 2:
-					segments.append(RenderSegment(start=b0, end=b1, layout="split", speaker_bboxes=bboxes))
-				elif len(bboxes) == 1:
-					segments.append(RenderSegment(start=b0, end=b1, layout="zoom", speaker_bboxes=bboxes))
-				else:
-					segments.append(RenderSegment(start=b0, end=b1, layout="original", speaker_bboxes=[]))
-				continue
-
-			segments.append(RenderSegment(start=b0, end=b1, layout="original", speaker_bboxes=[]))
+		if region is None:
+			segments.append(wide(b0, b1))
 			continue
 
-		# No turn and no overlap covers this stretch -- a gap (silence/pause).
-		segments.append(RenderSegment(start=b0, end=b1, layout="original", speaker_bboxes=[]))
+		bboxes = [
+			(person_id, bbox_at_time(person, b0))
+			for person_id in region.person_ids
+			if (person := _person(person_id, people)) is not None
+		]
+
+		if not bboxes:
+			# The region names nobody we can actually find a face for. Wide is
+			# the honest result: a close-up on a person we can't locate isn't
+			# available at any price.
+			segments.append(wide(b0, b1))
+			continue
+
+		if region.layout == "split" and len(bboxes) >= 2:
+			segments.append(RenderSegment(start=b0, end=b1, layout="split", speaker_bboxes=bboxes))
+			continue
+
+		# Either a close-up, or a "both on screen" with only one person
+		# findable -- close on whoever that is, rather than refusing.
+		segments.append(
+			RenderSegment(start=b0, end=b1, layout="zoom", speaker_bboxes=bboxes[:1])
+		)
 
 	return _merge_adjacent(segments)
 

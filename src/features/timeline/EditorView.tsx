@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { DetectFacesResponse, Health, OverlapWindow, Turn, Word } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { BBox, DetectFacesResponse, Health, OverlapWindow, Turn, Word } from "@/lib/api";
 import type { CastResult } from "@/features/faces/CastScreen";
-import { bboxAtTime, personCrop } from "@/lib/faceCrop";
+import { personCrop } from "@/lib/faceCrop";
 import { ExportButton } from "@/features/timeline/ExportButton";
-import { LAYOUT_LABELS, type Layout } from "@/features/timeline/types";
+import { TimelineTray } from "@/features/timeline/TimelineTray";
+import { LAYOUT_LABELS, type FramingRegion } from "@/features/timeline/types";
+import {
+	addRegion,
+	otherSpeakerNear,
+	regionAt,
+	resizeRegion,
+	resolveFraming,
+	suggestRegions,
+} from "@/features/timeline/regions";
 import { Logo } from "@/components/Logo";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import type { ThemeMode } from "@/lib/theme";
@@ -14,50 +23,17 @@ import type { ThemeMode } from "@/lib/theme";
 const DUO_SPLIT_MAX = 2;
 const SPEAKER_FOCUS_MAIN_FRACTION = 0.68;
 
+// Pane cap is 3 -- see docs/design/handoff README, speaker colour tokens.
+const SPEAKER_DOT = ["bg-s1", "bg-s2", "bg-s3"];
+
 function formatTime(seconds: number): string {
 	const m = Math.floor(seconds / 60);
 	const s = Math.floor(seconds % 60);
 	return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-// Pane cap is 3 -- see docs/design/handoff README, speaker colour tokens.
-const SPEAKER_DOT = ["bg-s1", "bg-s2", "bg-s3"];
-
-const LAYOUTS: Layout[] = ["original", "zoom", "split"];
-
 function overlapFor(overlapWindows: OverlapWindow[], start: number, end: number): OverlapWindow | undefined {
 	return overlapWindows.find((w) => w.start < end && w.end > start);
-}
-
-/** Which people to show in a composite, as person ids: a real overlap window
- * if one covers the turn, otherwise (a manually forced Split) the turn's own
- * person plus whoever most recently spoke before them. Mirrors render.py. */
-function compositePeople(
-	activeIndex: number,
-	turns: Turn[],
-	overlapWindows: OverlapWindow[],
-	personForTurn: (index: number) => number | null,
-	speakerToPerson: Record<number, number>,
-): number[] {
-	const turn = turns[activeIndex];
-	const overlap = overlapFor(overlapWindows, turn.start, turn.end);
-	if (overlap) {
-		const ids = overlap.speakers
-			.map((sp) => speakerToPerson[sp])
-			.filter((id): id is number => id !== undefined);
-		return [...new Set(ids)];
-	}
-
-	const own = personForTurn(activeIndex);
-	const people: number[] = own === null ? [] : [own];
-	for (let i = activeIndex - 1; i >= 0; i--) {
-		const other = personForTurn(i);
-		if (other !== null && other !== own) {
-			people.push(other);
-			break;
-		}
-	}
-	return people;
 }
 
 function useElementSize() {
@@ -99,7 +75,7 @@ function CroppedVideo({
 	driverRef,
 }: {
 	videoUrl: string;
-	bbox: ReturnType<typeof bboxAtTime> | undefined;
+	bbox: BBox | undefined;
 	frameWidth: number;
 	frameHeight: number;
 	paneWidth: number;
@@ -157,7 +133,7 @@ function CroppedVideo({
 				}}
 			/>
 			{label && (
-				<span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+				<span className="absolute bottom-1 left-1 rounded-chip bg-black/60 px-1.5 py-0.5 font-mono text-[10px] text-white">
 					{label}
 				</span>
 			)}
@@ -199,33 +175,20 @@ export function EditorView({
 	// each time instead of revoking the one useMemo cached and never remaking.
 	const [videoUrl, setVideoUrl] = useState<string | null>(null);
 	const videoRef = useRef<HTMLVideoElement>(null);
-	const [activeTurn, setActiveTurn] = useState<number | null>(null);
 	const [stageRef, stageSize] = useElementSize();
 
-	// Per-turn correction of who is on screen. Diarisation suggests it via the
-	// voice-to-person mapping; any turn it gets wrong can be fixed here without
-	// re-running anything.
-	const [personOverrides, setPersonOverrides] = useState<Record<number, number | null>>({});
-
-	function personForTurn(index: number): number | null {
-		const override = personOverrides[index];
-		if (override !== undefined) return override;
-		const mapped = cast.speakerToPerson[turns[index].speaker];
-		return mapped === undefined ? null : mapped;
-	}
-
-	function nameOf(personId: number | null): string {
-		if (personId === null) return "Nobody";
-		return cast.names[personId] || `Person ${personId + 1}`;
-	}
-
-	const [layouts, setLayouts] = useState<Record<number, Layout>>(() => {
-		const initial: Record<number, Layout> = {};
-		turns.forEach((t, i) => {
-			initial[i] = cast.speakerToPerson[t.speaker] !== undefined ? "zoom" : "original";
-		});
-		return initial;
-	});
+	const suggested = useMemo(
+		() => suggestRegions(turns, overlapWindows, cast.speakerToPerson),
+		[turns, overlapWindows, cast.speakerToPerson],
+	);
+	const [regions, setRegions] = useState<FramingRegion[]>(suggested);
+	const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+	const [selectedTurn, setSelectedTurn] = useState<number | null>(null);
+	const [currentTime, setCurrentTime] = useState(0);
+	const [playing, setPlaying] = useState(false);
+	// Until the file's metadata loads, the last turn is the best length we
+	// have; the video's own duration is authoritative once it arrives.
+	const [duration, setDuration] = useState(() => Math.max(0, ...turns.map((t) => t.end)));
 
 	useEffect(() => {
 		const url = URL.createObjectURL(file);
@@ -233,39 +196,121 @@ export function EditorView({
 		return () => URL.revokeObjectURL(url);
 	}, [file]);
 
-	function playTurn(i: number) {
-		setActiveTurn(i);
+	useEffect(() => {
 		const video = videoRef.current;
-		if (video) {
-			video.currentTime = turns[i].start;
-			video.play();
+		if (!video) return;
+		const onTime = () => setCurrentTime(video.currentTime);
+		const onMeta = () => {
+			if (Number.isFinite(video.duration) && video.duration > 0) setDuration(video.duration);
+		};
+		const onPlay = () => setPlaying(true);
+		const onPause = () => setPlaying(false);
+		video.addEventListener("timeupdate", onTime);
+		video.addEventListener("loadedmetadata", onMeta);
+		video.addEventListener("play", onPlay);
+		video.addEventListener("pause", onPause);
+		return () => {
+			video.removeEventListener("timeupdate", onTime);
+			video.removeEventListener("loadedmetadata", onMeta);
+			video.removeEventListener("play", onPlay);
+			video.removeEventListener("pause", onPause);
+		};
+	}, [videoUrl]);
+
+	function nameOf(personId: number | null): string {
+		if (personId === null) return "Nobody";
+		return cast.names[personId] || `Person ${personId + 1}`;
+	}
+
+	function seek(t: number) {
+		const video = videoRef.current;
+		setCurrentTime(t);
+		if (video) video.currentTime = t;
+	}
+
+	function selectTurn(index: number) {
+		setSelectedTurn(index);
+		seek(turns[index].start);
+		const covering = regionAt(regions, turns[index].start + 0.01);
+		setSelectedRegionId(covering?.id ?? null);
+	}
+
+	function togglePlay() {
+		const video = videoRef.current;
+		if (!video) return;
+		if (video.paused) void video.play();
+		else video.pause();
+	}
+
+	const framing = resolveFraming(regions, faces.people, currentTime);
+
+	// What "+ Close-up" / "+ Both on screen" would act on: the selected turn,
+	// or whatever turn the playhead is sitting in.
+	const targetTurnIndex =
+		selectedTurn ?? turns.findIndex((t) => t.start <= currentTime && currentTime < t.end);
+	const targetTurn = targetTurnIndex >= 0 ? turns[targetTurnIndex] : undefined;
+	const targetPerson = targetTurn ? cast.speakerToPerson[targetTurn.speaker] : undefined;
+
+	function addCloseUp() {
+		if (!targetTurn || targetPerson === undefined) return;
+		setRegions(addRegion(regions, targetTurn.start, targetTurn.end, "zoom", [targetPerson]));
+	}
+
+	function addBothOnScreen() {
+		if (!targetTurn) return;
+		const other = otherSpeakerNear(turns, cast.speakerToPerson, targetTurn.start, targetPerson);
+		const ids = [targetPerson, other].filter((id): id is number => id !== undefined);
+		if (ids.length < 2) return;
+		setRegions(addRegion(regions, targetTurn.start, targetTurn.end, "split", ids));
+	}
+
+	function goWide(id: string) {
+		setRegions(regions.filter((r) => r.id !== id));
+		setSelectedRegionId(null);
+	}
+
+	/** One clause saying what was done here and why, in the words the user
+	 * would use. Never announces that something was automatic -- it shows the
+	 * result and the reason, and the override does the reassuring. */
+	function reasonFor(index: number): string {
+		const turn = turns[index];
+		const region = regionAt(regions, turn.start + 0.01);
+		const speakerName = nameOf(cast.speakerToPerson[turn.speaker] ?? null);
+
+		if (!region) {
+			if (cast.speakerToPerson[turn.speaker] === undefined) {
+				return "We couldn't see a face for this voice, so we stayed wide.";
+			}
+			return "This stretch is wide.";
 		}
+		if (region.source === "user") {
+			return region.layout === "split"
+				? `You put ${region.personIds.map((id) => nameOf(id)).join(" and ")} on screen together here.`
+				: `You set this to close on ${nameOf(region.personIds[0])}.`;
+		}
+		if (region.layout === "split") {
+			return `${region.personIds.map((id) => nameOf(id)).join(" and ")} talk over each other here, so we show both.`;
+		}
+		return `${speakerName} is talking alone here, so we cut in close.`;
 	}
 
-	const turn = activeTurn !== null ? turns[activeTurn] : null;
-	const activeLayout = activeTurn !== null ? layouts[activeTurn] : undefined;
-
-	function bboxForPerson(personId: number | null) {
-		if (personId === null || !turn) return undefined;
-		const person = faces.people.find((p) => p.id === personId);
-		return person ? bboxAtTime(person, turn.start) : undefined;
-	}
-
-	const activePerson = activeTurn !== null ? personForTurn(activeTurn) : null;
-	const compositeList =
-		activeTurn !== null && activeLayout === "split"
-			? compositePeople(activeTurn, turns, overlapWindows, personForTurn, cast.speakerToPerson)
-			: [];
-	const showComposite = compositeList.length >= 2;
-	const showSingle = activeLayout === "zoom" && Boolean(bboxForPerson(activePerson));
-	const cropped = showComposite || Boolean(showSingle);
+	const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null;
+	const reviewCount = turns.filter(
+		(t) =>
+			cast.speakerToPerson[t.speaker] === undefined || overlapFor(overlapWindows, t.start, t.end),
+	).length;
 
 	const dotExt = file.name.lastIndexOf(".");
 	const baseName = dotExt > 0 ? file.name.slice(0, dotExt) : file.name;
 	const ext = dotExt > 0 ? file.name.slice(dotExt) : "";
-	const reviewCount = turns.filter(
-		(t, i) => personForTurn(i) === null || overlapFor(overlapWindows, t.start, t.end),
-	).length;
+
+	const framingLabel =
+		framing.kind === "wide"
+			? "Wide"
+			: framing.kind === "split"
+				? framing.subjects.map((s) => nameOf(s.personId)).join(" + ")
+				: `Close on ${nameOf(framing.subjects[0].personId)}`;
+	const cropped = framing.kind !== "wide";
 
 	return (
 		<div className="flex h-screen flex-col bg-bg">
@@ -285,7 +330,7 @@ export function EditorView({
 				/>
 			</header>
 
-			<div className="flex flex-1 overflow-hidden">
+			<div className="flex min-h-0 flex-1 overflow-hidden">
 				<aside className="flex w-[404px] shrink-0 flex-col overflow-y-auto border-r border-line bg-panel">
 					<div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
 						<span className="text-[13px] font-semibold text-text">Transcript</span>
@@ -299,9 +344,8 @@ export function EditorView({
 					<div className="flex flex-col">
 						{turns.map((t, i) => {
 							const overlap = overlapFor(overlapWindows, t.start, t.end);
-							const assigned = personForTurn(i);
-							const corrected = personOverrides[i] !== undefined;
-							const selected = i === activeTurn;
+							const assigned = cast.speakerToPerson[t.speaker] ?? null;
+							const selected = i === selectedTurn;
 							const needsAttention = assigned === null;
 							const borderColor = selected
 								? "border-l-accent"
@@ -311,226 +355,296 @@ export function EditorView({
 										? "border-l-warn"
 										: "border-l-transparent";
 							return (
-								<div
+								<button
+									type="button"
 									key={i}
-									className={`border-l-[3px] px-3 py-2.5 ${borderColor} ${selected ? "bg-sel" : ""}`}
+									onClick={() => selectTurn(i)}
+									className={`border-l-[3px] px-3 py-2.5 text-left ${borderColor} ${selected ? "bg-sel" : ""}`}
 								>
-									<button type="button" onClick={() => playTurn(i)} className="block w-full text-left">
-										<div className="mb-1 flex flex-wrap items-center gap-2">
-											<span className={`h-[7px] w-[7px] shrink-0 rounded-full ${SPEAKER_DOT[t.speaker % SPEAKER_DOT.length]}`} />
-											<span className="text-[11.5px] font-semibold text-text">{nameOf(assigned)}</span>
-											<span className="font-mono text-[10px] text-text3">
-												{formatTime(t.start)}–{formatTime(t.end)}
+									<div className="mb-1 flex flex-wrap items-center gap-2">
+										<span
+											className={`h-[7px] w-[7px] shrink-0 rounded-full ${SPEAKER_DOT[t.speaker % SPEAKER_DOT.length]}`}
+										/>
+										<span className="text-[11.5px] font-semibold text-text">{nameOf(assigned)}</span>
+										<span className="font-mono text-[10px] text-text3">
+											{formatTime(t.start)}–{formatTime(t.end)}
+										</span>
+										{needsAttention && (
+											<span className="rounded-chip bg-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] tracking-[0.04em] text-warn">
+												NO FACE
 											</span>
-											{corrected && <span className="font-mono text-[10px] text-accent-text">corrected</span>}
-											{needsAttention && (
-												<span className="rounded-chip bg-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] tracking-[0.04em] text-warn">
-													NOBODY ASSIGNED
-												</span>
-											)}
-											{overlap && (
-												<span className="rounded-chip bg-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] tracking-[0.04em] text-warn">
-													TALKING OVER
-												</span>
-											)}
-										</div>
-										<p
-											className={
-												selected
-													? "text-[13.5px] leading-[1.6] text-text"
-													: "text-[12.5px] leading-[1.55] text-text3"
-											}
-										>
-											{t.text}
-										</p>
-									</button>
-									<div className="mt-2 flex flex-wrap items-center gap-2">
-										<select
-											value={assigned === null ? "" : String(assigned)}
-											onChange={(e) =>
-												setPersonOverrides((prev) => ({
-													...prev,
-													[i]: e.target.value === "" ? null : Number(e.target.value),
-												}))
-											}
-											title="Who is on screen for this turn"
-											className="rounded-control border border-line bg-control px-1.5 py-1 font-mono text-[10px] text-text"
-										>
-											<option value="">Nobody</option>
-											{faces.people.map((p) => (
-												<option key={p.id} value={p.id}>
-													{nameOf(p.id)}
-												</option>
-											))}
-										</select>
-										<div className="flex overflow-hidden rounded-control border border-line text-[10px]">
-											{LAYOUTS.map((layout) => (
-												<button
-													key={layout}
-													type="button"
-													onClick={() => setLayouts((prev) => ({ ...prev, [i]: layout }))}
-													className={`px-2 py-1 font-mono ${
-														layouts[i] === layout ? "bg-accent text-on-accent" : "bg-control text-text2"
-													}`}
-												>
-													{LAYOUT_LABELS[layout]}
-												</button>
-											))}
-										</div>
-										<button
-											type="button"
-											disabled
-											title="Annotations (text/bubbles) — not built yet, see docs/FEATURES.md"
-											className="cursor-not-allowed rounded-control border border-dashed border-line px-2 py-1 font-mono text-[10px] text-text3"
-										>
-											+ Annotation
-										</button>
+										)}
+										{overlap && (
+											<span className="rounded-chip bg-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] tracking-[0.04em] text-warn">
+												TALKING OVER
+											</span>
+										)}
 									</div>
-								</div>
+									<p
+										className={
+											selected
+												? "text-[13.5px] leading-[1.6] text-text"
+												: "text-[12.5px] leading-[1.55] text-text3"
+										}
+									>
+										{t.text}
+									</p>
+									<p className="mt-1 text-[11px] leading-[1.5] text-text3">{reasonFor(i)}</p>
+								</button>
 							);
 						})}
 					</div>
 				</aside>
 
-				<main className="flex flex-1 flex-col gap-3 overflow-y-auto p-6">
+				<main className="flex min-h-0 flex-1 flex-col gap-3 p-6">
 					<div
 						ref={stageRef}
-						className="relative overflow-hidden rounded-card bg-black"
+						className="relative min-h-0 flex-1 overflow-hidden rounded-card bg-black"
 						style={{ aspectRatio: `${faces.frameWidth} / ${faces.frameHeight}` }}
 					>
-				{videoUrl && (
-					<video
-						ref={videoRef}
-						src={videoUrl}
-						controls={!cropped}
-						className={`h-full w-full object-cover ${cropped ? "opacity-0" : ""}`}
-					/>
-				)}
+						{videoUrl && (
+							<video
+								ref={videoRef}
+								src={videoUrl}
+								playsInline
+								className={`h-full w-full object-contain ${cropped ? "opacity-0" : ""}`}
+							/>
+						)}
 
-				{videoUrl && showSingle && turn && (
-					<div className="absolute inset-0">
-						<CroppedVideo
-							videoUrl={videoUrl}
-							bbox={bboxForPerson(activePerson)}
-							frameWidth={faces.frameWidth}
-							frameHeight={faces.frameHeight}
-							paneWidth={stageSize.width}
-							paneHeight={stageSize.height}
-							driverRef={videoRef}
-						/>
-					</div>
-				)}
-
-				{videoUrl && activeLayout === "split" && (
-					<div className="absolute inset-0">
-						{!showComposite ? (
-							<div className="flex h-full items-center justify-center bg-black/70 px-6 text-center text-sm text-white">
-								Split needs a second labelled person, and there isn't one nearby on this turn.
+						{videoUrl && framing.kind === "zoom" && (
+							<div className="absolute inset-0">
+								<CroppedVideo
+									videoUrl={videoUrl}
+									bbox={framing.subjects[0].bbox}
+									frameWidth={faces.frameWidth}
+									frameHeight={faces.frameHeight}
+									paneWidth={stageSize.width}
+									paneHeight={stageSize.height}
+									driverRef={videoRef}
+								/>
 							</div>
-						) : compositeList.length <= DUO_SPLIT_MAX ? (
-							<div className="flex h-full">
-								{compositeList.map((personId) => (
-									<div key={personId} className="h-full flex-1 border-l border-black first:border-l-0">
-										<CroppedVideo
-											videoUrl={videoUrl}
-											bbox={bboxForPerson(personId)}
-											frameWidth={faces.frameWidth}
-											frameHeight={faces.frameHeight}
-											paneWidth={stageSize.width / compositeList.length}
-											paneHeight={stageSize.height}
-											label={nameOf(personId)}
-											driverRef={videoRef}
-										/>
+						)}
+
+						{videoUrl && framing.kind === "split" && (
+							<div className="absolute inset-0">
+								{framing.subjects.length <= DUO_SPLIT_MAX ? (
+									<div className="flex h-full">
+										{framing.subjects.map((subject) => (
+											<div
+												key={subject.personId}
+												className="h-full flex-1 border-l border-black first:border-l-0"
+											>
+												<CroppedVideo
+													videoUrl={videoUrl}
+													bbox={subject.bbox}
+													frameWidth={faces.frameWidth}
+													frameHeight={faces.frameHeight}
+													paneWidth={stageSize.width / framing.subjects.length}
+													paneHeight={stageSize.height}
+													label={nameOf(subject.personId)}
+													driverRef={videoRef}
+												/>
+											</div>
+										))}
 									</div>
-								))}
-							</div>
-						) : (
-							// Three or more: speaker large, everyone else down the side.
-							// Splitting 16:9 into N equal columns gives slivers past two.
-							<div className="flex h-full">
-								<div style={{ width: `${SPEAKER_FOCUS_MAIN_FRACTION * 100}%` }} className="h-full">
-									<CroppedVideo
-										videoUrl={videoUrl}
-										bbox={bboxForPerson(compositeList[0])}
-										frameWidth={faces.frameWidth}
-										frameHeight={faces.frameHeight}
-										paneWidth={stageSize.width * SPEAKER_FOCUS_MAIN_FRACTION}
-										paneHeight={stageSize.height}
-										label={nameOf(compositeList[0])}
-										driverRef={videoRef}
-									/>
-								</div>
-								<div className="flex h-full flex-1 flex-col border-l border-black">
-									{compositeList.slice(1).map((personId) => (
-										<div key={personId} className="flex-1 border-t border-black first:border-t-0">
+								) : (
+									// Three or more: speaker large, everyone else down the side.
+									// Splitting 16:9 into N equal columns gives slivers past two.
+									<div className="flex h-full">
+										<div style={{ width: `${SPEAKER_FOCUS_MAIN_FRACTION * 100}%` }} className="h-full">
 											<CroppedVideo
 												videoUrl={videoUrl}
-												bbox={bboxForPerson(personId)}
+												bbox={framing.subjects[0].bbox}
 												frameWidth={faces.frameWidth}
 												frameHeight={faces.frameHeight}
-												paneWidth={stageSize.width * (1 - SPEAKER_FOCUS_MAIN_FRACTION)}
-												paneHeight={stageSize.height / (compositeList.length - 1)}
-												label={nameOf(personId)}
+												paneWidth={stageSize.width * SPEAKER_FOCUS_MAIN_FRACTION}
+												paneHeight={stageSize.height}
+												label={nameOf(framing.subjects[0].personId)}
 												driverRef={videoRef}
 											/>
 										</div>
-									))}
-								</div>
+										<div className="flex h-full flex-1 flex-col border-l border-black">
+											{framing.subjects.slice(1).map((subject) => (
+												<div
+													key={subject.personId}
+													className="flex-1 border-t border-black first:border-t-0"
+												>
+													<CroppedVideo
+														videoUrl={videoUrl}
+														bbox={subject.bbox}
+														frameWidth={faces.frameWidth}
+														frameHeight={faces.frameHeight}
+														paneWidth={stageSize.width * (1 - SPEAKER_FOCUS_MAIN_FRACTION)}
+														paneHeight={stageSize.height / (framing.subjects.length - 1)}
+														label={nameOf(subject.personId)}
+														driverRef={videoRef}
+													/>
+												</div>
+											))}
+										</div>
+									</div>
+								)}
 							</div>
 						)}
+
+						<div className="pointer-events-none absolute top-2 left-2 flex gap-1.5">
+							<span className="rounded-chip bg-black/55 px-1.5 py-0.5 text-[10px] text-plate-ink">
+								{framingLabel}
+							</span>
+							<span className="rounded-chip bg-black/55 px-1.5 py-0.5 font-mono text-[10px] text-plate-ink">
+								{faces.frameWidth}×{faces.frameHeight}
+							</span>
+						</div>
+						<span className="pointer-events-none absolute right-2 bottom-2 rounded-chip bg-black/55 px-1.5 py-0.5 font-mono text-[10px] text-plate-ink">
+							{formatTime(currentTime)}
+						</span>
 					</div>
-				)}
-			</div>
-				<p className="text-[11px] text-text3">
-						Click a turn to seek there. These previews use the same framing maths as the export.
-					</p>
+
+					<div className="flex shrink-0 items-center gap-3">
+						<button
+							type="button"
+							onClick={togglePlay}
+							className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-on-accent"
+							aria-label={playing ? "Pause" : "Play"}
+						>
+							{playing ? "❚❚" : "▶"}
+						</button>
+						<span className="font-mono text-[11px] text-text2">
+							{formatTime(currentTime)} / {formatTime(duration)}
+						</span>
+						<div className="flex-1" />
+						<span
+							className={`rounded-chip px-2 py-1 font-mono text-[10px] ${
+								captionsEnabled && captionsAvailable
+									? "bg-control text-text2"
+									: "bg-control text-text3"
+							}`}
+						>
+							{captionsAvailable
+								? captionsEnabled
+									? "Captions on"
+									: "Captions off"
+								: "No captions"}
+						</span>
+					</div>
 				</main>
 			</div>
 
-			<footer className="flex shrink-0 items-center justify-between gap-4 border-t border-line bg-panel px-4 py-3">
-				<div className="flex items-center gap-4">
-					<label
-						className={`flex w-fit items-center gap-2 text-[12px] ${captionsAvailable ? "text-text2" : "text-text3"}`}
-						title={
-							captionsAvailable
-								? undefined
-								: "This ffmpeg was built without libass, so it can't burn in subtitles. `brew install ffmpeg-full`, then set FFMPEG_BINARY in server/.env."
-						}
+			<div className="shrink-0 border-t border-line bg-panel px-4 py-3">
+				<div className="mb-2 flex items-center gap-2">
+					<span className="font-mono text-[9.5px] tracking-[0.08em] text-text3">FRAMING</span>
+					<button
+						type="button"
+						onClick={addCloseUp}
+						disabled={targetPerson === undefined}
+						className="rounded-control border border-line bg-control px-2 py-1 text-[11px] text-text2 disabled:opacity-40"
 					>
-						<input
-							type="checkbox"
-							checked={captionsEnabled && captionsAvailable}
-							disabled={!captionsAvailable}
-							onChange={(e) => setCaptionsEnabled(e.target.checked)}
-						/>
-						{captionsAvailable ? "Captions on" : "Captions need ffmpeg with libass"}
-					</label>
-					<label
-						className="flex w-fit items-center gap-2 text-[12px] text-text2"
-						title="Cuts long pauses down to a short beat and removes standalone filler words (um, uh). Conservative on purpose -- see docs/FEATURES.md."
+						+ {LAYOUT_LABELS.zoom}
+					</button>
+					<button
+						type="button"
+						onClick={addBothOnScreen}
+						disabled={!targetTurn}
+						className="rounded-control border border-line bg-control px-2 py-1 text-[11px] text-text2 disabled:opacity-40"
 					>
-						<input
-							type="checkbox"
-							checked={trimDeadAirEnabled}
-							onChange={(e) => setTrimDeadAirEnabled(e.target.checked)}
-						/>
-						Trim dead air &amp; filler words
-					</label>
+						+ {LAYOUT_LABELS.split}
+					</button>
+					<div className="flex-1" />
+					<span className="flex items-center gap-1.5 font-mono text-[9.5px] tracking-[0.08em] text-text3">
+						<span className="h-[9px] w-[9px] rounded-[2px] bg-r-close" />
+						SUGGESTED
+					</span>
+					<span className="flex items-center gap-1.5 font-mono text-[9.5px] tracking-[0.08em] text-text3">
+						<span className="h-[9px] w-[9px] rounded-[2px] border border-handle bg-r-mine" />
+						YOURS
+					</span>
 				</div>
-				<ExportButton
-					file={file}
-					sessionId={sessionId}
+
+				<TimelineTray
+					duration={duration}
+					regions={regions}
 					turns={turns}
-					layouts={layouts}
-					overlapWindows={overlapWindows}
-					words={words}
-					captionsEnabled={captionsEnabled && captionsAvailable}
-					trimDeadAirEnabled={trimDeadAirEnabled}
-					faces={faces}
-					speakerToPerson={cast.speakerToPerson}
-					personForTurn={personForTurn}
+					selectedRegionId={selectedRegionId}
+					currentTime={currentTime}
+					nameOf={(id) => nameOf(id)}
+					onSelectRegion={setSelectedRegionId}
+					onResize={(id, edge, to) => setRegions((rs) => resizeRegion(rs, id, edge, to, duration))}
+					onSeek={seek}
 				/>
-			</footer>
+
+				<div className="mt-3 flex items-center justify-between gap-4">
+					<div className="flex items-center gap-3">
+						{selectedRegion ? (
+							<>
+								<span className="text-[11px] text-text3">
+									Drag either edge to change where this shot starts and ends.
+								</span>
+								<button
+									type="button"
+									onClick={() => goWide(selectedRegion.id)}
+									className="rounded-control border border-line px-2 py-1 text-[11px] text-text2"
+								>
+									Go wide here
+								</button>
+							</>
+						) : (
+							<span className="text-[11px] text-text3">
+								Pick a shot on the timeline to move its edges, or a line in the transcript to jump
+								there.
+							</span>
+						)}
+					</div>
+					<div className="flex items-center gap-3">
+						<label
+							className={`flex items-center gap-2 text-[12px] ${captionsAvailable ? "text-text2" : "text-text3"}`}
+							title={
+								captionsAvailable
+									? undefined
+									: "This ffmpeg was built without libass, so it can't burn in subtitles. `brew install ffmpeg-full`, then set FFMPEG_BINARY in server/.env."
+							}
+						>
+							<input
+								type="checkbox"
+								checked={captionsEnabled && captionsAvailable}
+								disabled={!captionsAvailable}
+								onChange={(e) => setCaptionsEnabled(e.target.checked)}
+							/>
+							{captionsAvailable ? "Captions" : "Captions need libass"}
+						</label>
+						<label
+							className="flex items-center gap-2 text-[12px] text-text2"
+							title="Cuts long pauses down to a short beat and removes standalone filler words (um, uh). Conservative on purpose -- see docs/FEATURES.md."
+						>
+							<input
+								type="checkbox"
+								checked={trimDeadAirEnabled}
+								onChange={(e) => setTrimDeadAirEnabled(e.target.checked)}
+							/>
+							Trim dead air
+						</label>
+						<button
+							type="button"
+							onClick={() => {
+								setRegions(suggested);
+								setSelectedRegionId(null);
+							}}
+							className="rounded-control border border-line px-2 py-1 text-[11px] text-text2"
+						>
+							Reset to suggested
+						</button>
+						<ExportButton
+							file={file}
+							sessionId={sessionId}
+							regions={regions}
+							turns={turns}
+							words={words}
+							captionsEnabled={captionsEnabled && captionsAvailable}
+							trimDeadAirEnabled={trimDeadAirEnabled}
+							faces={faces}
+						/>
+					</div>
+				</div>
+			</div>
 		</div>
 	);
 }

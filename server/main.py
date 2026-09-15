@@ -22,8 +22,7 @@ from pipeline.lipsync import analyse
 from pipeline.progress import face_thumbnail, report, report_line, report_people, snapshot
 from pipeline.render import (
 	Keyframe,
-	LayoutChoice,
-	OverlapSegment,
+	Region,
 	Track,
 	build_render_segments,
 	has_ass_filter,
@@ -240,8 +239,11 @@ async def export_endpoint(
 	# Measured: a 53-minute episode's faces are 1.7MB and the export 400'd with
 	# "Part exceeded maximum size of 1024KB."
 	faces: UploadFile,
-	layoutChoices: str = Form(...),
-	overlapSegments: str = Form(...),
+	regions: str = Form(...),
+	# Only needed when trimming: dead-air detection works from where speech
+	# actually is, which regions deliberately don't describe (a stretch nobody
+	# framed is still speech, and cutting it would be silent data loss).
+	turns: str = Form("[]"),
 	sessionId: str | None = Form(None),
 	# Also a file part, and for the same reason as faces: word timestamps grow
 	# with episode length. A 53-minute episode is ~550KB of them, which fits
@@ -251,8 +253,8 @@ async def export_endpoint(
 	trimDeadAir: bool = Form(False),
 ) -> FileResponse:
 	try:
-		layout_choices_data = json.loads(layoutChoices)
-		overlap_segments_data = json.loads(overlapSegments)
+		regions_data = json.loads(regions)
+		turns_data = json.loads(turns)
 		faces_data = json.loads(await faces.read())
 		words_data = json.loads(await words.read()) if words is not None else []
 	except json.JSONDecodeError as err:
@@ -272,20 +274,15 @@ async def export_endpoint(
 			"Or export without captions to continue with this build.",
 		)
 
-	layout_choices = [
-		LayoutChoice(
-			turn_index=lc["turnIndex"],
-			person_id=lc.get("personId"),
-			start=lc["start"],
-			end=lc["end"],
-			default_layout=lc["defaultLayout"],
-			final_layout=lc["finalLayout"],
+	framing_regions = [
+		Region(
+			start=r["start"],
+			end=r["end"],
+			layout=r["layout"],
+			person_ids=r["personIds"],
+			source=r.get("source", "suggested"),
 		)
-		for lc in layout_choices_data
-	]
-	overlap_segments = [
-		OverlapSegment(start=w["start"], end=w["end"], person_ids=w["personIds"])
-		for w in overlap_segments_data
+		for r in regions_data
 	]
 	people = [
 		Track(
@@ -307,14 +304,13 @@ async def export_endpoint(
 		await _save_upload(file, input_path)
 		duration = get_video_duration(str(input_path))
 
-		# Dead air / filler words to cut, if asked for. Computed from the turns
-		# already resolved on the frontend (layout_choices) plus word-level
-		# timestamps when they're available -- filler-word detection needs
-		# them, dead-air detection alone doesn't. See pipeline/trim.py for why
-		# these are deliberately conservative.
+		# Dead air / filler words to cut, if asked for. Computed from the
+		# speaker turns plus word-level timestamps when they're available --
+		# filler-word detection needs them, dead-air detection alone doesn't.
+		# See pipeline/trim.py for why these are deliberately conservative.
 		drop_ranges: list[tuple[float, float]] = []
 		if trimDeadAir:
-			turn_bounds = [(lc.start, lc.end) for lc in layout_choices]
+			turn_bounds = [(t["start"], t["end"]) for t in turns_data]
 			ranges = dead_air_ranges(turn_bounds, duration)
 			if words_list:
 				ranges += filler_word_ranges(words_list)
@@ -322,8 +318,7 @@ async def export_endpoint(
 
 		segments = build_render_segments(
 			duration=duration,
-			overlap_segments=overlap_segments,
-			layout_choices=layout_choices,
+			regions=framing_regions,
 			people=people,
 			drop_ranges=drop_ranges,
 		)
@@ -357,7 +352,7 @@ async def export_endpoint(
 		raise
 
 	if sessionId:
-		_log_decision(sessionId, layout_choices_data)
+		_log_decision(sessionId, regions_data)
 
 	output_name = f"{Path(file.filename or 'export').stem}-edited.mp4"
 	return FileResponse(
@@ -368,10 +363,13 @@ async def export_endpoint(
 	)
 
 
-def _log_decision(session_id: str, layout_choices: list[dict]) -> None:
+def _log_decision(session_id: str, regions: list[dict]) -> None:
 	log_dir = Path(__file__).parent / "logs" / session_id
 	log_dir.mkdir(parents=True, exist_ok=True)
 	log_path = log_dir / "decisions.jsonl"
-	entry = {"timestamp": datetime.now(timezone.utc).isoformat(), "layoutChoices": layout_choices}
+	# `source` on each region is the whole point of keeping these: the
+	# difference between what was suggested and what the editor made it is the
+	# only signal we have about where the automatic framing is wrong.
+	entry = {"timestamp": datetime.now(timezone.utc).isoformat(), "regions": regions}
 	with log_path.open("a") as f:
 		f.write(json.dumps(entry) + "\n")

@@ -1,14 +1,6 @@
 import { useState } from "react";
-import {
-	exportVideo,
-	type DetectFacesResponse,
-	type LayoutChoice,
-	type OverlapSegment,
-	type OverlapWindow,
-	type Turn,
-	type Word,
-} from "@/lib/api";
-import type { Layout } from "@/features/timeline/types";
+import { exportVideo, type DetectFacesResponse, type Turn, type Word } from "@/lib/api";
+import type { FramingRegion } from "@/features/timeline/types";
 
 type ExportState =
 	| { status: "idle" }
@@ -19,62 +11,37 @@ type ExportState =
 export function ExportButton({
 	file,
 	sessionId,
+	regions,
 	turns,
-	layouts,
-	overlapWindows,
 	words,
 	captionsEnabled,
 	trimDeadAirEnabled,
 	faces,
-	speakerToPerson,
-	personForTurn,
 }: {
 	file: File;
 	sessionId: string;
+	regions: FramingRegion[];
 	turns: Turn[];
-	layouts: Record<number, Layout>;
-	overlapWindows: OverlapWindow[];
 	words: Word[];
 	captionsEnabled: boolean;
 	trimDeadAirEnabled: boolean;
 	faces: DetectFacesResponse;
-	speakerToPerson: Record<number, number>;
-	/** Resolved person for a turn, including any manual correction. */
-	personForTurn: (index: number) => number | null;
 }) {
 	const [state, setState] = useState<ExportState>({ status: "idle" });
 
 	async function handleExport() {
 		setState({ status: "exporting" });
 		try {
-			const layoutChoices: LayoutChoice[] = turns.map((t, i) => ({
-				turnIndex: i,
-				personId: personForTurn(i),
-				start: t.start,
-				end: t.end,
-				defaultLayout: speakerToPerson[t.speaker] !== undefined ? "zoom" : "original",
-				finalLayout: layouts[i] ?? "original",
-			}));
-
-			// Overlap windows come back from diarisation as anonymous speakers;
-			// resolve them to people before the server sees them, so the render
-			// pipeline never has to know diarisation exists.
-			const overlapSegments: OverlapSegment[] = overlapWindows.map((w) => ({
-				start: w.start,
-				end: w.end,
-				personIds: [
-					...new Set(
-						w.speakers
-							.map((sp) => speakerToPerson[sp])
-							.filter((id): id is number => id !== undefined),
-					),
-				],
-			}));
-
 			const blob = await exportVideo(
 				file,
-				layoutChoices,
-				overlapSegments,
+				regions.map((r) => ({
+					start: r.start,
+					end: r.end,
+					layout: r.layout,
+					personIds: r.personIds,
+					source: r.source,
+				})),
+				turns.map((t) => ({ start: t.start, end: t.end })),
 				faces,
 				sessionId,
 				words,
@@ -104,8 +71,7 @@ export function ExportButton({
 					Rendering…
 				</button>
 				<p className="max-w-xs text-right text-[11px] text-text3">
-					This can take a few minutes for longer episodes — the render re-encodes video per
-					segment, it isn't a quick copy.
+					Leave this window open — closing it stops the render.
 				</p>
 			</div>
 		);
@@ -119,14 +85,14 @@ export function ExportButton({
 					download={state.filename}
 					className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
 				>
-					Download {state.filename}
+					Save {state.filename}
 				</a>
 				<button
 					type="button"
 					onClick={() => setState({ status: "idle" })}
 					className="text-[11px] text-text3 underline"
 				>
-					Export again
+					Render again
 				</button>
 			</div>
 		);
@@ -142,7 +108,11 @@ export function ExportButton({
 				>
 					Try again
 				</button>
-				<p className="max-w-xs rounded-control border border-warn/45 bg-warn-bg px-2 py-1.5 text-right font-mono text-[10px] text-warn">
+				<p className="text-[11px] text-text3">Your edits are safe.</p>
+				{/* The raw server message, in mono, underneath the plain-English
+				    line -- never instead of it. It has to stay copy-pasteable
+				    into a GitHub issue. */}
+				<p className="max-w-xs rounded-control border border-warn/45 bg-terminal px-2 py-1.5 text-right font-mono text-[10px] text-warn">
 					{state.message}
 				</p>
 			</div>

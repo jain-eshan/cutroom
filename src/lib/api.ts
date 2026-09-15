@@ -190,28 +190,20 @@ export function processVideo(
 	return postFile("/process", file, { jobId }, onUploadProgress);
 }
 
-export interface LayoutChoice {
-	turnIndex: number;
-	/** Who is on screen for this turn, already resolved from diarisation plus
-	 * any manual correction. null = nobody, which renders as the wide shot. */
-	personId: number | null;
+/** What the renderer needs from a framing region. `source` rides along so the
+ * decision log can tell what was suggested from what the editor changed. */
+export interface ExportRegion {
 	start: number;
 	end: number;
-	defaultLayout: "original" | "zoom";
-	finalLayout: "original" | "zoom" | "split";
-}
-
-/** An overlap window resolved to people rather than diarisation speakers. */
-export interface OverlapSegment {
-	start: number;
-	end: number;
+	layout: "zoom" | "split";
 	personIds: number[];
+	source: "suggested" | "user";
 }
 
 export async function exportVideo(
 	file: File,
-	layoutChoices: LayoutChoice[],
-	overlapSegments: OverlapSegment[],
+	regions: ExportRegion[],
+	turnRanges: { start: number; end: number }[],
 	faces: DetectFacesResponse,
 	sessionId: string,
 	words: Word[],
@@ -220,8 +212,10 @@ export async function exportVideo(
 ): Promise<Blob> {
 	const form = new FormData();
 	form.append("file", file);
-	form.append("layoutChoices", JSON.stringify(layoutChoices));
-	form.append("overlapSegments", JSON.stringify(overlapSegments));
+	form.append("regions", JSON.stringify(regions));
+	// Only used when trimming: dead air is measured against where speech
+	// actually is, which regions deliberately don't describe.
+	form.append("turns", JSON.stringify(turnRanges));
 	// Sent as a file, not a text field: the server caps text fields at 1MB and
 	// face keyframes for a full-length episode are larger than that.
 	form.append("faces", new Blob([JSON.stringify(faces)], { type: "application/json" }), "faces.json");
@@ -239,7 +233,17 @@ export async function exportVideo(
 		const body = await res.text();
 		let detail = body;
 		try {
-			detail = (JSON.parse(body) as { detail?: string }).detail ?? body;
+			const parsed = (JSON.parse(body) as { detail?: unknown }).detail;
+			if (typeof parsed === "string") {
+				detail = parsed;
+			} else if (Array.isArray(parsed)) {
+				// A 422 carries a list of validation errors, not a sentence --
+				// interpolated raw it reads "[object Object]", which is useless in
+				// the one place a technical string is supposed to be copyable.
+				detail = parsed
+					.map((e: { loc?: unknown[]; msg?: string }) => `${e.loc?.at(-1) ?? "request"}: ${e.msg ?? "invalid"}`)
+					.join("; ");
+			}
 		} catch {
 			// Not JSON (a proxy error page, say) -- show it as-is.
 		}

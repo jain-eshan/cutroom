@@ -10,8 +10,7 @@ from pipeline.faces import BBox
 from pipeline.framing import MAX_UPSCALE, person_crop
 from pipeline.render import (
 	Keyframe,
-	LayoutChoice,
-	OverlapSegment,
+	Region,
 	RenderSegment,
 	Track,
 	_segments_are_contiguous,
@@ -87,126 +86,109 @@ BBOX_C = BBox(x=500, y=400, width=100, height=100)
 
 
 class TestBuildRenderSegments:
+	"""Framing is a list of regions over the timeline, independent of turn
+	boundaries. Anything no region covers renders as the untouched wide shot,
+	so "go wide here" is the absence of a region, not a third kind of one."""
+
 	def test_gapless_and_duration_complete(self):
 		tracks = [_track(0, BBOX_A)]
-		layout_choices = [LayoutChoice(0, 0, 0.0, 2.0, "zoom", "zoom")]
-		segments = build_render_segments(10.0, [], layout_choices, tracks)
+		regions = [Region(0.0, 2.0, "zoom", [0])]
+		segments = build_render_segments(10.0, regions, tracks)
 
 		assert segments[0].start == 0.0
 		assert segments[-1].end == 10.0
 		for a, b in zip(segments, segments[1:]):
 			assert a.end == b.start, "segments must be contiguous, no gaps"
 
-	def test_gap_between_turns_renders_as_original(self):
+	def test_uncovered_time_renders_wide(self):
 		tracks = [_track(0, BBOX_A)]
-		layout_choices = [
-			LayoutChoice(0, 0, 0.0, 2.0, "zoom", "zoom"),
-			LayoutChoice(1, 0, 5.0, 7.0, "zoom", "zoom"),
-		]
-		segments = build_render_segments(10.0, [], layout_choices, tracks)
+		regions = [Region(0.0, 2.0, "zoom", [0]), Region(5.0, 7.0, "zoom", [0])]
+		segments = build_render_segments(10.0, regions, tracks)
 		gap = next(s for s in segments if s.start == 2.0)
 		assert gap.layout == "original"
 		assert gap.end == 5.0
 
-	def test_unmatched_speaker_falls_back_to_original(self):
-		layout_choices = [LayoutChoice(0, 0, 0.0, 5.0, "zoom", "zoom")]
-		segments = build_render_segments(5.0, [], layout_choices, [])
+	def test_region_naming_a_person_with_no_face_renders_wide(self):
+		# A close-up on somebody we never located isn't available at any
+		# price; wide is the honest result rather than a crash or a guess.
+		regions = [Region(0.0, 5.0, "zoom", [0])]
+		segments = build_render_segments(5.0, regions, [])
 		assert len(segments) == 1
 		assert segments[0].layout == "original"
 
-	def test_overlap_window_produces_split_with_correct_speakers(self):
+	def test_split_region_puts_everyone_named_on_screen(self):
 		tracks = [_track(0, BBOX_A), _track(1, BBOX_B)]
-		layout_choices = [
-			LayoutChoice(0, 0, 0.0, 5.0, "zoom", "zoom"),
-			LayoutChoice(1, 1, 3.0, 8.0, "zoom", "zoom"),
-		]
-		overlap = [OverlapSegment(start=3.0, end=5.0, person_ids=[0, 1])]
-		segments = build_render_segments(8.0, overlap, layout_choices, tracks)
+		regions = [Region(3.0, 5.0, "split", [0, 1])]
+		segments = build_render_segments(8.0, regions, tracks)
 
 		split_seg = next(s for s in segments if s.layout == "split")
 		assert split_seg.start == 3.0 and split_seg.end == 5.0
 		assert {sp for sp, _ in split_seg.speaker_bboxes} == {0, 1}
 
-	def test_overlap_spanning_a_turn_boundary_cuts_correctly(self):
-		# Turn 0 is speaker A alone 0-4s; turn 1 is speaker B alone 4-8s;
-		# but the two actually overlap 3-5s (diarization/turn merging is
-		# imperfect at exactly this kind of boundary -- see turns.py).
+	def test_regions_cut_exactly_where_they_say(self):
+		# A region deliberately spanning what used to be a turn boundary: the
+		# whole point of the model is that framing need not agree with turns.
 		tracks = [_track(0, BBOX_A), _track(1, BBOX_B)]
-		layout_choices = [
-			LayoutChoice(0, 0, 0.0, 4.0, "zoom", "zoom"),
-			LayoutChoice(1, 1, 4.0, 8.0, "zoom", "zoom"),
+		regions = [
+			Region(0.0, 3.0, "zoom", [0]),
+			Region(3.0, 5.0, "split", [0, 1]),
+			Region(5.0, 8.0, "zoom", [1]),
 		]
-		overlap = [OverlapSegment(start=3.0, end=5.0, person_ids=[0, 1])]
-		segments = build_render_segments(8.0, overlap, layout_choices, tracks)
+		segments = build_render_segments(8.0, regions, tracks)
 
 		layouts_in_order = [(s.start, s.end, s.layout) for s in segments]
 		assert (0.0, 3.0, "zoom") in layouts_in_order
 		assert (3.0, 5.0, "split") in layouts_in_order
 		assert (5.0, 8.0, "zoom") in layouts_in_order
 
-	def test_overlap_window_with_unmapped_speaker_falls_back_to_turn(self):
-		# Only speaker 0 has a mapped face; overlap says [0, 1] but speaker 1
-		# has no track -- can't build a 2-pane composite, fall back to
-		# whatever the underlying turn (zoom on speaker 0) says.
+	def test_split_with_only_one_findable_person_closes_on_them(self):
+		# Handoff `7d`, "forced split, one person": fall back to a close-up on
+		# whoever is actually there rather than refusing the region.
 		tracks = [_track(0, BBOX_A)]
-		layout_choices = [LayoutChoice(0, 0, 0.0, 5.0, "zoom", "zoom")]
-		overlap = [OverlapSegment(start=1.0, end=3.0, person_ids=[0, 1])]
-		segments = build_render_segments(5.0, overlap, layout_choices, tracks)
+		regions = [Region(1.0, 3.0, "split", [0, 1])]
+		segments = build_render_segments(5.0, regions, tracks)
 
 		mid_segment = next(s for s in segments if s.start <= 2.0 < s.end)
 		assert mid_segment.layout == "zoom"
+		assert [sp for sp, _ in mid_segment.speaker_bboxes] == [0]
 
-	def test_forced_split_with_no_overlap_uses_second_most_recent_speaker(self):
-		tracks = [_track(0, BBOX_A), _track(1, BBOX_B)]
-		layout_choices = [
-			LayoutChoice(0, 1, 0.0, 2.0, "zoom", "zoom"),  # speaker 1 talks first
-			LayoutChoice(1, 0, 2.0, 5.0, "zoom", "split"),  # then speaker 0, forced split
-		]
-		segments = build_render_segments(5.0, [], layout_choices, tracks)
-
-		forced = next(s for s in segments if s.start == 2.0)
-		assert forced.layout == "split"
-		assert {sp for sp, _ in forced.speaker_bboxes} == {0, 1}
-
-	def test_forced_split_with_no_other_speaker_available_falls_back_to_zoom(self):
-		tracks = [_track(0, BBOX_A)]
-		layout_choices = [LayoutChoice(0, 0, 0.0, 5.0, "zoom", "split")]
-		segments = build_render_segments(5.0, [], layout_choices, tracks)
-		assert len(segments) == 1
-		assert segments[0].layout == "zoom"
-
-	def test_forced_split_with_no_mapped_face_at_all_falls_back_to_original(self):
-		layout_choices = [LayoutChoice(0, 0, 0.0, 5.0, "original", "split")]
-		segments = build_render_segments(5.0, [], layout_choices, [])
+	def test_split_with_nobody_findable_renders_wide(self):
+		regions = [Region(0.0, 5.0, "split", [0, 1])]
+		segments = build_render_segments(5.0, regions, [])
 		assert len(segments) == 1
 		assert segments[0].layout == "original"
 
-	def test_overlap_is_not_capped(self):
+	def test_a_region_is_not_capped(self):
 		tracks = [_track(0, BBOX_A), _track(1, BBOX_B), _track(2, BBOX_C), _track(3, BBOX_A)]
-		layout_choices = [LayoutChoice(0, 0, 0.0, 5.0, "zoom", "zoom")]
-		overlap = [OverlapSegment(start=0.0, end=5.0, person_ids=[0, 1, 2, 3])]
-		segments = build_render_segments(5.0, overlap, layout_choices, tracks)
+		regions = [Region(0.0, 5.0, "split", [0, 1, 2, 3])]
+		segments = build_render_segments(5.0, regions, tracks)
 		# A four-person podcast is a normal case, not an edge case -- everyone
 		# who is actually talking gets on screen. The layout adapts (speaker
 		# focus rather than four narrow columns); the roster is not truncated.
 		assert len(segments[0].speaker_bboxes) == 4
 
-	def test_back_to_back_turns_no_gap_merge_only_when_identical(self):
+	def test_touching_regions_merge_only_when_the_decision_is_identical(self):
 		tracks = [_track(0, BBOX_A)]
-		layout_choices = [
-			LayoutChoice(0, 0, 0.0, 2.0, "zoom", "zoom"),
-			LayoutChoice(1, 0, 2.0, 4.0, "zoom", "zoom"),
-		]
-		segments = build_render_segments(4.0, [], layout_choices, tracks)
-		# Same speaker, same bbox (single keyframe) -> merges into one segment.
+		regions = [Region(0.0, 2.0, "zoom", [0]), Region(2.0, 4.0, "zoom", [0])]
+		segments = build_render_segments(4.0, regions, tracks)
+		# Same person, same bbox (single keyframe) -> one segment, one encode.
 		assert len(segments) == 1
 		assert segments[0].start == 0.0 and segments[0].end == 4.0
+
+	def test_overlapping_regions_resolve_to_the_later_one(self):
+		# The editor keeps regions disjoint, but the result must not depend on
+		# list order if one ever slips through.
+		tracks = [_track(0, BBOX_A), _track(1, BBOX_B)]
+		regions = [Region(0.0, 6.0, "zoom", [0]), Region(2.0, 4.0, "zoom", [1])]
+		segments = build_render_segments(6.0, regions, tracks)
+		middle = next(s for s in segments if s.start <= 3.0 < s.end)
+		assert [sp for sp, _ in middle.speaker_bboxes] == [1]
 
 	def test_drop_range_is_excluded_from_the_output(self):
 		# A 2s dead-air cut in the middle of an otherwise-continuous "original"
 		# stretch -- must actually disappear from the timeline, not just get
 		# relabeled.
-		segments = build_render_segments(10.0, [], [], [], drop_ranges=[(4.0, 6.0)])
+		segments = build_render_segments(10.0, [], [], drop_ranges=[(4.0, 6.0)])
 		covered = sum(s.end - s.start for s in segments)
 		assert covered == pytest.approx(8.0)
 		assert not any(s.start <= 5.0 < s.end for s in segments)
@@ -220,23 +202,23 @@ class TestBuildRenderSegments:
 		# dropped time in the render. The fix requires true time-adjacency,
 		# not just equal layout, so the cut must survive as an actual gap
 		# between two segments rather than disappearing into one merged span.
-		segments = build_render_segments(10.0, [], [], [], drop_ranges=[(4.0, 6.0)])
+		segments = build_render_segments(10.0, [], [], drop_ranges=[(4.0, 6.0)])
 		assert [(s.start, s.end) for s in segments] == [(0.0, 4.0), (6.0, 10.0)]
 
 	def test_drop_range_at_the_very_start_and_end(self):
 		tracks = [_track(0, BBOX_A)]
-		layout_choices = [LayoutChoice(0, 0, 2.0, 8.0, "zoom", "zoom")]
+		regions = [Region(2.0, 8.0, "zoom", [0])]
 		segments = build_render_segments(
-			10.0, [], layout_choices, tracks, drop_ranges=[(0.0, 1.0), (9.0, 10.0)]
+			10.0, regions, tracks, drop_ranges=[(0.0, 1.0), (9.0, 10.0)]
 		)
 		assert segments[0].start == 1.0
 		assert segments[-1].end == 9.0
 
 	def test_no_drop_ranges_behaves_exactly_as_before(self):
 		tracks = [_track(0, BBOX_A)]
-		layout_choices = [LayoutChoice(0, 0, 0.0, 5.0, "zoom", "zoom")]
-		with_none = build_render_segments(5.0, [], layout_choices, tracks)
-		with_empty = build_render_segments(5.0, [], layout_choices, tracks, drop_ranges=[])
+		regions = [Region(0.0, 5.0, "zoom", [0])]
+		with_none = build_render_segments(5.0, regions, tracks)
+		with_empty = build_render_segments(5.0, regions, tracks, drop_ranges=[])
 		assert with_none == with_empty
 
 
