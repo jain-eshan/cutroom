@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import type { MatchNote, MatchResult, Person, Turn } from "@/lib/api";
+import type { MatchNote, MatchResult, Person, Turn, Word } from "@/lib/api";
 
 /** Below this, the automatic match is shown as a guess to check rather than an
  * answer. Matches pipeline/fuse.py's DOMINANT_SHARE. */
 const CONFIDENT = 0.6;
 
-const SPEAKER_TOKENS = ["bg-s1", "bg-s2", "bg-s3"];
+const SPEAKER_BORDER = ["border-s1", "border-s2", "border-s3"];
+const WAVEFORM_BARS = 15;
 
 export interface CastResult {
 	names: Record<number, string>;
 	speakerToPerson: Record<number, number>;
-	description: string;
 }
 
 function defaultName(index: number) {
@@ -27,7 +27,7 @@ function longestTurn(turns: Turn[], speaker: number): Turn | undefined {
 	return best;
 }
 
-function formatTime(seconds: number): string {
+function formatDuration(seconds: number): string {
 	const m = Math.floor(seconds / 60);
 	const s = Math.floor(seconds % 60);
 	return `${m}:${s.toString().padStart(2, "0")}`;
@@ -39,7 +39,7 @@ function list(items: string[]): string {
 }
 
 /** Notes arrive as data. Naming the people here means they are called whatever
- * the editor just called them, two fields up the page, rather than "person 2". */
+ * the editor just called them, rather than "person 2". */
 function noteText(
 	note: MatchNote,
 	nameOf: (personId: number) => string,
@@ -59,33 +59,70 @@ function noteText(
 	}
 }
 
+/**
+ * Bar heights are how much talking happens in each fifteenth of the clip,
+ * from the word timings we already have -- not audio amplitude, which would
+ * mean decoding a multi-GB file in the browser. It moves with the clip it
+ * belongs to, which is the honest version of this affordance.
+ */
+function speechDensity(words: Word[], start: number, end: number): number[] {
+	const span = Math.max(0.001, end - start);
+	const slices = new Array<number>(WAVEFORM_BARS).fill(0);
+	for (const w of words) {
+		if (w.end <= start || w.start >= end) continue;
+		const from = Math.max(w.start, start);
+		const to = Math.min(w.end, end);
+		const first = Math.floor(((from - start) / span) * WAVEFORM_BARS);
+		const last = Math.min(WAVEFORM_BARS - 1, Math.floor(((to - start) / span) * WAVEFORM_BARS));
+		for (let i = Math.max(0, first); i <= last; i++) slices[i] += to - from;
+	}
+	const peak = Math.max(...slices);
+	// A clip with no word timings still needs to look like a clip, not a
+	// flat line that reads as "broken".
+	if (peak <= 0) return slices.map(() => 0.35);
+	return slices.map((v) => 0.25 + 0.75 * (v / peak));
+}
+
+function Waveform({ heights }: { heights: number[] }) {
+	return (
+		<div className="flex h-6 items-center gap-[3px]" aria-hidden="true">
+			{heights.map((h, i) => (
+				<span
+					key={i}
+					className="w-[3px] rounded-full bg-[oklch(0.38_0.01_80)]"
+					style={{ height: `${Math.round(h * 100)}%` }}
+				/>
+			))}
+		</div>
+	);
+}
+
 export function CastScreen({
 	file,
 	people,
 	turns,
+	words,
 	match,
-	sampledFrames,
 	onComplete,
 }: {
 	file: File;
 	people: Person[];
 	turns: Turn[];
+	words: Word[];
 	match: MatchResult;
-	sampledFrames: number;
 	onComplete: (result: CastResult) => void;
 }) {
 	const [names, setNames] = useState<Record<number, string>>(() =>
 		Object.fromEntries(people.map((p, i) => [p.id, defaultName(i)])),
 	);
-	// Pre-filled from the lip-sync match rather than starting blank. It is
-	// still the editor's call -- every one of these is a select they can change
-	// -- but starting from evidence beats starting from nothing.
-	const [speakerToPerson, setSpeakerToPerson] = useState<Record<number, number>>(
+	// Pre-filled from the lip-sync match rather than starting blank. Still the
+	// editor's call -- every one is changeable -- but starting from evidence
+	// beats starting from nothing. `null` means "nobody we saw".
+	const [choices, setChoices] = useState<Record<number, number | null>>(
 		() => ({ ...match.speakerToPerson }),
 	);
-	const confidenceFor = new Map(match.matches.map((m) => [m.speaker, m]));
-	const [description, setDescription] = useState("");
-	const [playing, setPlaying] = useState<number | null>(null);
+	const [index, setIndex] = useState(0);
+	const [playing, setPlaying] = useState(false);
 
 	const audioRef = useRef<HTMLVideoElement>(null);
 	const stopAt = useRef<number | null>(null);
@@ -105,7 +142,7 @@ export function CastScreen({
 		const onTime = () => {
 			if (stopAt.current !== null && el.currentTime >= stopAt.current) {
 				el.pause();
-				setPlaying(null);
+				setPlaying(false);
 			}
 		};
 		el.addEventListener("timeupdate", onTime);
@@ -113,189 +150,184 @@ export function CastScreen({
 	}, [mediaUrl]);
 
 	const speakers = [...new Set(turns.map((t) => t.speaker))].sort((a, b) => a - b);
+	const speaker = speakers[index];
+	const sample = longestTurn(turns, speaker);
+	const guess = match.matches.find((m) => m.speaker === speaker);
+	const selected = choices[speaker] ?? null;
 
 	function nameOf(personId: number): string {
-		const index = people.findIndex((p) => p.id === personId);
-		return names[personId] || defaultName(index === -1 ? personId : index);
+		const position = people.findIndex((p) => p.id === personId);
+		return names[personId] || defaultName(position === -1 ? personId : position);
 	}
 
-	// Voices have no natural name, so they get a position. The same label is
-	// printed on the row itself, otherwise a note naming one is unfindable.
-	function voiceLabel(speaker: number): string {
-		const index = speakers.indexOf(speaker);
-		return `Voice ${(index === -1 ? speaker : index) + 1}`;
+	// Voices have no natural name, so they get a position.
+	function voiceLabel(target: number): string {
+		const position = speakers.indexOf(target);
+		return `Voice ${(position === -1 ? target : position) + 1}`;
 	}
 
-	function playSample(speaker: number) {
-		const turn = longestTurn(turns, speaker);
+	function stop() {
+		audioRef.current?.pause();
+		setPlaying(false);
+	}
+
+	function togglePlay() {
 		const el = audioRef.current;
-		if (!turn || !el) return;
-		if (playing === speaker) {
-			el.pause();
-			setPlaying(null);
+		if (!sample || !el) return;
+		if (playing) {
+			stop();
 			return;
 		}
-		el.currentTime = turn.start;
-		stopAt.current = Math.min(turn.end, turn.start + 8);
+		el.currentTime = sample.start;
+		stopAt.current = Math.min(sample.end, sample.start + 12);
 		void el.play();
-		setPlaying(speaker);
+		setPlaying(true);
 	}
 
-	const everyVoiceAssigned = speakers.every((s) => speakerToPerson[s] !== undefined);
+	function confirm() {
+		stop();
+		if (index + 1 < speakers.length) {
+			setIndex(index + 1);
+			return;
+		}
+		const speakerToPerson: Record<number, number> = {};
+		for (const s of speakers) {
+			const choice = choices[s];
+			if (choice !== null && choice !== undefined) speakerToPerson[s] = choice;
+		}
+		onComplete({ names, speakerToPerson });
+	}
+
+	const notes = match.notes.filter((n) => n.speakers.includes(speaker));
+	const confirmLabel =
+		selected === null ? "Nobody we saw" : `Yes, that's ${nameOf(selected)}`;
+	const guessedName =
+		guess?.personId != null && selected === guess.personId ? nameOf(guess.personId) : null;
 
 	return (
-		<div className="min-h-screen bg-bg px-6 py-10">
-			<div className="mx-auto flex max-w-2xl flex-col gap-8">
+		<div className="flex min-h-screen items-center justify-center bg-bg px-6 py-10">
+			<div className="flex w-full max-w-[540px] flex-col gap-5 rounded-panel border border-line bg-panel p-[26px]">
 				{mediaUrl && <video ref={audioRef} src={mediaUrl} className="hidden" preload="auto" />}
 
-				<div className="flex flex-col gap-2">
+				<div className="flex items-baseline justify-between gap-4">
 					<h2 className="text-[18px] font-semibold tracking-[-0.01em] text-text">
-						Who's in this episode?
+						Who is this?
 					</h2>
-					<p className="text-[12.5px] leading-[1.6] text-text3">
-						Name everyone once. These names are used everywhere else, so you never have to work
-						out which anonymous "Speaker 2" was which.
-					</p>
+					<span className="font-mono text-[10px] tracking-[0.08em] text-text3">
+						VOICE {index + 1} OF {speakers.length}
+					</span>
 				</div>
 
-				<div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+				{sample && (
+					<div className="flex flex-col gap-3 rounded-card bg-raised p-4">
+						<p className="text-[16px] leading-[1.55] text-text">
+							&ldquo;{sample.text.slice(0, 240)}
+							{sample.text.length > 240 ? "…" : ""}&rdquo;
+						</p>
+						<div className="flex items-center gap-3">
+							<button
+								type="button"
+								onClick={togglePlay}
+								className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent"
+								aria-label={playing ? "Stop the clip" : "Play the clip"}
+							>
+								{playing ? "❚❚" : "▶"}
+							</button>
+							<Waveform heights={speechDensity(words, sample.start, sample.end)} />
+							<span className="font-mono text-[10px] text-text3">
+								{formatDuration(sample.end - sample.start)}
+							</span>
+						</div>
+					</div>
+				)}
+
+				{notes.length > 0 && (
+					<ul className="flex flex-col gap-1 rounded-card border border-warn/45 bg-warn-bg p-3 text-[11px] leading-[1.6] text-warn">
+						{notes.map((note, i) => (
+							<li key={i}>{noteText(note, nameOf, voiceLabel)}</li>
+						))}
+					</ul>
+				)}
+
+				<div className="grid grid-cols-3 gap-3">
 					{people.map((person, i) => {
-						const presence = sampledFrames > 0 ? person.detectionCount / sampledFrames : 0;
+						const isSelected = selected === person.id;
+						const isGuess = guess?.personId === person.id;
 						return (
-							<div key={person.id} className="flex flex-col items-center gap-2">
+							<button
+								key={person.id}
+								type="button"
+								onClick={() => setChoices({ ...choices, [speaker]: person.id })}
+								className={`flex h-full flex-col gap-1.5 rounded-card border-2 p-1.5 text-left ${
+									isSelected ? SPEAKER_BORDER[i % SPEAKER_BORDER.length] : "border-line"
+								}`}
+							>
 								<img
 									src={person.thumbnail}
-									alt={names[person.id] ?? defaultName(i)}
-									className="h-24 w-24 rounded-card border border-line object-cover"
+									alt=""
+									className="w-full rounded-chip object-cover"
+									style={{ aspectRatio: "1 / 1.2" }}
 								/>
 								<input
 									value={names[person.id] ?? ""}
-									onChange={(e) => setNames((prev) => ({ ...prev, [person.id]: e.target.value }))}
+									onClick={(e) => e.stopPropagation()}
+									onChange={(e) => setNames({ ...names, [person.id]: e.target.value })}
 									placeholder={defaultName(i)}
-									className="w-full rounded-control border border-line bg-transparent p-1 text-center text-[13px] font-semibold text-text"
+									aria-label={`Name for ${defaultName(i)}`}
+									className="w-full rounded-chip bg-transparent px-1 py-0.5 text-[13px] font-semibold text-text"
 								/>
-								<span className="font-mono text-[10px] text-text3">
-									{presence >= 0.5
-										? "on screen throughout"
-										: `on screen ${Math.round(presence * 100)}%`}
+								<span className="px-1 pb-0.5 text-[11px] leading-[1.35] text-text3">
+									{isGuess && guess
+										? `Lips match ${Math.round(guess.confidence * 100)}% of this clip`
+										: " "}
 								</span>
-							</div>
+							</button>
 						);
 					})}
-				</div>
 
-				<div className="flex flex-col gap-2">
-					<h3 className="text-[15px] font-semibold text-text">Which voice is which?</h3>
-					<p className="text-[12.5px] leading-[1.6] text-text3">
-						We found {speakers.length} distinct {speakers.length === 1 ? "voice" : "voices"} and
-						matched {speakers.length === 1 ? "it" : "them"} to faces by watching whose mouth moves.
-						Check the ones flagged below — this is what decides who the camera cuts to.
-					</p>
-					{match.notes.length > 0 && (
-						<ul className="flex flex-col gap-1 rounded-card border border-warn/45 bg-warn-bg p-3 text-[11px] leading-[1.6] text-warn">
-							{match.notes.map((note, i) => (
-								<li key={i}>{noteText(note, nameOf, voiceLabel)}</li>
-							))}
-						</ul>
-					)}
-				</div>
-
-				<div className="flex flex-col gap-3">
-					{speakers.map((speaker, speakerIndex) => {
-						const sample = longestTurn(turns, speaker);
-						const matched = confidenceFor.get(speaker);
-						const automatic =
-							matched?.personId != null && speakerToPerson[speaker] === matched.personId;
-						return (
-							<div
-								key={speaker}
-								className="flex flex-col gap-3 rounded-card border border-line bg-raised p-[13px]"
-							>
-								<div className="flex items-center gap-3">
-									<span
-										className={`h-[7px] w-[7px] shrink-0 rounded-full ${SPEAKER_TOKENS[speakerIndex % SPEAKER_TOKENS.length]}`}
-									/>
-									<span className="w-14 shrink-0 text-[11.5px] font-semibold text-text">
-										{voiceLabel(speaker)}
-									</span>
-									<button
-										type="button"
-										onClick={() => playSample(speaker)}
-										disabled={!sample}
-										className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent disabled:opacity-40"
-									>
-										{playing === speaker ? "❚❚" : "▶"}
-									</button>
-									<select
-										value={speakerToPerson[speaker] ?? ""}
-										onChange={(e) =>
-											setSpeakerToPerson((prev) => {
-												const next = { ...prev };
-												if (e.target.value === "") delete next[speaker];
-												else next[speaker] = Number(e.target.value);
-												return next;
-											})
-										}
-										className="flex-1 rounded-control border border-line bg-control p-1.5 text-[13px] text-text"
-									>
-										<option value="">Who is this? —</option>
-										{people.map((p, i) => (
-											<option key={p.id} value={p.id}>
-												{names[p.id] || defaultName(i)}
-											</option>
-										))}
-									</select>
-									{automatic && matched && (
-										<span
-											className={`shrink-0 rounded-chip px-1.5 py-0.5 font-mono text-[10px] ${
-												matched.confidence >= CONFIDENT
-													? "bg-ok/15 text-ok"
-													: "bg-warn-bg text-warn"
-											}`}
-											title={`Agreed on ${Math.round(matched.confidence * 100)}% of the ${matched.judgedSeconds}s where this voice spoke and a face was visibly talking`}
-										>
-											Lips match {Math.round(matched.confidence * 100)}% of this clip
-										</span>
-									)}
-								</div>
-								{sample && (
-									<p className="text-[12.5px] leading-[1.6] text-text3">
-										<span className="font-mono text-[10px] text-text3">{formatTime(sample.start)}</span>{" "}
-										&ldquo;{sample.text.slice(0, 160)}
-										{sample.text.length > 160 ? "…" : ""}&rdquo;
-									</p>
-								)}
-							</div>
-						);
-					})}
-				</div>
-
-				<div className="flex flex-col gap-2">
-					<label htmlFor="episode-description" className="text-[15px] font-semibold text-text">
-						What's this episode about? <span className="font-normal text-text3">(optional)</span>
-					</label>
-					<textarea
-						id="episode-description"
-						value={description}
-						onChange={(e) => setDescription(e.target.value)}
-						rows={2}
-						placeholder="A sentence or two — kept with the edit for your own reference."
-						className="rounded-control border border-line bg-transparent p-2 text-[13px] text-text"
-					/>
-				</div>
-
-				<div className="flex items-center gap-3">
 					<button
 						type="button"
-						onClick={() => onComplete({ names, speakerToPerson, description })}
-						className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
+						onClick={() => setChoices({ ...choices, [speaker]: null })}
+						className={`flex h-full flex-col items-center justify-center gap-1 rounded-card border-2 border-dashed p-3 text-center ${
+							selected === null ? "border-accent" : "border-line"
+						}`}
 					>
-						Continue
+						<span className="text-[12.5px] font-medium text-text2">Someone we didn't see</span>
+						<span className="text-[11px] leading-[1.35] text-text3">They stay wide</span>
 					</button>
-					{!everyVoiceAssigned && (
-						<span className="text-[11px] text-text3">
-							Unassigned voices just won't get a close-up — you can still fix any turn later.
-						</span>
+				</div>
+
+				<div className="flex items-center justify-between gap-4">
+					<div className="flex items-center gap-3">
+						<button
+							type="button"
+							onClick={confirm}
+							className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
+						>
+							{confirmLabel}
+						</button>
+						{guessedName && (
+							<span className="max-w-[200px] text-[11px] leading-[1.4] text-text3">
+								We guessed {guessedName}. Play the clip if you're not sure.
+							</span>
+						)}
+						{guess && guess.personId != null && guess.confidence < CONFIDENT && (
+							<span className="max-w-[200px] text-[11px] leading-[1.4] text-warn">
+								This one is a coin flip — worth listening to.
+							</span>
+						)}
+					</div>
+					{index > 0 && (
+						<button
+							type="button"
+							onClick={() => {
+								stop();
+								setIndex(index - 1);
+							}}
+							className="text-[11px] text-text3 underline"
+						>
+							Previous voice
+						</button>
 					)}
 				</div>
 			</div>

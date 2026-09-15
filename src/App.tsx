@@ -143,8 +143,8 @@ function App() {
 				file={status.file}
 				people={status.faces.people}
 				turns={status.turns}
+				words={status.words}
 				match={status.match}
-				sampledFrames={Math.max(0, ...status.faces.people.map((p) => p.detectionCount))}
 				onComplete={(cast) =>
 					setStatus({
 						state: "editing",
