@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: A question, or an idea to talk through
+    url: https://github.com/jain-eshan/cutroom/discussions
+    about: Discussions are for questions and open-ended ideas. Issues are for bugs and concrete requests.
   - name: Security problem
     url: https://github.com/jain-eshan/cutroom/security/advisories/new
     about: Please report security issues privately, not as a public issue.
