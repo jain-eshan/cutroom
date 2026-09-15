@@ -213,6 +213,27 @@ def _crop_face(gray: np.ndarray, cx: float, cy: float, half: float) -> np.ndarra
 	return cv2.resize(patch, (224, 224))[56:168, 56:168]
 
 
+# The model's audio side shrinks time 4:1 (two stride-2 pools) and its video
+# side doesn't, so every window must carry exactly this many audio feature
+# rows per video frame or the two embeddings can't be fused.
+AUDIO_ROWS_PER_FRAME = AUDIO_FEATURE_FPS // MODEL_FPS
+
+
+def _aligned_window(features: np.ndarray, start: int, frames: int) -> tuple[np.ndarray, int]:
+	"""The audio rows for a window of `frames` video frames starting at feature
+	row `start`, and how many of those frames the audio actually covers.
+
+	Sound and picture rarely end on the same instant -- MFCC framing drops the
+	last partial slice, and a phone's frame rate isn't exactly 30 -- and the
+	video loop fills frames until the picture ends. On a real six-minute iPhone
+	recording the last window had 46 frames but only 180 rows (45 frames'
+	worth), and the model refused to fuse 45 audio steps with 46 video steps.
+	Trimming to what both cover drops under a tenth of a second at the end.
+	"""
+	covered = max(0, min(frames, (len(features) - start) // AUDIO_ROWS_PER_FRAME))
+	return features[start : start + covered * AUDIO_ROWS_PER_FRAME], covered
+
+
 def analyse(
 	video_path: str,
 	wav_path: str,
@@ -262,8 +283,8 @@ def analyse(
 		if count == 0:
 			return
 		start_feature = windows_done * WINDOW_SECONDS * AUDIO_FEATURE_FPS
-		audio_window = features[start_feature : start_feature + count * 4]
-		if len(audio_window) < 4:
+		audio_window, count = _aligned_window(features, start_feature, count)
+		if count == 0:
 			windows_done += 1
 			return
 		with torch.no_grad():

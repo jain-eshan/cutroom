@@ -861,6 +861,34 @@ re-discovers them the hard way.
     speaker-focus framing (composite rendering is separately capped at 3
     panes for legibility, which is a different constraint — see `render.py`
     above) — not the guest list itself.
+15. **Lip-sync crashed on the last window of a recording.** LR-ASD fuses an
+    audio embedding with a video embedding, and its audio encoder shrinks
+    time 4:1 (two stride-2 pools) while the video encoder doesn't, so every
+    window needs exactly 4 MFCC rows per 25fps frame. `analyse` filled video
+    frames until the picture ended, but MFCC framing drops the last partial
+    25ms slice, so the audio features end a fraction of a second sooner. The
+    `duration = min(picture, sound)` it computed was only ever used for the
+    progress bar. On a 357.8s iPhone HEVC recording that meant 8,946 frames
+    (89 full windows plus 46) against 35,780 rows: the last window had 180
+    rows, 45 frames' worth, and the model raised "Expected size 45 but got
+    size 46" after transcription, diarisation and face detection had all
+    finished. Any recording whose length leaves a partial last window could
+    hit it. Fixed by `_aligned_window`, which trims each window to what the
+    audio covers (under a tenth of a second at the very end); re-run on that
+    recording it scores all 8,945 frames. `tests/test_lipsync.py` pins both
+    the alignment and the model's shape rule, offline.
+16. **Unexpected server errors looked like the service was unreachable.** An
+    unhandled exception is answered by Starlette's outermost error
+    middleware, which sits outside `CORSMiddleware`, so the 500 went out
+    with no `access-control-allow-origin` header. The browser discarded it
+    and the app said "Could not reach the local processing service" while
+    the service was up and holding the real error (#15 surfaced this way).
+    `@app.exception_handler(Exception)` doesn't help: it runs in that same
+    outer middleware. Fixed by `ReportUnexpectedErrors` in `main.py`, an ASGI
+    middleware registered before CORS so CORS wraps it: an error raised
+    before the response starts becomes a JSON 500 whose `detail` names it,
+    and the traceback still goes to the log. `tests/test_error_reporting.py`
+    checks the header and message.
 
 ---
 

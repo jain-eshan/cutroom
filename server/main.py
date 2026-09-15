@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import shutil
 import subprocess
 import tempfile
@@ -10,7 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.background import BackgroundTask
 
 from pipeline.audio import NoAudioTrack, extract_wav
@@ -43,6 +44,49 @@ load_dotenv()
 
 app = FastAPI(title="podcast-editor processing service")
 
+
+class ReportUnexpectedErrors:
+	"""Turn an unhandled exception into a readable JSON 500.
+
+	Without this, Starlette answers an unhandled exception from its outermost
+	error middleware -- outside CORSMiddleware -- so the 500 carries no
+	access-control-allow-origin header. The browser throws that response away
+	and the app reports "Could not reach the local processing service" while
+	the service is up and holding a real error. Registered before the CORS
+	middleware so CORS wraps it and adds the header.
+
+	Only errors raised before a response has started can be reported this way;
+	one raised mid-stream (a download already under way) is re-raised.
+	"""
+
+	def __init__(self, app):
+		self.app = app
+
+	async def __call__(self, scope, receive, send):
+		if scope["type"] != "http":
+			await self.app(scope, receive, send)
+			return
+		started = False
+
+		async def tracked_send(message):
+			nonlocal started
+			if message["type"] == "http.response.start":
+				started = True
+			await send(message)
+
+		try:
+			await self.app(scope, receive, tracked_send)
+		except Exception as err:
+			if started:
+				raise
+			# The full traceback still goes to the service log, where the setup
+			# screen can show it; the response carries the one-line version.
+			logging.getLogger("uvicorn.error").exception("Unhandled error on %s", scope.get("path"))
+			response = JSONResponse({"detail": f"{type(err).__name__}: {err}"}, status_code=500)
+			await response(scope, receive, send)
+
+
+app.add_middleware(ReportUnexpectedErrors)
 app.add_middleware(
 	CORSMiddleware,
 	allow_origins=["http://localhost:3460", "http://127.0.0.1:3460"],
