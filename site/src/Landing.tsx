@@ -430,13 +430,13 @@ function Download() {
 				</p>
 				<div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
 					<Out
-						href={`${REPO}/releases/latest`}
+						href={`${REPO}/releases/latest/download/Cutroom-0.1.0-arm64.dmg`}
 						className="rounded-[10px] bg-handle px-5 py-3 text-[15px] font-medium text-panel hover:opacity-90"
 					>
 						Download for Mac
 					</Out>
 					<Out
-						href={`${REPO}/releases/latest`}
+						href={`${REPO}/releases/latest/download/Cutroom-Setup-0.1.0.exe`}
 						className="rounded-[10px] border border-line bg-raised px-5 py-3 text-[15px] font-medium hover:bg-chrome"
 					>
 						Download for Windows
