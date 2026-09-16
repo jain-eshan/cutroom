@@ -5,6 +5,7 @@ import logging
 import shutil
 import subprocess
 import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,8 +27,20 @@ from pipeline.diarize import (
 from pipeline.hf_token import check_access, save_token, token_format_problem
 from pipeline.faces import BBox, detect_and_track_faces, get_video_dimensions, get_video_duration
 from pipeline.fuse import fuse
+from pipeline import jobs
 from pipeline.lipsync import analyse
-from pipeline.progress import face_thumbnail, report, report_line, report_people, snapshot
+from pipeline.progress import (
+	face_thumbnail,
+	report,
+	report_error,
+	report_line,
+	report_people,
+	report_timeline_thumbnails,
+	report_waveform,
+	snapshot,
+	timeline_thumbnail,
+	waveform_peaks,
+)
 from pipeline.render import (
 	Keyframe,
 	Region,
@@ -39,6 +52,7 @@ from pipeline.render import (
 from pipeline.transcribe import Word, transcribe
 from pipeline.trim import dead_air_ranges, filler_word_ranges, merge_ranges, remap_time
 from pipeline.turns import build_turns
+from pipeline.waveform import compute_timeline_thumbnails, compute_waveform_peaks
 
 load_dotenv()
 
@@ -144,6 +158,67 @@ def progress_face(job_id: str, person_id: int) -> Response:
 	return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
 
 
+@app.get("/progress/{job_id}/waveform")
+def progress_waveform(job_id: str) -> dict:
+	"""The episode's amplitude envelope, for the timeline overview strip."""
+	peaks = waveform_peaks(job_id)
+	if peaks is None:
+		raise HTTPException(404, "No waveform for this job.")
+	return {"peaks": peaks}
+
+
+@app.get("/progress/{job_id}/thumbnail/{index}")
+def progress_thumbnail(job_id: str, index: int) -> Response:
+	"""One sampled frame for the timeline overview strip's scrubber.
+
+	Its own endpoint for the same reason as the face crops: these are JPEGs,
+	and the snapshot is polled every few hundred ms.
+	"""
+	data = timeline_thumbnail(job_id, index)
+	if data is None:
+		raise HTTPException(404, "No such thumbnail for this job.")
+	return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+
+
+@app.get("/jobs")
+def list_jobs_endpoint() -> list[dict]:
+	"""Saved episodes: every job that finished processing, newest first. An
+	in-progress job isn't here yet -- reopening only means "skip
+	reprocessing", and a job that hasn't finished has nothing to reopen."""
+	return jobs.list_jobs()
+
+
+@app.get("/jobs/{job_id}")
+def get_job_endpoint(job_id: str) -> dict:
+	"""The saved result of a finished job -- what `/process` used to hand
+	back directly, before it started returning as soon as the upload lands
+	and running the pipeline in the background. `filename` rides along too:
+	a resumed or reopened session has no browser-held upload to read it from
+	any more, and the editor's title bar and export both want it."""
+	result = jobs.load_result(job_id)
+	if result is None:
+		raise HTTPException(404, "No finished job with that id.")
+	return {**result, "filename": jobs.original_filename(job_id)}
+
+
+@app.get("/jobs/{job_id}/media")
+def job_media_endpoint(job_id: str) -> FileResponse:
+	"""The original recording, for a reopened saved episode -- there's no
+	browser-held `File` object to play from once the tab that uploaded it is
+	gone. `FileResponse` serves Range requests on its own, which video
+	playback and scrubbing both need."""
+	path = jobs.input_path(job_id)
+	if path is None:
+		raise HTTPException(404, "No uploaded recording for that job.")
+	return FileResponse(path)
+
+
+@app.delete("/jobs/{job_id}")
+def delete_job_endpoint(job_id: str) -> dict[str, bool]:
+	jobs.delete_job(job_id)
+	return {"ok": True}
+
+
 @app.post("/setup/hf-token")
 async def setup_hf_token(token: str = Body(..., embed=True)) -> dict[str, bool]:
 	"""Take the Hugging Face token from the setup screen.
@@ -168,12 +243,13 @@ def _transcribe_work(wav_path: Path, job_id: str | None) -> tuple[dict, Diarizat
 		str(wav_path),
 		progress=lambda f: report(job_id, "transcribe", "transcribing speech", f),
 		on_segment=lambda seg, total: report_line(job_id, seg.text, seg.end, total),
+		on_loading=lambda label: report(job_id, "transcribe", label),
 	)
 	report(job_id, "transcribe", "identifying speakers", 1.0)
 	# One pass: speaker turns and the stretches where people talk over each
 	# other come out of the same model, so overlap no longer needs a second
 	# model or a guess about which speakers were involved.
-	diarization = diarize(str(wav_path))
+	diarization = diarize(str(wav_path), on_loading=lambda label: report(job_id, "transcribe", label))
 	turns = build_turns(segments, diarization.segments)
 
 	report(job_id, "transcribe", "done", 1.0, done=True)
@@ -207,6 +283,7 @@ def _match_work(
 		str(wav_path),
 		people,
 		progress=lambda f: report(job_id, "match", "matching voices to faces", f),
+		download_progress=lambda label, f: report(job_id, "match", label, f),
 	)
 	result = fuse(diarization.segments, lip.speaking_per_second(), lip.person_ids)
 	report(job_id, "match", "done", 1.0, done=True)
@@ -233,6 +310,7 @@ def _faces_work(input_path: Path, job_id: str | None) -> dict:
 	people = detect_and_track_faces(
 		str(input_path),
 		progress=lambda f: report(job_id, "faces", "finding and recognising faces", f),
+		download_progress=lambda label, f: report(job_id, "faces", label, f),
 	)
 	report_people(job_id, {p.id: p.thumbnail_jpeg for p in people})
 	report(job_id, "faces", "done", 1.0, done=True)
@@ -265,66 +343,120 @@ def _faces_work(input_path: Path, job_id: str | None) -> dict:
 	}
 
 
+# Fire-and-forget tasks need a live reference somewhere, or asyncio is free to
+# garbage-collect one mid-run -- a real gotcha, not a hypothetical one. This
+# is that somewhere; `_run_pipeline`'s own done-callback is what empties it.
+_background_jobs: set[asyncio.Task] = set()
+
+
+async def _run_pipeline(job_id: str, input_path: Path, filename: str) -> None:
+	"""Transcript, speakers and people in one pass -- everything `/process`
+	used to do inline, moved to a task that outlives the request.
+
+	Errors that used to become an HTTP response (a missing audio track, a
+	diarisation setup problem) can't do that anymore -- by the time either
+	happens, `/process` has already returned. `report_error` is how they
+	reach the browser instead: it polls `/progress/{job_id}` regardless of
+	whether the request that started the job is still open.
+	"""
+	try:
+		wav_path = jobs.wav_path(job_id)
+		report(job_id, "transcribe", "extracting audio")
+		try:
+			extract_wav(input_path, wav_path)
+		except NoAudioTrack as err:
+			report_error(job_id, str(err))
+			return
+
+		# Both analyses run concurrently in threads (OpenCV and CTranslate2
+		# both release the GIL, so they genuinely overlap).
+		try:
+			(transcript, diarization), faces = await asyncio.gather(
+				asyncio.to_thread(_transcribe_work, wav_path, job_id),
+				asyncio.to_thread(_faces_work, input_path, job_id),
+			)
+		except DiarizationUnavailable as err:
+			# Setup problem, not a server fault: the message says exactly what
+			# to do, so it needs to reach the user rather than become a
+			# traceback in the log with nothing on screen.
+			report_error(job_id, str(err))
+			return
+
+		# Cheap enough (numpy over an already-decoded 16kHz mono wav) to run
+		# inline on the event loop rather than earning its own thread or
+		# progress stage -- unlike the two steps above, there's nothing here to
+		# overlap with.
+		report_waveform(job_id, compute_waveform_peaks(str(wav_path)))
+
+		# Real decode work -- every sampled frame goes through OpenCV -- so
+		# this runs in a thread the same way face detection does.
+		duration = get_video_duration(str(input_path))
+		thumbnails = await asyncio.to_thread(compute_timeline_thumbnails, str(input_path), duration)
+		report_timeline_thumbnails(job_id, thumbnails)
+
+		# Third, not concurrent: it needs both of the above to have finished.
+		match = await asyncio.to_thread(
+			_match_work, input_path, wav_path, diarization, faces["people"], job_id
+		)
+
+		jobs.save_result(job_id, filename, {**transcript, "faces": faces, "match": match})
+	except Exception as err:
+		# Nothing awaits this task, so an uncaught exception here would only
+		# ever surface as an uvicorn log line nobody's watching -- the same
+		# silent failure `ReportUnexpectedErrors` exists to avoid for a real
+		# request. This is that same guarantee for a background one.
+		logging.getLogger("uvicorn.error").exception("Background job %s failed", job_id)
+		report_error(job_id, f"{type(err).__name__}: {err}")
+
+
 @app.post("/process")
 async def process_endpoint(file: UploadFile, jobId: str | None = None) -> dict:
-	"""Transcript, speakers and people in one pass.
+	"""Saves the upload and starts processing, returning a job id right away.
 
-	This used to be two endpoints the frontend called in parallel, which meant
-	the browser uploaded the same file twice -- 10GB of transfer for a 5GB
-	recording, and roughly double the wait before any work started. One
-	upload, then both analyses run concurrently in threads (OpenCV and
-	CTranslate2 both release the GIL, so they genuinely overlap).
+	Used to do the whole pipeline inline and hand back the full result --
+	simple, but it meant closing the tab (or even a slow connection blinking)
+	killed the job outright: Starlette cancels a handler's coroutine the
+	moment the client disconnects. Detaching the pipeline into a background
+	task means the browser dropping off doesn't stop it; poll
+	`/progress/{job_id}` for status and `GET /jobs/{job_id}` for the result
+	once it's done, from this tab or a fresh one.
 	"""
 	# Before the upload is saved, not after transcription: diarisation runs
 	# second, so a missing token used to surface minutes into the job.
 	if not diarization_configured():
 		raise HTTPException(400, MISSING_TOKEN_MESSAGE)
 
-	with tempfile.TemporaryDirectory() as tmp:
-		input_path = Path(tmp) / (file.filename or "input")
-		report(jobId, "transcribe", "receiving upload")
-		report(jobId, "faces", "receiving upload")
-		await _save_upload(file, input_path)
+	job_id = jobId or str(uuid.uuid4())
+	report(job_id, "transcribe", "receiving upload")
+	report(job_id, "faces", "receiving upload")
+	input_path = jobs.save_input(job_id, file.filename or "input")
+	await _save_upload(file, input_path)
 
-		wav_path = Path(tmp) / "audio.wav"
-		report(jobId, "transcribe", "extracting audio")
-		try:
-			extract_wav(input_path, wav_path)
-		except NoAudioTrack as err:
-			raise HTTPException(400, str(err)) from err
+	task = asyncio.create_task(_run_pipeline(job_id, input_path, file.filename or "input"))
+	_background_jobs.add(task)
+	task.add_done_callback(_background_jobs.discard)
 
-		try:
-			(transcript, diarization), faces = await asyncio.gather(
-				asyncio.to_thread(_transcribe_work, wav_path, jobId),
-				asyncio.to_thread(_faces_work, input_path, jobId),
-			)
-		except DiarizationUnavailable as err:
-			# Setup problem, not a server fault: the message says exactly what to
-			# do, so it needs to reach the user rather than become a 500.
-			raise HTTPException(400, str(err)) from err
-
-		# Third, not concurrent: it needs both of the above to have finished.
-		match = await asyncio.to_thread(
-			_match_work, input_path, wav_path, diarization, faces["people"], jobId
-		)
-
-	return {**transcript, "faces": faces, "match": match}
+	return {"jobId": job_id}
 
 
 @app.post("/export")
 async def export_endpoint(
-	file: UploadFile,
 	# A file part, not a text field: Starlette caps text fields at 1MB, and face
 	# keyframes grow with episode length (every sampled second, every person).
 	# Measured: a 53-minute episode's faces are 1.7MB and the export 400'd with
 	# "Part exceeded maximum size of 1024KB."
 	faces: UploadFile,
+	# The original recording no longer rides along with this request -- it's
+	# already on disk from /process (see pipeline/jobs.py), and re-uploading
+	# a multi-GB file a second time just to export it was pure waste. Also
+	# what locates the decision log, so it's required rather than optional
+	# the way the old sessionId was.
+	jobId: str = Form(...),
 	regions: str = Form(...),
 	# Only needed when trimming: dead-air detection works from where speech
 	# actually is, which regions deliberately don't describe (a stretch nobody
 	# framed is still speech, and cutting it would be silent data loss).
 	turns: str = Form("[]"),
-	sessionId: str | None = Form(None),
 	# Also a file part, and for the same reason as faces: word timestamps grow
 	# with episode length. A 53-minute episode is ~550KB of them, which fits
 	# under the 1MB text-field cap only by luck; a two-hour one would not.
@@ -361,6 +493,7 @@ async def export_endpoint(
 			layout=r["layout"],
 			person_ids=r["personIds"],
 			source=r.get("source", "suggested"),
+			crop_nudge=(r.get("cropNudge", {}).get("x", 0.0), r.get("cropNudge", {}).get("y", 0.0)),
 		)
 		for r in regions_data
 	]
@@ -374,14 +507,16 @@ async def export_endpoint(
 	frame_w = faces_data["frameWidth"]
 	frame_h = faces_data["frameHeight"]
 
+	input_path = jobs.input_path(jobId)
+	if input_path is None:
+		raise HTTPException(404, "No uploaded recording found for that job. Try exporting from the editor again.")
+
 	# Not a `with tempfile.TemporaryDirectory()` -- FileResponse below streams
 	# the output from disk *after* this function returns, so the directory
 	# has to survive past the return. Cleaned up via BackgroundTask instead,
 	# which Starlette runs once the response has actually been sent.
 	tmp = tempfile.mkdtemp()
 	try:
-		input_path = Path(tmp) / (file.filename or "input")
-		await _save_upload(file, input_path)
 		duration = get_video_duration(str(input_path))
 
 		# Dead air / filler words to cut, if asked for. Computed from the
@@ -431,10 +566,10 @@ async def export_endpoint(
 		shutil.rmtree(tmp, ignore_errors=True)
 		raise
 
-	if sessionId:
-		_log_decision(sessionId, regions_data)
+	_log_decision(jobId, regions_data)
 
-	output_name = f"{Path(file.filename or 'export').stem}-edited.mp4"
+	original_name = jobs.original_filename(jobId) or input_path.name
+	output_name = f"{Path(original_name).stem}-edited.mp4"
 	return FileResponse(
 		output_path,
 		media_type="video/mp4",

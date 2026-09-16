@@ -1,5 +1,10 @@
 import type { BBox, OverlapWindow, Person, Turn } from "@/lib/api";
-import { bboxAtTime } from "@/lib/faceCrop";
+// Relative, not the `@/` alias used everywhere else: this file's tests run
+// under Node's own module resolution (see regions.test.ts), which can't
+// follow the Vite-only alias. faceCrop.ts has no other runtime imports of
+// its own, so this is the one import in the module graph that has to be
+// resolvable without Vite.
+import { bboxAtTime } from "../../lib/faceCrop.ts";
 import type { FramingRegion, RegionLayout } from "@/features/timeline/types";
 
 /** Shorter than this and a region is a flash rather than a shot, and the drag
@@ -246,6 +251,24 @@ export function resizeRegion(
 
 	const kept = regions.filter((r) => r.id !== id).flatMap((r) => subtract(r, [resized]));
 	return [...kept, resized].sort((a, b) => a.start - b.start);
+}
+
+/**
+ * Split a region into two at `at`, keeping the same layout and people on
+ * both sides. The first half keeps the original id, for the same reason
+ * `subtract` does: it's what a selection is holding onto.
+ *
+ * A no-op (returns `regions` unchanged) if `id` doesn't exist or `at` isn't
+ * far enough from either edge to leave two real shots -- there is nothing
+ * useful to split at the very edge of a region.
+ */
+export function splitRegion(regions: FramingRegion[], id: string, at: number): FramingRegion[] {
+	const region = regions.find((r) => r.id === id);
+	if (!region || at - region.start < MIN_REGION_S || region.end - at < MIN_REGION_S) return regions;
+
+	const first: FramingRegion = { ...region, end: at, source: "user" };
+	const second: FramingRegion = { ...region, id: makeId(), start: at, source: "user" };
+	return regions.map((r) => (r.id === id ? first : r)).concat(second).sort((a, b) => a.start - b.start);
 }
 
 /** The stretches no region covers. Rendered wide, and drawn on the timeline

@@ -11,25 +11,78 @@ import { ProcessingScreen } from "@/features/upload/ProcessingScreen";
 import { UploadScreen } from "@/features/upload/UploadScreen";
 import { useThemeMode } from "@/lib/theme";
 import {
+	deleteJob,
+	getJob,
 	getProgress,
+	jobMediaUrl,
+	listJobs,
 	processVideo,
 	type DetectFacesResponse,
 	type Health,
 	type JobProgress,
 	type MatchResult,
 	type OverlapWindow,
+	type SavedEpisode,
 	type Turn,
 	type Word,
 } from "@/lib/api";
 
+// Enough to reconnect a job in progress, or to know there's a finished one
+// worth fetching, after a reload -- not a full "what screen were you on"
+// record. A resumed job always lands back on Cast: cheap to redo, and one
+// path serves both "you refreshed the tab" and "you reopened a saved
+// episode from last week" instead of two.
+const ACTIVE_JOB_KEY = "cutroom.activeJob";
+
+interface ActiveJob {
+	jobId: string;
+	fileName: string;
+	fileSizeBytes: number;
+	startedAt: number;
+}
+
+/** Only asks once -- a browser remembers a permission decision permanently,
+ * so calling this again after "denied" would be a silent no-op anyway; it's
+ * a courtesy so a fresh install doesn't get the OS prompt before anyone has
+ * chosen to start a job. */
+function requestNotificationPermission() {
+	if (typeof Notification === "undefined" || Notification.permission !== "default") return;
+	void Notification.requestPermission();
+}
+
+/** Only worth interrupting someone for if they're not already looking at
+ * it -- the tab itself already shows this the moment it's true. */
+function notifyIfHidden(title: string, body: string) {
+	if (typeof Notification === "undefined" || Notification.permission !== "granted" || !document.hidden) return;
+	new Notification(title, { body });
+}
+
+function rememberActiveJob(job: ActiveJob | null) {
+	if (job) localStorage.setItem(ACTIVE_JOB_KEY, JSON.stringify(job));
+	else localStorage.removeItem(ACTIVE_JOB_KEY);
+}
+
+function readActiveJob(): ActiveJob | null {
+	try {
+		const raw = localStorage.getItem(ACTIVE_JOB_KEY);
+		return raw ? (JSON.parse(raw) as ActiveJob) : null;
+	} catch {
+		return null;
+	}
+}
+
 type Status =
 	| { state: "checking" }
 	| { state: "idle" }
-	| { state: "processing"; file: File; jobId: string; startedAt: number }
-	| { state: "failed"; file: File; message: string; reached: number }
+	| { state: "processing"; jobId: string; fileName: string; fileSizeBytes: number; startedAt: number }
+	// `file` is only here for "Try again" -- a resumed job that turns out to
+	// have failed has no browser-held upload left to retry with, only to
+	// discard.
+	| { state: "failed"; file: File | null; fileName: string; message: string; reached: number }
 	| {
 			state: "noFaces";
-			file: File;
+			videoUrl: string;
+			fileName: string;
 			sessionId: string;
 			turns: Turn[];
 			overlapWindows: OverlapWindow[];
@@ -38,7 +91,8 @@ type Status =
 	  }
 	| {
 			state: "cast";
-			file: File;
+			videoUrl: string;
+			fileName: string;
 			sessionId: string;
 			turns: Turn[];
 			overlapWindows: OverlapWindow[];
@@ -48,7 +102,8 @@ type Status =
 	  }
 	| {
 			state: "editing";
-			file: File;
+			videoUrl: string;
+			fileName: string;
 			sessionId: string;
 			turns: Turn[];
 			overlapWindows: OverlapWindow[];
@@ -58,7 +113,11 @@ type Status =
 	  }
 	| {
 			state: "publishing";
-			file: File;
+			// Carries everything "editing" needs too (not just what
+			// PublishScreen itself reads) so "onBack" can spread straight back
+			// into a valid editing state.
+			videoUrl: string;
+			fileName: string;
 			sessionId: string;
 			turns: Turn[];
 			overlapWindows: OverlapWindow[];
@@ -83,12 +142,57 @@ function App() {
 	const [uploadFraction, setUploadFraction] = useState(0);
 	const [progress, setProgress] = useState<JobProgress | null>(null);
 	const [elapsed, setElapsed] = useState(0);
+	const [savedEpisodes, setSavedEpisodes] = useState<SavedEpisode[] | undefined>(undefined);
 	// Read from inside handleFile's catch, where the progress state would be
 	// the stale value captured when the upload began.
 	const lastPosition = useRef(0);
 
 	const processingJobId = status.state === "processing" ? status.jobId : null;
 	const processingStartedAt = status.state === "processing" ? status.startedAt : null;
+	const processingFileName = status.state === "processing" ? status.fileName : null;
+
+	function refreshSavedEpisodes() {
+		listJobs()
+			.then(setSavedEpisodes)
+			.catch(() => setSavedEpisodes([]));
+	}
+
+	/** Everything that follows a finished job's result, whether it just
+	 * finished, survived a reload, or is a saved episode from last week --
+	 * one path for all three, since none of them keep the editor's edits. */
+	function enterCast(jobId: string, fileName: string, result: {
+		turns: Turn[];
+		overlapWindows: OverlapWindow[];
+		words: Word[];
+		faces: DetectFacesResponse;
+		match: MatchResult;
+	}) {
+		const videoUrl = jobMediaUrl(jobId);
+		if (result.faces.people.length === 0) {
+			setStatus({
+				state: "noFaces",
+				videoUrl,
+				fileName,
+				sessionId: jobId,
+				turns: result.turns,
+				overlapWindows: result.overlapWindows,
+				words: result.words,
+				faces: result.faces,
+			});
+			return;
+		}
+		setStatus({
+			state: "cast",
+			videoUrl,
+			fileName,
+			sessionId: jobId,
+			turns: result.turns,
+			overlapWindows: result.overlapWindows,
+			words: result.words,
+			faces: result.faces,
+			match: result.match,
+		});
+	}
 
 	// Poll the server for which stage it's on. Both requests run in parallel
 	// and report under the same job id, so one poll covers both.
@@ -98,9 +202,19 @@ function App() {
 		const tick = async () => {
 			try {
 				const p = await getProgress(processingJobId);
-				if (!cancelled) {
-					setProgress(p);
-					lastPosition.current = p.position;
+				if (cancelled) return;
+				setProgress(p);
+				lastPosition.current = p.position;
+				if (p.error) {
+					const fileName = processingFileName ?? "the recording";
+					rememberActiveJob(null);
+					notifyIfHidden("Cutroom hit a problem", `${fileName}: ${p.error}`);
+					setStatus({ state: "failed", file: null, fileName, message: p.error, reached: p.position });
+				} else if (p.match.done) {
+					const fileName = processingFileName ?? "the recording";
+					notifyIfHidden("Cutroom is ready", `${fileName} finished processing.`);
+					const result = await getJob(processingJobId);
+					enterCast(processingJobId, fileName, result);
 				}
 			} catch {
 				// Transient -- the next poll will pick it up.
@@ -112,7 +226,7 @@ function App() {
 			cancelled = true;
 			clearInterval(id);
 		};
-	}, [processingJobId]);
+	}, [processingJobId, processingFileName]);
 
 	useEffect(() => {
 		if (processingStartedAt === null) return;
@@ -124,45 +238,92 @@ function App() {
 	// new function every render would restart that timer on every poll.
 	const handleReady = useCallback((result: Health) => {
 		setHealth(result);
-		setStatus({ state: "idle" });
-	}, []);
+		refreshSavedEpisodes();
 
+		// A job from before the tab closed or refreshed -- reconnect instead
+		// of dropping back to the upload screen and losing track of it.
+		const active = readActiveJob();
+		if (!active) {
+			setStatus({ state: "idle" });
+			return;
+		}
+		getProgress(active.jobId)
+			.then(async (p) => {
+				if (p.error) {
+					rememberActiveJob(null);
+					setStatus({ state: "failed", file: null, fileName: active.fileName, message: p.error, reached: p.position });
+				} else if (p.match.done) {
+					const result = await getJob(active.jobId);
+					enterCast(active.jobId, active.fileName, result);
+				} else {
+					setStatus({ state: "processing", ...active });
+				}
+			})
+			.catch(() => {
+				// The server has no memory of this job at all (a restart, or it
+				// never really started) -- nothing to reconnect to.
+				rememberActiveJob(null);
+				setStatus({ state: "idle" });
+			});
+	}, []);
 
 	async function handleFile(file: File) {
 		const jobId = crypto.randomUUID();
+		const active: ActiveJob = { jobId, fileName: file.name, fileSizeBytes: file.size, startedAt: Date.now() };
+		requestNotificationPermission();
 		setUploadFraction(0);
 		setProgress(null);
 		setElapsed(0);
 		lastPosition.current = 0;
-		setStatus({ state: "processing", file, jobId, startedAt: Date.now() });
+		rememberActiveJob(active);
+		setStatus({ state: "processing", ...active });
 		try {
-			const { turns, overlapWindows, words, faces, match } = await processVideo(
-				file,
-				jobId,
-				setUploadFraction,
-			);
-			if (faces.people.length === 0) {
-				setStatus({ state: "noFaces", file, sessionId: jobId, turns, overlapWindows, words, faces });
-				return;
-			}
-			setStatus({
-				state: "cast",
-				file,
-				sessionId: jobId,
-				turns,
-				overlapWindows,
-				words,
-				faces,
-				match,
-			});
+			await processVideo(file, jobId, setUploadFraction);
+			// The rest happens in the poll above once the background job
+			// reports done -- /process itself only confirms the upload landed.
 		} catch (err) {
+			rememberActiveJob(null);
 			setStatus({
 				state: "failed",
 				file,
+				fileName: file.name,
 				message: err instanceof Error ? err.message : "Something went wrong.",
 				reached: lastPosition.current,
 			});
 		}
+	}
+
+	function handleReopen(jobId: string) {
+		const episode = savedEpisodes?.find((e) => e.jobId === jobId);
+		getJob(jobId)
+			.then((result) => {
+				const fileName = result.filename ?? episode?.filename ?? "the recording";
+				// Now the active job, the same as a fresh upload -- so a reload
+				// while working on a reopened episode resumes it too, instead of
+				// only a just-uploaded one.
+				rememberActiveJob({ jobId, fileName, fileSizeBytes: 0, startedAt: Date.now() });
+				enterCast(jobId, fileName, result);
+			})
+			.catch((err) => {
+				setStatus({
+					state: "failed",
+					file: null,
+					fileName: episode?.filename ?? "that episode",
+					message: err instanceof Error ? err.message : "Could not reopen that episode.",
+					reached: 0,
+				});
+			});
+	}
+
+	function handleDelete(jobId: string) {
+		setSavedEpisodes((eps) => eps?.filter((e) => e.jobId !== jobId));
+		void deleteJob(jobId).catch(() => refreshSavedEpisodes());
+	}
+
+	function startOver() {
+		rememberActiveJob(null);
+		refreshSavedEpisodes();
+		setStatus({ state: "idle" });
 	}
 
 	if (status.state === "checking") {
@@ -172,11 +333,11 @@ function App() {
 	if (status.state === "failed") {
 		return (
 			<ProcessingFailed
-				fileName={status.file.name}
+				fileName={status.fileName}
 				message={status.message}
 				reached={status.reached}
-				onRetry={() => void handleFile(status.file)}
-				onPickAnother={() => setStatus({ state: "idle" })}
+				onRetry={status.file ? () => void handleFile(status.file!) : startOver}
+				onPickAnother={startOver}
 			/>
 		);
 	}
@@ -191,7 +352,8 @@ function App() {
 					setTrimDeadAir(false);
 					setStatus({
 						state: "editing",
-						file: status.file,
+						videoUrl: status.videoUrl,
+						fileName: status.fileName,
 						sessionId: status.sessionId,
 						turns: status.turns,
 						overlapWindows: status.overlapWindows,
@@ -200,7 +362,7 @@ function App() {
 						cast: { names: {}, speakerToPerson: {}, voiceNames: {} },
 					});
 				}}
-				onPickAnother={() => setStatus({ state: "idle" })}
+				onPickAnother={startOver}
 			/>
 		);
 	}
@@ -212,8 +374,8 @@ function App() {
 				uploadFraction={uploadFraction}
 				progress={progress}
 				elapsedSeconds={elapsed}
-				fileName={status.file.name}
-				fileSizeBytes={status.file.size}
+				fileName={status.fileName}
+				fileSizeBytes={status.fileSizeBytes}
 			/>
 		);
 	}
@@ -221,7 +383,7 @@ function App() {
 	if (status.state === "cast") {
 		return (
 			<CastScreen
-				file={status.file}
+				videoUrl={status.videoUrl}
 				people={status.faces.people}
 				turns={status.turns}
 				words={status.words}
@@ -235,7 +397,8 @@ function App() {
 					setTrimDeadAir(false);
 					setStatus({
 						state: "editing",
-						file: status.file,
+						videoUrl: status.videoUrl,
+						fileName: status.fileName,
 						sessionId: status.sessionId,
 						turns: status.turns,
 						overlapWindows: status.overlapWindows,
@@ -251,7 +414,9 @@ function App() {
 	if (status.state === "editing") {
 		return (
 			<EditorView
-				file={status.file}
+				videoUrl={status.videoUrl}
+				fileName={status.fileName}
+				jobId={status.sessionId}
 				turns={status.turns}
 				words={status.words}
 				overlapWindows={status.overlapWindows}
@@ -273,7 +438,7 @@ function App() {
 	if (status.state === "publishing") {
 		return (
 			<PublishScreen
-				file={status.file}
+				fileName={status.fileName}
 				sessionId={status.sessionId}
 				turns={status.turns}
 				words={status.words}
@@ -285,12 +450,19 @@ function App() {
 				onCaptionsChange={setCaptions}
 				trimDeadAir={trimDeadAir}
 				onBack={() => setStatus({ ...status, state: "editing" })}
-				onNew={() => setStatus({ state: "idle" })}
+				onNew={startOver}
 			/>
 		);
 	}
 
-	return <UploadScreen onFileSelected={handleFile} />;
+	return (
+		<UploadScreen
+			onFileSelected={handleFile}
+			savedEpisodes={savedEpisodes}
+			onReopen={handleReopen}
+			onDelete={handleDelete}
+		/>
+	);
 }
 
 export default App;

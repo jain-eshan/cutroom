@@ -76,6 +76,41 @@ export function formatTimecode(seconds: number, tenths = false): string {
 	return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
 }
 
+/** The inverse of `formatTimecode`: `m:ss`, `m:ss.f` or `h:mm:ss` back to
+ * seconds, or `undefined` if it isn't one of those shapes. Used by the
+ * inspector's typed start/end fields -- a rejected edit just doesn't apply,
+ * rather than guessing at a malformed timecode. */
+export function parseTimecode(text: string): number | undefined {
+	const parts = text.trim().split(":");
+	if (parts.length < 2 || parts.length > 3) return undefined;
+	const nums = parts.map(Number);
+	if (nums.some((n) => Number.isNaN(n) || n < 0)) return undefined;
+	const [h, m, s] = parts.length === 3 ? nums : [0, ...nums];
+	return h * 3600 + m * 60 + s;
+}
+
+/**
+ * `barCount` amplitudes (0-1) across `view`, downsampled from the episode's
+ * full-length `peaks` (see `getWaveform` in `src/lib/api.ts`). Each bar is
+ * the loudest of the buckets it covers, not the average -- a brief loud
+ * moment should still show up zoomed out, rather than being smoothed away.
+ */
+export function sampleWaveform(peaks: number[], view: TimeSpan, duration: number, barCount: number): number[] {
+	if (peaks.length === 0 || duration <= 0 || barCount <= 0) return [];
+	const span = view.end - view.start;
+	const bars: number[] = [];
+	for (let i = 0; i < barCount; i++) {
+		const t0 = view.start + (i / barCount) * span;
+		const t1 = view.start + ((i + 1) / barCount) * span;
+		const i0 = Math.max(0, Math.min(peaks.length - 1, Math.floor((t0 / duration) * peaks.length)));
+		const i1 = Math.max(i0 + 1, Math.min(peaks.length, Math.ceil((t1 / duration) * peaks.length)));
+		let peak = 0;
+		for (let j = i0; j < i1; j++) peak = Math.max(peak, peaks[j]);
+		bars.push(peak);
+	}
+	return bars;
+}
+
 /** `t` moved onto the nearest of `targets` (sorted ascending) when one is
  * within `threshold` seconds, otherwise `t` unchanged. */
 export function snapTime(t: number, targets: number[], threshold: number): number {

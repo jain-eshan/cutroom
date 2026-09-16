@@ -1,7 +1,20 @@
 import { useState } from "react";
 import { Logo } from "@/components/Logo";
+import type { SavedEpisode } from "@/lib/api";
 
-export function UploadScreen({ onFileSelected }: { onFileSelected: (file: File) => void }) {
+export function UploadScreen({
+	onFileSelected,
+	savedEpisodes,
+	onReopen,
+	onDelete,
+}: {
+	onFileSelected: (file: File) => void;
+	/** Finished jobs from previous sessions -- undefined while still loading,
+	 * so the list doesn't flash empty-then-populated on every visit. */
+	savedEpisodes?: SavedEpisode[];
+	onReopen: (jobId: string) => void;
+	onDelete: (jobId: string) => void;
+}) {
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
 
 	function handleDrop(e: React.DragEvent<HTMLLabelElement>) {
@@ -78,6 +91,37 @@ export function UploadScreen({ onFileSelected }: { onFileSelected: (file: File) 
 					</p>
 				</div>
 
+				{savedEpisodes && savedEpisodes.length > 0 && (
+					<div className="flex flex-col gap-1.5 border-t border-line pt-4">
+						<span className="font-mono text-[9.5px] tracking-[0.08em] text-text3">RECENT EPISODES</span>
+						{savedEpisodes.map((ep) => (
+							<div
+								key={ep.jobId}
+								className="flex items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-2"
+							>
+								<button
+									type="button"
+									onClick={() => onReopen(ep.jobId)}
+									className="min-w-0 flex-1 truncate text-left text-[12px] text-text2"
+									title={`Reopen ${ep.filename} -- picks up from the cast screen, no reprocessing.`}
+								>
+									{ep.filename}
+								</button>
+								<span className="shrink-0 font-mono text-[10px] text-text3">
+									{new Date(ep.createdAt * 1000).toLocaleDateString()}
+								</span>
+								<button
+									type="button"
+									onClick={() => onDelete(ep.jobId)}
+									title="Remove this episode"
+									className="shrink-0 text-[11px] text-text3 hover:text-warn"
+								>
+									✕
+								</button>
+							</div>
+						))}
+					</div>
+				)}
 			</div>
 		</div>
 	);

@@ -96,14 +96,16 @@ function Waveform({ heights }: { heights: number[] }) {
 }
 
 export function CastScreen({
-	file,
+	videoUrl,
 	people,
 	turns,
 	words,
 	match,
 	onComplete,
 }: {
-	file: File;
+	/** Playable directly -- a fresh upload's object URL, or a resumed
+	 * session's `/jobs/{id}/media`. Owned by App. */
+	videoUrl: string;
 	people: Person[];
 	turns: Turn[];
 	words: Word[];
@@ -125,13 +127,6 @@ export function CastScreen({
 
 	const audioRef = useRef<HTMLVideoElement>(null);
 	const stopAt = useRef<number | null>(null);
-	const [mediaUrl, setMediaUrl] = useState<string | null>(null);
-
-	useEffect(() => {
-		const url = URL.createObjectURL(file);
-		setMediaUrl(url);
-		return () => URL.revokeObjectURL(url);
-	}, [file]);
 
 	// Stop the sample at the end of the turn instead of playing on into the
 	// rest of the episode.
@@ -146,7 +141,7 @@ export function CastScreen({
 		};
 		el.addEventListener("timeupdate", onTime);
 		return () => el.removeEventListener("timeupdate", onTime);
-	}, [mediaUrl]);
+	}, [videoUrl]);
 
 	const speakers = [...new Set(turns.map((t) => t.speaker))].sort((a, b) => a - b);
 	const speaker = speakers[index];
@@ -223,7 +218,7 @@ export function CastScreen({
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-bg px-6 py-10">
 			<div className="flex w-full max-w-[540px] flex-col gap-5 rounded-panel border border-line bg-panel p-[26px]">
-				{mediaUrl && <video ref={audioRef} src={mediaUrl} className="hidden" preload="auto" />}
+				<video ref={audioRef} src={videoUrl} className="hidden" preload="auto" />
 
 				<div className="flex items-baseline justify-between gap-4">
 					<h2 className="text-[18px] font-semibold tracking-[-0.01em] text-text">

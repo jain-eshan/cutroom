@@ -6,6 +6,7 @@ import {
 	clampView,
 	formatTimecode,
 	rulerStep,
+	sampleWaveform,
 	snapTime,
 	zoomView,
 	type TimeSpan,
@@ -44,6 +45,8 @@ export function TimelineTray({
 	selectedRegionId,
 	currentTime,
 	nameOf,
+	waveform,
+	thumbnailUrls,
 	onViewChange,
 	onSelectRegion,
 	onEditStart,
@@ -59,6 +62,13 @@ export function TimelineTray({
 	selectedRegionId: string | null;
 	currentTime: number;
 	nameOf: (personId: number) => string;
+	/** The episode's amplitude envelope, or null until it's fetched. Shown
+	 * behind the speaker lanes as a shared reference -- there's one audio
+	 * track, not one per person. */
+	waveform: number[] | null;
+	/** Evenly spaced across [0, duration]. Shown behind the overview so the
+	 * minimap reads as the episode, not just a strip of decision colour. */
+	thumbnailUrls: string[];
 	onViewChange: (view: TimeSpan) => void;
 	onSelectRegion: (id: string | null) => void;
 	/** Called as a drag begins, so the whole drag can be undone as one step. */
@@ -118,6 +128,14 @@ export function TimelineTray({
 		[words, turns],
 	);
 
+	// One bar every ~3px, capped so a huge monitor doesn't turn this into
+	// thousands of divs. There's one audio track, so every lane shares it.
+	const barCount = Math.min(300, Math.max(20, Math.round(width / 3)));
+	const waveformBars = useMemo(
+		() => (waveform ? sampleWaveform(waveform, view, duration, barCount) : []),
+		[waveform, view, duration, barCount],
+	);
+
 	const span = view.end - view.start;
 	/** Where a moment sits across the detail lanes, as an unclamped percentage,
 	 * so a shot running off either side keeps its true size. */
@@ -173,6 +191,10 @@ export function TimelineTray({
 	const dragProps = { onPointerMove: moveDrag, onPointerUp: endDrag, onPointerCancel: endDrag };
 
 	const gaps = wideGaps(regions, duration);
+	// Full colour with nothing to show through; tinted once there are
+	// thumbnails, so the overview reads as the episode with a decision
+	// colour over it, not just a strip of colour.
+	const overviewTint = thumbnailUrls.length > 0 ? "opacity-70" : "";
 	const speakers = [...new Set(turns.map((t) => t.speaker))].sort((a, b) => a - b);
 
 	const { major, minor } = rulerStep(width > 0 ? span / width : span);
@@ -203,10 +225,17 @@ export function TimelineTray({
 				title="The whole episode. Drag the box to move along it."
 				className="relative h-[14px] w-full cursor-grab overflow-hidden rounded-chip border border-line bg-track active:cursor-grabbing"
 			>
+				{thumbnailUrls.length > 0 && (
+					<div className="pointer-events-none absolute inset-0 flex">
+						{thumbnailUrls.map((url, i) => (
+							<img key={i} src={url} alt="" draggable={false} className="h-full min-w-0 flex-1 object-cover" />
+						))}
+					</div>
+				)}
 				{gaps.map((gap) => (
 					<div
 						key={`gap-${gap.start}`}
-						className="absolute inset-y-0 bg-r-wide"
+						className={`absolute inset-y-0 bg-r-wide ${overviewTint}`}
 						style={{
 							left: `${percent(gap.start, duration)}%`,
 							width: `${percent(gap.end - gap.start, duration)}%`,
@@ -216,7 +245,7 @@ export function TimelineTray({
 				{regions.map((region) => (
 					<div
 						key={region.id}
-						className={`absolute inset-y-0 ${regionFill(region)}`}
+						className={`absolute inset-y-0 ${regionFill(region)} ${overviewTint}`}
 						style={{
 							left: `${percent(region.start, duration)}%`,
 							width: `${percent(region.end - region.start, duration)}%`,
@@ -337,6 +366,17 @@ export function TimelineTray({
 				<div className="flex flex-col gap-1">
 					{speakers.map((speaker, i) => (
 						<div key={speaker} className="relative h-[15px] w-full overflow-hidden rounded-chip bg-track">
+							{waveformBars.length > 0 && (
+								<div className="pointer-events-none absolute inset-0 flex items-end gap-px opacity-35">
+									{waveformBars.map((amplitude, j) => (
+										<div
+											key={j}
+											className="min-w-0 flex-1 rounded-t-[1px] bg-text3"
+											style={{ height: `${Math.max(6, amplitude * 100)}%` }}
+										/>
+									))}
+								</div>
+							)}
 							{turns
 								.filter((t) => t.speaker === speaker && inView(t))
 								.map((t) => (

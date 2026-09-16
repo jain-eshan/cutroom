@@ -71,12 +71,20 @@ def person_crop(
 	target_w: float,
 	target_h: float,
 	max_upscale: float = MAX_UPSCALE,
+	nudge: tuple[float, float] = (0.0, 0.0),
 ) -> CropRect:
 	"""Crop rect framing one person for a target_w x target_h pane.
 
 	Height comes from the face size and the measured framing ratio; width
 	follows from the pane's aspect. The face is placed `FACE_VERTICAL_POSITION`
 	down the crop so there is headroom above and body below.
+
+	`nudge` is the region's manual override (a region's `cropNudge` in the
+	editor), as a fraction of the crop's own width/height, applied after the
+	automatic position and before the same edge clamp -- so a nudge can never
+	push the crop off the source frame. `src/lib/faceCrop.ts`'s `personCrop`
+	must apply it the same way; a preview that disagrees with the export is
+	worse than no preview.
 	"""
 	aspect = target_w / target_h
 
@@ -95,8 +103,9 @@ def person_crop(
 	face_cx = bbox.x + bbox.width / 2
 	face_cy = bbox.y + bbox.height / 2
 
-	left = face_cx - crop_w / 2
-	top = face_cy - crop_h * FACE_VERTICAL_POSITION
+	nudge_x, nudge_y = nudge
+	left = face_cx - crop_w / 2 + nudge_x * crop_w
+	top = face_cy - crop_h * FACE_VERTICAL_POSITION + nudge_y * crop_h
 
 	left = max(0.0, min(source_w - crop_w, left))
 	top = max(0.0, min(source_h - crop_h, top))

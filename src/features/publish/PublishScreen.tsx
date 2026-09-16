@@ -93,7 +93,7 @@ function Destination({ label, selected, unbuilt }: { label: string; selected?: b
 }
 
 export function PublishScreen({
-	file,
+	fileName,
 	sessionId,
 	turns,
 	words,
@@ -107,7 +107,7 @@ export function PublishScreen({
 	onBack,
 	onNew,
 }: {
-	file: File;
+	fileName: string;
 	sessionId: string;
 	turns: Turn[];
 	words: Word[];
@@ -125,7 +125,7 @@ export function PublishScreen({
 	const captionsAvailable = health?.captions ?? false;
 	const burnCaptions = captions && captionsAvailable;
 	const changed = regions.filter((r) => r.source === "user").length;
-	const stem = file.name.replace(/\.[^.]+$/, "");
+	const stem = fileName.replace(/\.[^.]+$/, "");
 
 	// The download link holds the whole rendered episode in memory.
 	useEffect(() => {
@@ -152,17 +152,17 @@ export function PublishScreen({
 		setRender({ status: "rendering" });
 		try {
 			const blob = await exportVideo(
-				file,
+				sessionId,
 				regions.map((r) => ({
 					start: r.start,
 					end: r.end,
 					layout: r.layout,
 					personIds: r.personIds,
 					source: r.source,
+					cropNudge: r.cropNudge,
 				})),
 				turns.map((t) => ({ start: t.start, end: t.end })),
 				faces,
-				sessionId,
 				words,
 				burnCaptions,
 				trimDeadAir,

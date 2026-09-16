@@ -44,6 +44,11 @@ function framingRatio(aspect: number): number {
  * framing.py's person_crop: height from face size and the measured framing
  * ratio, width from the pane aspect, face placed in the upper third so
  * there's headroom above and body below.
+ *
+ * `nudge` is the region's manual override (see `FramingRegion.cropNudge`),
+ * as a fraction of the crop's own width/height -- applied after the
+ * automatic position, before the same edge clamp, so a nudge can't push the
+ * crop off the source frame. `framing.py`'s `person_crop` must do the same.
  */
 export function personCrop(
 	bbox: BBox,
@@ -52,6 +57,7 @@ export function personCrop(
 	targetWidth: number,
 	targetHeight: number,
 	maxUpscale = MAX_UPSCALE,
+	nudge?: { x: number; y: number },
 ): CropRect {
 	const aspect = targetWidth / targetHeight;
 
@@ -70,7 +76,10 @@ export function personCrop(
 	const faceCx = bbox.x + bbox.width / 2;
 	const faceCy = bbox.y + bbox.height / 2;
 
-	const x = Math.max(0, Math.min(sourceWidth - cropWidth, faceCx - cropWidth / 2));
-	const y = Math.max(0, Math.min(sourceHeight - cropHeight, faceCy - cropHeight * FACE_VERTICAL_POSITION));
+	const left = faceCx - cropWidth / 2 + (nudge?.x ?? 0) * cropWidth;
+	const top = faceCy - cropHeight * FACE_VERTICAL_POSITION + (nudge?.y ?? 0) * cropHeight;
+
+	const x = Math.max(0, Math.min(sourceWidth - cropWidth, left));
+	const y = Math.max(0, Math.min(sourceHeight - cropHeight, top));
 	return { x, y, width: cropWidth, height: cropHeight };
 }

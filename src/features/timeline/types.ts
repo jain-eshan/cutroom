@@ -26,7 +26,18 @@ export interface FramingRegion {
 	 * made it. The difference is the only signal we have about where the
 	 * automatic framing is wrong, so it is carried through to the export. */
 	source: "suggested" | "user";
+	/** Manual offset from the computed crop, as a fraction of the crop's own
+	 * width/height (so it means the same thing at any pane size). Absent or
+	 * `{x:0,y:0}` is "trust the automatic framing" -- most regions never set
+	 * this. See `personCrop` in `src/lib/faceCrop.ts` and `person_crop` in
+	 * `server/pipeline/framing.py`, which must apply it identically. */
+	cropNudge?: { x: number; y: number };
 }
+
+/** A nudge small enough to correct the automatic crop without being able to
+ * frame something else entirely -- that's still what dragging a region or
+ * picking a different person is for. */
+export const MAX_CROP_NUDGE = 0.3;
 
 // Plain-English shot names, not pipeline/technical terms -- see docs/design/
 // handoff README, "Voice & copy rules": "Close on Maya", not "Zoom".

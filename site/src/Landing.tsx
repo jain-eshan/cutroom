@@ -60,6 +60,9 @@ function Nav() {
 					<a href="#contribute" className="hover:text-text">
 						Contribute
 					</a>
+					<a href="#download" className="hover:text-text">
+						Download
+					</a>
 					<a href="#waitlist" className="hover:text-text">
 						Waitlist
 					</a>
@@ -406,6 +409,49 @@ function Limits() {
 
 const COMMANDS = ["git clone https://github.com/jain-eshan/cutroom.git", "cd cutroom", "npm install", "npm run dev"];
 
+function Download() {
+	return (
+		<Section id="download" className="py-20 sm:py-24">
+			<div className="mx-auto max-w-[640px] text-center">
+				<Eyebrow>Download</Eyebrow>
+				<h2 className="mt-3 text-[clamp(1.6rem,3.6vw,2.4rem)] leading-tight font-semibold tracking-[-0.025em]">
+					Get the app
+				</h2>
+				<p className="mt-4 text-[16px] leading-relaxed text-text2">
+					Mac and Windows builds, no terminal and no cloning the repo. They're brand new and haven't been tried
+					outside this repo yet -- if something breaks,{" "}
+					<Out
+						href={`${REPO}/issues/new/choose`}
+						className="underline decoration-accent/40 underline-offset-4 hover:decoration-accent"
+					>
+						open an issue
+					</Out>
+					.
+				</p>
+				<div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+					<Out
+						href={`${REPO}/releases/latest`}
+						className="rounded-[10px] bg-handle px-5 py-3 text-[15px] font-medium text-panel hover:opacity-90"
+					>
+						Download for Mac
+					</Out>
+					<Out
+						href={`${REPO}/releases/latest`}
+						className="rounded-[10px] border border-line bg-raised px-5 py-3 text-[15px] font-medium hover:bg-chrome"
+					>
+						Download for Windows
+					</Out>
+				</div>
+				<p className="mt-4 text-[13px] text-text3">
+					The Mac build isn't code-signed, so Gatekeeper will block it on first open -- right-click the app and
+					choose Open to run it anyway. ffmpeg is bundled; the app installs everything else it needs on first
+					launch.
+				</p>
+			</div>
+		</Section>
+	);
+}
+
 function DeveloperPreview() {
 	const [copied, setCopied] = useState(false);
 
@@ -642,6 +688,7 @@ export function Landing() {
 				<HowItWorks />
 				<Numbers />
 				<Limits />
+				<Download />
 				<DeveloperPreview />
 				<Contribute />
 				<WaitlistSection />

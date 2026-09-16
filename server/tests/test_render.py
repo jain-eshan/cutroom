@@ -75,6 +75,26 @@ class TestFraming:
 		narrow = person_crop(bbox, self.FRAME_W, self.FRAME_H, self.FRAME_W // 3, self.FRAME_H)
 		assert narrow.height / bbox.height > wide.height / bbox.height
 
+	def test_a_nudge_shifts_the_crop_by_that_fraction_of_its_own_size(self):
+		# Away from any edge, so the shift isn't swallowed by the clamp --
+		# REAL_FACES are all close enough to the frame edge that their crop
+		# already sits clamped at 0, which would pass this test vacuously.
+		bbox = BBox(x=900, y=400, width=80, height=110)
+		plain = person_crop(bbox, self.FRAME_W, self.FRAME_H, self.FRAME_W, self.FRAME_H)
+		nudged = person_crop(bbox, self.FRAME_W, self.FRAME_H, self.FRAME_W, self.FRAME_H, nudge=(0.1, 0.0))
+		assert nudged.x == pytest.approx(plain.x + 0.1 * plain.width)
+		assert nudged.y == plain.y
+		assert nudged.width == plain.width and nudged.height == plain.height
+
+	def test_a_nudge_cannot_push_the_crop_off_the_source_frame(self):
+		# A face right at the corner, nudged further toward it: the edge
+		# clamp -- the same one an un-nudged crop already relies on -- has to
+		# win, or the inspector's nudge control could produce an invalid crop.
+		edge_bbox = BBox(x=0, y=0, width=80, height=110)
+		nudged = person_crop(edge_bbox, self.FRAME_W, self.FRAME_H, self.FRAME_W, self.FRAME_H, nudge=(-1.0, -1.0))
+		assert nudged.x >= 0
+		assert nudged.y >= 0
+
 
 def _track(id_: int, bbox: BBox, t: float = 0.0) -> Track:
 	return Track(id=id_, keyframes=[Keyframe(t=t, bbox=bbox)])
@@ -220,6 +240,27 @@ class TestBuildRenderSegments:
 		with_none = build_render_segments(5.0, regions, tracks)
 		with_empty = build_render_segments(5.0, regions, tracks, drop_ranges=[])
 		assert with_none == with_empty
+
+	def test_a_regions_crop_nudge_carries_onto_its_segment(self):
+		# The inspector's nudge is set on the region; the renderer only ever
+		# sees segments, so it has to survive that translation or the export
+		# would silently ignore it.
+		tracks = [_track(0, BBOX_A)]
+		regions = [Region(0.0, 5.0, "zoom", [0], crop_nudge=(0.2, -0.1))]
+		segments = build_render_segments(5.0, regions, tracks)
+		assert segments[0].crop_nudge == (0.2, -0.1)
+
+	def test_touching_regions_with_different_nudges_do_not_merge(self):
+		# Same person, same layout, same single-keyframe bbox -- everything
+		# _merge_adjacent used to check -- but a different manual crop, so
+		# merging them would silently drop one region's nudge from the export.
+		tracks = [_track(0, BBOX_A)]
+		regions = [
+			Region(0.0, 2.0, "zoom", [0], crop_nudge=(0.1, 0.0)),
+			Region(2.0, 4.0, "zoom", [0], crop_nudge=(-0.1, 0.0)),
+		]
+		segments = build_render_segments(4.0, regions, tracks)
+		assert len(segments) == 2
 
 
 class TestSegmentsAreContiguous:

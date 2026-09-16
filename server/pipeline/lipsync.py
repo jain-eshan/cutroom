@@ -68,16 +68,24 @@ class LipSync:
 		return np.where(per_second.max(0) > 0, per_second.argmax(0), -1)
 
 
-def _ensure_weights() -> Path:
+def _ensure_weights(progress=None) -> Path:
 	"""3.3MB, downloaded on first use rather than committed -- the same
-	arrangement as the SFace recognition model."""
+	arrangement as the SFace recognition model, including a real byte
+	fraction for `progress(label, fraction)` since this is a plain HTTP
+	download this project controls."""
 	if WEIGHTS.exists():
 		return WEIGHTS
 	MODELS_DIR.mkdir(parents=True, exist_ok=True)
 	tmp = WEIGHTS.with_suffix(".part")
-	print(f"[lipsync] downloading LR-ASD weights (~3.3MB) to {WEIGHTS} ...")
+	label = "downloading the lip-sync model (first run only, ~3.3MB)"
+	print(f"[lipsync] {label} to {WEIGHTS} ...")
+
+	def reporthook(block_num: int, block_size: int, total_size: int) -> None:
+		if progress is not None and total_size > 0:
+			progress(label, min(1.0, block_num * block_size / total_size))
+
 	try:
-		urllib.request.urlretrieve(WEIGHTS_URL, tmp)
+		urllib.request.urlretrieve(WEIGHTS_URL, tmp, reporthook=reporthook)
 		tmp.replace(WEIGHTS)
 	except (urllib.error.URLError, OSError) as err:
 		tmp.unlink(missing_ok=True)
@@ -92,7 +100,7 @@ _model = None
 _head = None
 
 
-def _load_model(device: str):
+def _load_model(device: str, download_progress=None):
 	"""Weights only, and only the model classes are imported -- none of the
 	upstream repo's scripts are executed."""
 	global _model, _head
@@ -101,7 +109,7 @@ def _load_model(device: str):
 
 		from .lrasd import ASD_Model
 
-		state = torch.load(_ensure_weights(), weights_only=True, map_location="cpu")
+		state = torch.load(_ensure_weights(download_progress), weights_only=True, map_location="cpu")
 		model = ASD_Model()
 		model.load_state_dict(
 			{k[len("model.") :]: v for k, v in state.items() if k.startswith("model.")}, strict=True
@@ -240,10 +248,13 @@ def analyse(
 	people: list[dict],
 	device: str = "cpu",
 	progress=None,
+	download_progress=None,
 ) -> LipSync:
 	"""Score every person's face against the audio, a window at a time.
 
 	`people` are the entries the face pass produced: an `id` and `keyframes`.
+	`download_progress(label, fraction)` fires while the lip-sync weights are
+	being fetched, only on a first run where they aren't cached yet.
 	"""
 	import torch
 
@@ -252,7 +263,7 @@ def analyse(
 	if not people:
 		return LipSync(person_ids=[], scores=np.zeros((0, 0)))
 
-	model, head = _load_model(device)
+	model, head = _load_model(device, download_progress)
 
 	sample_rate, audio = wavfile.read(wav_path)
 	if audio.ndim > 1:

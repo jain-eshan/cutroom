@@ -51,6 +51,9 @@ export interface ProcessResponse {
 	words: Word[];
 	faces: DetectFacesResponse;
 	match: MatchResult;
+	/** Only present from `getJob` -- a resumed or reopened session has no
+	 * browser-held upload left to read this from. */
+	filename?: string;
 }
 
 export interface BBox {
@@ -161,12 +164,35 @@ export interface JobProgress {
 	/** Ids of the people recognised so far; the images come from
 	 * `faceThumbnailUrl` so they're fetched once each, not on every poll. */
 	people: number[];
+	/** How many timeline overview thumbnails are ready. The bytes come from
+	 * `timelineThumbnailUrl`, one at a time -- same reasoning as `people`. */
+	thumbnailCount: number;
+	/** Set once, if the background job failed -- a missing audio track, a
+	 * diarisation setup problem, anything unexpected. `/process` returns as
+	 * soon as the upload is saved, so this is the only way a failure that
+	 * happens afterward reaches the browser. */
+	error: string | null;
 }
 
 /** Stable per (job, person), and immutable once written, so the browser
  * fetches each face exactly once however often the snapshot is polled. */
 export function faceThumbnailUrl(jobId: string, personId: number): string {
 	return new URL(`/progress/${jobId}/face/${personId}`, API_BASE).toString();
+}
+
+/** Stable per (job, index), and immutable once written -- same reasoning as
+ * `faceThumbnailUrl`. */
+export function timelineThumbnailUrl(jobId: string, index: number): string {
+	return new URL(`/progress/${jobId}/thumbnail/${index}`, API_BASE).toString();
+}
+
+/** The episode's amplitude envelope, as a fixed number of normalised (0-1)
+ * buckets across its whole length. Computed once the upload's audio has been
+ * extracted; 404s until then, same as a face requested before it exists. */
+export async function getWaveform(jobId: string): Promise<number[]> {
+	const res = await fetch(new URL(`/progress/${jobId}/waveform`, API_BASE));
+	if (!res.ok) throw new Error(`Waveform unavailable (${res.status})`);
+	return ((await res.json()) as { peaks: number[] }).peaks;
 }
 
 export interface Health {
@@ -212,14 +238,52 @@ export async function getProgress(jobId: string): Promise<JobProgress> {
 	return res.json();
 }
 
-/** One upload, both analyses. These were separate endpoints called in
- * parallel, which uploaded the same file twice. */
+/** Saves the upload and starts processing in the background, returning as
+ * soon as that's true rather than waiting for the whole pipeline -- closing
+ * the tab used to cancel the job outright, because the server used to do
+ * everything inside this one request. Poll `getProgress`, then `getJob`
+ * once it reports done. */
 export function processVideo(
 	file: File,
 	jobId: string,
 	onUploadProgress?: (fraction: number) => void,
-): Promise<ProcessResponse> {
+): Promise<{ jobId: string }> {
 	return postFile("/process", file, { jobId }, onUploadProgress);
+}
+
+/** The finished result of a job started with `processVideo` -- what used to
+ * come back directly from that call. Also how a saved episode is reopened:
+ * same shape, whether the job finished a second ago or a week ago. */
+export async function getJob(jobId: string): Promise<ProcessResponse> {
+	const res = await fetch(new URL(`/jobs/${jobId}`, API_BASE));
+	if (!res.ok) throw new Error(`Job unavailable (${res.status})`);
+	return res.json();
+}
+
+export interface SavedEpisode {
+	jobId: string;
+	filename: string;
+	createdAt: number;
+}
+
+/** Every finished job on this machine, newest first -- "saved episodes". */
+export async function listJobs(): Promise<SavedEpisode[]> {
+	const res = await fetch(new URL("/jobs", API_BASE));
+	if (!res.ok) throw new Error(`Could not list saved episodes (${res.status})`);
+	return res.json();
+}
+
+export async function deleteJob(jobId: string): Promise<void> {
+	const res = await fetch(new URL(`/jobs/${jobId}`, API_BASE), { method: "DELETE" });
+	if (!res.ok) throw new Error(`Could not delete that episode (${res.status})`);
+}
+
+/** The original recording, for playback -- streamed from disk rather than
+ * held in browser memory, so this works whether or not the tab that
+ * uploaded it is still the one asking (a reload, or a saved episode
+ * reopened later both have no `File` object left to play from). */
+export function jobMediaUrl(jobId: string): string {
+	return new URL(`/jobs/${jobId}/media`, API_BASE).toString();
 }
 
 /** What the renderer needs from a framing region. `source` rides along so the
@@ -230,20 +294,23 @@ export interface ExportRegion {
 	layout: "zoom" | "split";
 	personIds: number[];
 	source: "suggested" | "user";
+	cropNudge?: { x: number; y: number };
 }
 
 export async function exportVideo(
-	file: File,
+	jobId: string,
 	regions: ExportRegion[],
 	turnRanges: { start: number; end: number }[],
 	faces: DetectFacesResponse,
-	sessionId: string,
 	words: Word[],
 	captions: boolean,
 	trimDeadAir: boolean,
 ): Promise<Blob> {
 	const form = new FormData();
-	form.append("file", file);
+	// The recording itself is already on disk from /process (see
+	// pipeline/jobs.py server-side) -- re-uploading a multi-GB file a second
+	// time just to export it was pure waste. Also names the decision log.
+	form.append("jobId", jobId);
 	form.append("regions", JSON.stringify(regions));
 	// Only used when trimming: dead air is measured against where speech
 	// actually is, which regions deliberately don't describe.
@@ -251,7 +318,6 @@ export async function exportVideo(
 	// Sent as a file, not a text field: the server caps text fields at 1MB and
 	// face keyframes for a full-length episode are larger than that.
 	form.append("faces", new Blob([JSON.stringify(faces)], { type: "application/json" }), "faces.json");
-	form.append("sessionId", sessionId);
 	// A file part for the same reason as faces — word timestamps grow with
 	// episode length.
 	form.append("words", new Blob([JSON.stringify(words)], { type: "application/json" }), "words.json");

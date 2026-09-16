@@ -24,6 +24,7 @@ decision to change.
 
 - [Why it exists](#why-it-exists)
 - [What works today](#what-works-today)
+- [Download](#download)
 - [Quick start](#quick-start)
 - [Using it, step by step](#using-it-step-by-step)
 - [Keyboard shortcuts](#keyboard-shortcuts)
@@ -50,8 +51,8 @@ uploaded anywhere, and there's no account, subscription or server.
 ## What works today
 
 Cutroom is a **developer preview**: the whole path from recording to edited
-video works, and has been run on real multi-person episodes, but it needs a
-terminal to install and has rough edges.
+video works, and has been run on real multi-person episodes, but it has
+rough edges and its packaged installer is untested outside this repo.
 
 **Works**
 
@@ -68,16 +69,32 @@ terminal to install and has rough edges.
 
 **Doesn't yet**
 
-- Install without a terminal (a Mac app is planned)
+- Ship a signed Mac installer or a Windows build anyone's tried running (the
+  desktop app and its installer pipeline exist -- see
+  [Download](#download) -- but neither has had real-world use yet)
 - Keep your work if you close the browser tab: processing and edits live in
   that tab until you export
 - Stay on the main speaker through a quick "yeah" or "right". The rules for
   this are written up in [docs/EDGE_CASES.md](docs/EDGE_CASES.md), but not
   built
 - Reliably tell four people apart on a long episode
-- Run on Windows or Linux (untested; help wanted)
+- Run the actual processing pipeline on Windows or Linux (untested; help
+  wanted)
 
 The ordered roadmap is in [docs/STATUS.md](docs/STATUS.md).
+
+## Download
+
+Mac and Windows builds are on the
+[Releases page](https://github.com/jain-eshan/cutroom/releases) -- no
+terminal, no cloning the repo, and nothing to install separately: ffmpeg
+ships inside the app, and it installs `uv` itself on first launch.
+
+These builds are new and haven't been tried outside this repo yet -- if
+something breaks, [open an issue](https://github.com/jain-eshan/cutroom/issues).
+The Mac build isn't code-signed, so Gatekeeper will block it on first open;
+right-click the app and choose Open to run it anyway. If you'd rather run
+from source, or you're on Linux, see Quick start below.
 
 ## Quick start
 

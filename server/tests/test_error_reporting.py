@@ -24,14 +24,14 @@ def client():
 
 
 def _export(client, regions: str):
+	# jobId is a required form field, but neither test below reaches the
+	# point where its value has to resolve to a real job -- the malformed
+	# JSON and the KeyError from a bad region dict both happen first.
 	return client.post(
 		"/export",
 		headers={"Origin": ORIGIN},
-		files={
-			"file": ("clip.bin", b"x"),
-			"faces": ("faces.json", FACES, "application/json"),
-		},
-		data={"regions": regions},
+		files={"faces": ("faces.json", FACES, "application/json")},
+		data={"regions": regions, "jobId": "nonexistent-job"},
 	)
 
 

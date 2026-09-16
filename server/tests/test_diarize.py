@@ -6,6 +6,8 @@ the windows the renderer builds composites from, which is exactly the kind of
 logic that produces a plausible-but-wrong edit when it's subtly off.
 """
 
+import pytest
+
 from pipeline.diarize import SpeakerSegment, overlap_windows
 
 
@@ -109,3 +111,39 @@ class TestDiarizationConfigured:
 
 		monkeypatch.setenv("HF_TOKEN", "hf_example")
 		assert diarization_configured() is True
+
+
+class TestPipelineLoadingAnnounced:
+	"""`on_loading` is the only way a browser learns why a run stalls before
+	transcription can start -- whether that's a real download or just
+	loading an already-cached model isn't told apart (see diarize.py's
+	comment); either way it's a real pause that needs a label."""
+
+	def test_fires_before_the_pipeline_call_when_not_yet_loaded(self, monkeypatch):
+		import pipeline.diarize as diarize_module
+		from pyannote.audio import Pipeline
+
+		monkeypatch.setattr(diarize_module, "_pipeline", None)
+		monkeypatch.setenv("HF_TOKEN", "hf_example")
+		monkeypatch.setattr(
+			Pipeline,
+			"from_pretrained",
+			classmethod(lambda cls, *a, **k: (_ for _ in ()).throw(RuntimeError("no network in tests"))),
+		)
+
+		seen: list[str] = []
+		with pytest.raises(diarize_module.DiarizationUnavailable):
+			diarize_module._get_pipeline(on_loading=seen.append)
+
+		assert seen and "first time" in seen[0]
+
+	def test_does_not_fire_when_already_loaded(self, monkeypatch):
+		import pipeline.diarize as diarize_module
+
+		monkeypatch.setattr(diarize_module, "_pipeline", object())
+
+		called = []
+		result = diarize_module._get_pipeline(on_loading=called.append)
+
+		assert not called
+		assert result is diarize_module._pipeline

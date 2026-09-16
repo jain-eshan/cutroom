@@ -62,16 +62,28 @@ class Person:
 	detection_count: int = 0
 
 
-def _ensure_recognition_model() -> None:
+def _ensure_recognition_model(progress=None) -> None:
 	"""SFace is ~38MB -- too big to commit, so it downloads on first use, the
-	same way the Whisper model already does."""
+	same way the Whisper model already does.
+
+	`progress(label, fraction)` fires as bytes arrive, if given -- a real
+	fraction is cheap here (this is a plain HTTP download this project
+	controls), unlike the Whisper/pyannote model loads, where the same
+	honesty would mean guessing at a total.
+	"""
 	if RECOGNITION_MODEL.exists():
 		return
 	MODELS_DIR.mkdir(parents=True, exist_ok=True)
 	tmp = RECOGNITION_MODEL.with_suffix(".onnx.part")
-	print(f"[faces] downloading face recognition model (~38MB) to {RECOGNITION_MODEL} ...")
+	label = "downloading the face recognition model (first run only, ~38MB)"
+	print(f"[faces] {label} to {RECOGNITION_MODEL} ...")
+
+	def reporthook(block_num: int, block_size: int, total_size: int) -> None:
+		if progress is not None and total_size > 0:
+			progress(label, min(1.0, block_num * block_size / total_size))
+
 	try:
-		urllib.request.urlretrieve(RECOGNITION_MODEL_URL, tmp)
+		urllib.request.urlretrieve(RECOGNITION_MODEL_URL, tmp, reporthook=reporthook)
 		tmp.replace(RECOGNITION_MODEL)
 		print("[faces] face recognition model ready.")
 	except Exception as err:
@@ -155,6 +167,7 @@ def detect_and_track_faces(
 	min_detections: int = MIN_DETECTIONS,
 	min_presence: float = MIN_PRESENCE,
 	progress=None,
+	download_progress=None,
 ) -> list[Person]:
 	"""Find the distinct people in a video, not just face rectangles.
 
@@ -174,8 +187,11 @@ def detect_and_track_faces(
 
 	On real four-person footage this turned 9 raw tracks into 4 people plus
 	one junk cluster (a hand), which `min_detections` then drops.
+
+	`download_progress(label, fraction)` fires while the recognition model is
+	being fetched, only on a first run where it isn't cached yet.
 	"""
-	_ensure_recognition_model()
+	_ensure_recognition_model(download_progress)
 
 	# Frames are streamed, never collected into a list. At one sample a second
 	# a 53-minute 1080p episode is ~3,200 frames, ~20GB held at once: measured,

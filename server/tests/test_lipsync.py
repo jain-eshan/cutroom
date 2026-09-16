@@ -2,11 +2,15 @@
 model enforces by crashing: exactly 4 audio feature rows per video frame in
 every window it scores."""
 
+import urllib.request
+from pathlib import Path
+
 import numpy as np
 import pytest
 import torch
 
-from pipeline.lipsync import AUDIO_ROWS_PER_FRAME, _aligned_window
+import pipeline.lipsync as lipsync
+from pipeline.lipsync import AUDIO_ROWS_PER_FRAME, _aligned_window, _ensure_weights
 from pipeline.lrasd.Model import ASD_Model
 
 
@@ -60,3 +64,41 @@ class TestModelShapes:
 		audio, frames = _aligned_window(np.zeros((35_780, 13)), 35_600, 46)
 		out = self._fuse(model, len(audio), frames)
 		assert out.shape[0] == frames
+
+
+class TestWeightsDownloadProgress:
+	"""Same reasoning as faces.py's recognition-model download: a plain HTTP
+	GET this project controls, so a real byte fraction is cheap and honest
+	here, unlike the Whisper/pyannote model loads."""
+
+	def _fake_urlretrieve(self, total_size: int, block_size: int = 50):
+		def fake(url, dest, reporthook=None):
+			if reporthook:
+				for block_num in range(total_size // block_size + 1):
+					reporthook(block_num, block_size, total_size)
+			Path(dest).write_bytes(b"fake weights")
+
+		return fake
+
+	def test_progress_reaches_one(self, tmp_path, monkeypatch):
+		monkeypatch.setattr(lipsync, "MODELS_DIR", tmp_path)
+		monkeypatch.setattr(lipsync, "WEIGHTS", tmp_path / "weights.model")
+		monkeypatch.setattr(urllib.request, "urlretrieve", self._fake_urlretrieve(total_size=500))
+
+		seen: list[float] = []
+		_ensure_weights(progress=lambda label, fraction: seen.append(fraction))
+
+		assert seen[-1] == 1.0
+		assert (tmp_path / "weights.model").exists()
+
+	def test_already_downloaded_weights_report_nothing(self, tmp_path, monkeypatch):
+		weights = tmp_path / "weights.model"
+		weights.write_bytes(b"already here")
+		monkeypatch.setattr(lipsync, "MODELS_DIR", tmp_path)
+		monkeypatch.setattr(lipsync, "WEIGHTS", weights)
+		monkeypatch.setattr(
+			urllib.request,
+			"urlretrieve",
+			lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not download when cached")),
+		)
+		_ensure_weights(progress=lambda label, fraction: (_ for _ in ()).throw(AssertionError("no download, no progress")))

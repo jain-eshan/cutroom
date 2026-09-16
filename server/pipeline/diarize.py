@@ -88,7 +88,7 @@ def _best_device():
 	return torch.device("cpu")
 
 
-def _get_pipeline():
+def _get_pipeline(on_loading=None):
 	global _pipeline
 	if _pipeline is None:
 		if not diarization_configured():
@@ -96,6 +96,12 @@ def _get_pipeline():
 		token = os.environ["HF_TOKEN"]
 		from pyannote.audio import Pipeline
 
+		# community-1 is several hundred MB; whether this run downloads it or
+		# loads it from cache isn't distinguished here, same reasoning as
+		# transcribe.py's model load -- either way it's a real pause that
+		# needs a label, not a guess about which case this is.
+		if on_loading is not None:
+			on_loading("loading the diarisation model (downloads once, the first time)")
 		try:
 			pipeline = Pipeline.from_pretrained(DIARIZATION_MODEL, token=token)
 		except Exception as err:
@@ -109,17 +115,20 @@ def _get_pipeline():
 	return _pipeline
 
 
-def diarize(wav_path: str) -> Diarization:
+def diarize(wav_path: str, on_loading=None) -> Diarization:
 	"""Who speaks when, on the single mixed track.
 
 	No speaker count is passed. Forcing one was measured to invent speakers:
 	asking for four on a ten-minute window where the fourth participant barely
 	talks split one person into two. The roster is confirmed by a human at the
 	cast step instead, which is the one place that actually knows.
+
+	`on_loading(message)` fires once, only if the model isn't already loaded
+	in this process.
 	"""
 	import torch
 
-	pipeline = _get_pipeline()
+	pipeline = _get_pipeline(on_loading)
 
 	# Decoded here rather than handed over as a path. pyannote 4 reads audio via
 	# torchcodec, whose prebuilt libraries link against FFmpeg 4-7; on FFmpeg 9

@@ -3,6 +3,8 @@ __pycache__
 *.pyc
 .env
 logs/
+# Saved episodes and in-progress uploads (pipeline/jobs.py) -- can be GBs.
+jobs/
 # Download on first run -- see pipeline/faces.py and pipeline/lipsync.py
 .models/face_recognition_sface_*.onnx
 .models/lrasd_*.model

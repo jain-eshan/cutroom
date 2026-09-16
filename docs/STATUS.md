@@ -185,6 +185,40 @@ the founder's call, to find testers and contributors early:
    markers you step through; an inspector for the selected shot (who it
    frames, its layout, exact start and end times, a small crop nudge). Cutting
    content stays with text-based editing, below, rather than a blade tool.
+   - **Built 2026-09-15.** `S` (or "Split here" in the inspector) splits the
+     selected shot into two at the playhead, as one undo step. Selecting a
+     shot now shows an inspector in the bottom bar: editable start/end
+     timecodes, Split and Go wide, and a crop nudge (four arrow buttons,
+     ±0.3 of the crop's own size, "Reset crop" once set) for when the
+     automatic framing is close but not quite right -- `FramingRegion` grew
+     an optional `cropNudge`, applied identically in the live preview
+     (`personCrop` in `faceCrop.ts`) and the export (`person_crop` in
+     `framing.py`, threaded through `Region`/`RenderSegment` in `render.py`),
+     so the two can't disagree. The "N to review" badge is now a stepper
+     (Tab / Shift Tab, or its ‹ › buttons) over the same flagged lines the
+     transcript already marks (no face, or talking over someone). Waveform
+     bars (peak-sampled from a 2000-bucket amplitude envelope computed once
+     per job from the already-extracted wav) sit behind each speaker lane;
+     periodic frame thumbnails sit behind the overview strip, tinted by the
+     framing-decision colour on top. Both are new backend endpoints
+     (`GET /progress/{job_id}/waveform`, `GET /progress/{job_id}/thumbnail/
+     {index}`) following the same in-memory, job-scoped pattern as face
+     thumbnails.
+     - `regions.ts` has its first unit tests (previously blocked on the `@/`
+       alias Node's test runner can't follow -- fixed by importing
+       `faceCrop.ts` relatively, since that module's only import of `@/lib/
+       api` is type-only and erases away). `faceCrop.ts` and the new
+       `sampleWaveform`/`parseTimecode` helpers in `timelineView.ts` are
+       tested too. 136 backend tests (was 119), 32 frontend (was 15).
+     - Verified: a real upload through transcription and onto the Cast
+       screen, on a synthetic clip (a real face photo + real synthesised
+       speech, so transcription and face detection had something genuine to
+       find). A full click-through of the Editor's new controls (split,
+       nudge, review-stepping, the waveform and thumbnails actually
+       rendering) is not yet done -- the shared dev server this machine's
+       other sessions were using went down mid-attempt, and a shared browser
+       tab got navigated away by another session. Worth a follow-up pass
+       once the environment is free.
 3. **Processing that survives closing the window, and saved episodes.** Today
    a whole job lives inside one browser request, so closing or refreshing the
    tab loses up to an hour of work, and nothing about an edited episode is
@@ -193,6 +227,74 @@ the founder's call, to find testers and contributors early:
    - Problem: a long recording can't be processed reliably.
    - Evidence (founder, testing): "the localhost stopped again midway".
    - Measure: runs that finish.
+   - **Built 2026-09-16.** `/process` now saves the upload and starts the
+     pipeline as a background `asyncio.create_task`, returning `{jobId}`
+     immediately instead of doing the whole job inline and handing back the
+     full result -- closing the tab used to cancel the request outright,
+     because Starlette cancels a handler's coroutine the moment the client
+     disconnects. Everything a job produces (the input file, the result, the
+     waveform, the timeline thumbnails) now lives in `server/jobs/{job_id}/`
+     rather than a `tempfile.TemporaryDirectory()` that vanished when the
+     request returned (see `pipeline/jobs.py`), so it survives a server
+     restart, not just a tab refresh. A failure that used to become the
+     `/process` response (a missing audio track, a diarisation setup
+     problem, anything unexpected) now reaches the browser through a new
+     `error` field on `/progress/{job_id}` instead, since by the time any of
+     those can happen the request that started the job is long gone.
+     - New endpoints: `GET /jobs` (saved episodes, newest first), `GET
+       /jobs/{job_id}` (a finished job's result, plus its original
+       filename), `GET /jobs/{job_id}/media` (the original recording, Range
+       requests included, for playback with no browser-held upload left),
+       `DELETE /jobs/{job_id}`.
+     - `/export` no longer re-uploads the recording -- it reads the same
+       persisted input by `jobId`, which also removes a second full upload
+       of a multi-GB file that existed only because there was nowhere else
+       to get the bytes from.
+     - Frontend: a resumed session (reload, or a saved episode reopened from
+       the upload screen's new "Recent episodes" list) always lands back on
+       Cast, not mid-edit -- region edits and cast confirmations aren't
+       persisted in this pass, only the pipeline's own output, so "reopen"
+       means "skip reprocessing," not "resume exactly where you left off."
+       `EditorView` and `CastScreen` take a plain `videoUrl` now instead of
+       a `File`, satisfied by either a fresh upload's object URL or
+       `/jobs/{id}/media` -- one code path for both.
+     - Tests: `pipeline/jobs.py` (round-trips, and that a lookup on an
+       unknown job creates nothing on disk -- `/progress` takes one on every
+       poll, including stale bookmarks), `_run_pipeline`'s three failure
+       paths, and the new endpoints, all with the real pipeline steps
+       mocked out. 166 backend tests (was 136); frontend still 32 -- this
+       pass was backend and state-machine work, not new pure logic. `tsc`
+       clean, production build clean, and `oxlint` is now fully clean with
+       zero warnings -- the two "deliberate, documented" ones from the
+       2026-09-12 measurement run were both `URL.createObjectURL(file)`
+       effects in `EditorView`/`CastScreen`, which this pass's `videoUrl`
+       prop refactor removed outright rather than re-suppressing.
+     - Known limitation, not addressed here: nothing evicts `server/jobs/`,
+       so it grows without bound. A server crash mid-job (not just a closed
+       tab) still loses that job -- only the browser disconnecting is
+       decoupled from the work now, not a killed server process.
+     - Verified live end to end against a real running instance (not just
+       the test suite's mocked `_run_pipeline`) -- a second `uvicorn` on a
+       scratch port, isolated from the shared dev server other sessions on
+       this machine were using, torn down and its test job deleted
+       afterward. `/process` returned in 12ms, well before the pipeline
+       finished; the background task ran to completion with no connection
+       held open the whole time, which is the actual claim ("closing the
+       tab" is exactly "no connection held open"). Watched `/progress`
+       advance through real transcribe/faces/match stages; confirmed
+       `/jobs`, `/jobs/{id}` (with the original filename), `/jobs/{id}/
+       media` (byte-identical to the upload), the waveform and a thumbnail
+       all serve real data; ran `/export` by `jobId` with no re-upload and a
+       crop nudge, and got back a valid MP4 with the original filename in
+       `Content-Disposition` and the nudge in `decisions.jsonl`; deleted the
+       job and confirmed both `/jobs` and `/jobs/{id}` reflect it being
+       gone. Separately fed it a video with no audio track and confirmed
+       `/progress` reports the same error message the old synchronous
+       version raised as an HTTP 400, just through the new field. Not yet
+       verified through the actual browser UI (upload screen, resume after
+       a real reload, the "Recent episodes" list) for the same reason as
+       item 2: the shared dev server and browser other sessions are using
+       right now aren't safe to drive without risking their work.
 4. **The desktop app (.dmg).** No terminal, `uv` or `ffmpeg` install. It reads
    the recording where it is instead of copying a 3 GB file into the service,
    renders to a folder instead of holding the whole MP4 in browser memory, and
@@ -203,6 +305,34 @@ the founder's call, to find testers and contributors early:
    - Evidence (founder): "make the tool in a way that the user does not have
      to leave the env in anyway".
    - Measure: time from opening the app to the first export.
+   - **Electron shell and installer pipeline, done 2026-09-16.** `electron/
+     main.mjs` opens a native window over the built frontend and starts the
+     existing processing service the same way `vite.config.ts` always has --
+     that startup logic moved to `scripts/processing-service.mjs` so dev and
+     the desktop app can't drift apart. `electron-builder` (config in
+     `package.json`'s `build` field) produces a real `.dmg`/`.zip` for Mac
+     (verified: mounts, installs, launches) and an `.exe` for Windows (builds
+     natively on Windows; not locally buildable on this Mac without Wine).
+     `.github/workflows/release.yml` builds both on a version tag and
+     attaches them to a GitHub Release. `scripts/ensure-uv.mjs` installs `uv`
+     from astral.sh on first launch if it's missing, and `ffmpeg-static`/
+     `ffprobe-static` (same packages Recordly bundles ffmpeg with) ship
+     inside the app -- `electron/main.mjs` points `FFMPEG_BINARY`/
+     `FFPROBE_BINARY` at them, so "no terminal, `uv` or `ffmpeg` install" is
+     now fully done. The bundled build has libass, so burned-in captions
+     work without the `ffmpeg-full` workaround below. One licence note: this
+     build is GPL+nonfree (`--enable-gpl --enable-nonfree`, for libx264/
+     libx265), invoked only as a subprocess (no linking) the same way every
+     other ffmpeg-shelling app does -- but its own `LICENSE` file ships
+     alongside it in the app bundle, and that should be linked from the
+     app's credits/about, not just sitting in `node_modules`.
+     - Not done, still open: the Apple Developer signing/notarisation this
+       item calls for (today's build is unsigned -- Gatekeeper blocks it on
+       first open), reading the recording in place and rendering to a
+       folder instead of holding it in browser memory, native
+       notifications, and shipping the `pyannote` weights directly per the
+       licence check two lines down (which would
+       drop the Hugging Face step from the desktop app entirely).
    - **Licence check, done 2026-09-15.** `pyannote` community-1 is CC-BY-4.0,
      and every file the pipeline loads (segmentation, embedding, PLDA, config)
      is in that one repo. The Hugging Face gate is an automatic form that asks
@@ -222,6 +352,52 @@ the founder's call, to find testers and contributors early:
    - Evidence (founder): "keep the users hooked instead of them coming back in
      an hour or so or maybe not returning at all".
    - Measure: runs that finish and then get opened.
+   - **Built 2026-09-16.** A native browser notification fires when a job
+     finishes or fails, but only if the tab is hidden -- no point
+     interrupting someone already watching it, and the permission prompt
+     only appears once a job actually starts, not on first launch. A muted
+     video preview on the processing screen follows the transcript's own
+     read position (`ProcessingScreen` now plays from `jobMediaUrl(jobId)`,
+     which item 3 made available from the moment the upload lands, well
+     before the pipeline finishes). The time estimate now models the real
+     shape of the pipeline -- transcribe and faces run concurrently, so
+     wall-clock time is gated by whichever is slower, not their sum;
+     averaging all four stages as if they were four equal sequential chunks
+     (the old approach) could show "30% done" when the clock had only moved
+     as far as the slower of the concurrent pair. `overallProgress` now
+     takes the max of the concurrent pair as one phase instead. This is a
+     structural fix, not a guessed timing ratio -- there isn't a reliable
+     one; which of transcribe or faces is the long pole depends on the
+     recording. Model downloads (SFace, LR-ASD -- small, first-party HTTP
+     downloads this project controls) now report a real byte fraction under
+     a "first run only" label; the two large ones (faster-whisper, pyannote
+     community-1) report an honest indeterminate "loading the ... model
+     (downloads once, the first time)" instead -- getting a real fraction
+     there would mean hooking `huggingface_hub`'s internals, which is either
+     fragile against a version bump or would need a bytes-total guess
+     dressed up as a percentage. Same call this codebase already made for
+     render progress ("No render progress, only an indeterminate bar" --
+     see Known Limitations): an honest indeterminate wait beats a
+     fabricated precise one.
+     - `overallProgress`/`remainingLabel` moved to a new pure module,
+       `src/features/upload/processingProgress.ts`, since `ProcessingScreen.
+       tsx` imports `src/lib/api.ts`, which reads `import.meta.env` and only
+       exists under Vite -- Node's test runner can't load it otherwise. 11
+       new frontend tests. Backend: 11 new tests across `test_faces.py`,
+       `test_lipsync.py` (the two real byte-progress downloads, monkeypatched
+       so no network call happens), `test_diarize.py` and the new
+       `test_transcribe.py` (the two `on_loading` announcements, and that
+       neither fires once the model is already loaded in this process). 177
+       backend tests (was 166), 41 frontend (was 32).
+     - Verified live against an isolated `uvicorn` instance the same way
+       item 3 was: `/jobs/{id}/media` confirmed reachable and byte-correct
+       immediately after upload, well before the pipeline finishes (what
+       the live preview depends on), and a full real run still completes
+       correctly with every new callback wired in. The download-progress
+       paths themselves weren't exercised live -- the models are already
+       cached on this machine, which is the normal case after the one-time
+       setup gate -- so that logic is verified by the mocked unit tests
+       above, not a live download.
 6. **Host test, unassisted, with the app.** The milestone this project has
    always been sequenced against, now combined with the setup question
    [BUSINESS_MODEL.md](BUSINESS_MODEL.md) names: can a non-technical host

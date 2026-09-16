@@ -77,7 +77,7 @@ timeline and an export step was used as a reference point.
 | **3 — Editor shell** | ✅ Done | Per-turn layout override (Original / Zoom / Split). All three are real, including a live multi-speaker composite preview for Split. Annotations remain a stub |
 | **4 — Real export + multi-speaker framing** | ✅ Done | `POST /export` renders an actual MP4: hard cuts at turn boundaries, bust-shot zoom, a real up-to-3-pane composite for overlapping/forced-split turns, gapless duration-complete timeline, original audio preserved, optional burned-in captions cut from word-level timestamps. See [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md) and [UX_PRD.md](UX_PRD.md) for the full design |
 | **5 — Automatic voice-to-face matching + captions** | ✅ Done | Originally scoped as stretch goals — shipped ahead of schedule once the fused lip-sync/diarization design proved out. See STATUS.md for the measured accuracy |
-| **6 — Remaining stretch goals** | ⬜ Not started | Multi-camera-angle support, desktop packaging, jargon info-text annotations, audio effects/intro-outro presets, automatic social clips, voice ducking for overlapping speech |
+| **6 — Remaining stretch goals** | 🟡 Desktop packaging partly done | Desktop packaging: Electron shell, installer pipeline, and bundled `uv`/`ffmpeg` are done -- code signing and more are not (see [Desktop app](#desktop-app) and docs/STATUS.md). Still not started: multi-camera-angle support, jargon info-text annotations, audio effects/intro-outro presets, automatic social clips, voice ducking for overlapping speech |
 
 Nothing here is faked to look more finished than it is — every placeholder
 in the UI says so explicitly (e.g. "Split-screen preview — coming in a
@@ -325,12 +325,52 @@ behind it: [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md).
 ```
 src/        the app (React + TypeScript + Tailwind v4, Vite, port 3460)
 server/     the processing service (Python 3.12, FastAPI, uv, port 8787)
+electron/   the desktop shell (main.mjs) -- see "Desktop app" below
+scripts/    startup logic shared by the Vite dev server and the desktop app
 site/       the public website: a separate small Vite app sharing src/index.css
             and the logo, built with `npm run site:build`, hosted on Vercel
             (vercel.json); see site/README.md
 docs/       this documentation, plus design/handoff/ and images/
-.github/    CI (workflows/ci.yml), issue forms, pull request template
+.github/    CI (workflows/ci.yml) and releases (workflows/release.yml),
+            issue forms, pull request template
 ```
+
+### Desktop app
+
+`electron/main.mjs` opens a native window over the built frontend (`dist/`)
+and starts the processing service, so there's no `npm run dev` and no
+terminal to run the app itself. It reuses the exact service-management code
+the Vite dev server has always used -- both call
+`scripts/processing-service.mjs`'s `createProcessingService()`, which spawns
+`uv run --directory server uvicorn main:app --port 8787` and reports state at
+`/__service`, the contract `src/features/setup/SetupGate.tsx` polls. Splitting
+this out means the dev server and the desktop app can't quietly diverge on
+how the service is started.
+
+The desktop app serves `dist/` itself, from a small static file server on
+port 3460 -- the same port Vite's dev server uses, so it satisfies
+`server/main.py`'s CORS allowlist without changing it. `scripts/ensure-uv.mjs`
+installs `uv` from astral.sh on first launch if it's missing. `ffmpeg` and
+`ffprobe` ship inside the app via the `ffmpeg-static`/`ffprobe-static` npm
+packages (the same approach Recordly uses) -- `electron/main.mjs` sets
+`FFMPEG_BINARY`/`FFPROBE_BINARY` to their unpacked paths before starting the
+service, which `server/pipeline/ffmpeg.py` already reads. Those binaries are
+native executables, so they're listed in `asarUnpack` (package.json's `build`
+field) to keep them as real files on disk instead of trapped inside the
+`app.asar` archive; each platform's build also excludes the other platforms'
+prebuilt binaries via `mac.files`/`win.files`, since `ffprobe-static` ships
+all six by default. See docs/STATUS.md's desktop app item for what this
+still doesn't cover -- code signing, and more.
+
+Packaging is `electron-builder`, configured in package.json's `build` field:
+`npm run dist:mac` / `dist:win` build the frontend then produce a `.dmg`/
+`.zip` (Mac) or `.exe` (Windows, via NSIS -- needs a native Windows build or
+Wine, so it isn't buildable on this Mac locally). `server/` ships as an
+`extraResource` (source only: `main.py`, `pipeline/`, `pyproject.toml`,
+`uv.lock` -- not `.venv`, tests, or downloaded model weights), and
+`electron/main.mjs` resolves it via `process.resourcesPath` when packaged
+versus the project root in dev. `.github/workflows/release.yml` builds both
+platforms on a `v*` tag push and attaches the installers to a GitHub Release.
 
 Contributor-facing guides live at the root: README.md (setup and
 troubleshooting), CONTRIBUTING.md (layout, rules, checks) and SECURITY.md.
@@ -927,16 +967,21 @@ Cutroom design system and the region-based framing editor; editor navigation
 host test):
 
 1. ~~**Editing basics, navigation**~~: done 2026-09-15.
-2. **Editing basics, precision:** split at the playhead, waveforms and
-   thumbnails, review markers, and an inspector for the selected shot.
-3. **Processing that survives closing the window, plus saved episodes.** A job
-   currently lives inside one browser request. This is also the foundation the
-   desktop app needs.
+2. ~~**Editing basics, precision**~~: done 2026-09-15, split at the playhead,
+   waveforms and thumbnails, review markers, and a shot inspector with a crop
+   nudge -- see STATUS.md for detail and what verification is still owed.
+3. ~~**Processing that survives closing the window, plus saved episodes**~~:
+   done 2026-09-16, `/process` now backgrounds the pipeline and persists
+   every job to `server/jobs/{id}/` -- see STATUS.md for detail and what
+   verification is still owed.
 4. **Desktop app (.dmg).** The licence check is done: community-1 is CC-BY-4.0
    and all of its weights live in one repo, so the app can ship them with
    attribution and drop the Hugging Face step.
-5. **Waiting that keeps people:** a done notification, a live preview, a time
-   estimate weighted by stage, and visible first-run model downloads.
+5. ~~**Waiting that keeps people**~~: done 2026-09-16, a done/failed
+   notification (hidden-tab only), a live preview following the transcript,
+   a concurrency-aware time estimate, and visible progress for model
+   downloads -- see STATUS.md for detail and what verification is still
+   owed.
 6. **Host test, unassisted, with the app.**
 
 **Then, ordered by what the host test shows:** batched processing for long

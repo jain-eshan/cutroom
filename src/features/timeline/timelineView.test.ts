@@ -4,8 +4,10 @@ import {
 	MIN_VIEW_S,
 	clampView,
 	formatTimecode,
+	parseTimecode,
 	reveal,
 	rulerStep,
+	sampleWaveform,
 	snapTime,
 	stepToEdge,
 	zoomView,
@@ -67,6 +69,40 @@ test("timecodes", () => {
 	assert.equal(formatTimecode(3725), "1:02:05");
 	assert.equal(formatTimecode(723.46, true), "12:03.4");
 	assert.equal(formatTimecode(3.05, true), "0:03.0");
+});
+
+test("timecodes parse back to the seconds they were formatted from", () => {
+	assert.equal(parseTimecode("0:00"), 0);
+	assert.equal(parseTimecode("46:56"), 2816);
+	assert.equal(parseTimecode("1:02:05"), 3725);
+	assert.equal(parseTimecode("0:03.0"), 3);
+});
+
+test("a malformed typed timecode is rejected, not guessed at", () => {
+	assert.equal(parseTimecode("not a time"), undefined);
+	assert.equal(parseTimecode("12"), undefined);
+	assert.equal(parseTimecode("1:2:3:4"), undefined);
+	assert.equal(parseTimecode("1:-5"), undefined);
+});
+
+test("sampling a waveform keeps a brief loud moment even zoomed out", () => {
+	const peaks = new Array(100).fill(0.1);
+	peaks[50] = 0.9; // one loud bucket in the middle of a 100s episode
+	const bars = sampleWaveform(peaks, { start: 0, end: 100 }, 100, 10);
+	assert.equal(bars.length, 10);
+	assert.equal(bars[5], 0.9); // bucket 50 falls in the 6th of 10 bars
+	assert.ok(bars.every((b) => b >= 0 && b <= 1));
+});
+
+test("sampling a waveform zoomed into a quiet stretch doesn't show the loud moment elsewhere", () => {
+	const peaks = new Array(100).fill(0.1);
+	peaks[50] = 0.9;
+	const bars = sampleWaveform(peaks, { start: 0, end: 20 }, 100, 5);
+	assert.ok(bars.every((b) => b === 0.1));
+});
+
+test("sampleWaveform is defined even with no data yet", () => {
+	assert.deepEqual(sampleWaveform([], { start: 0, end: 10 }, 10, 5), []);
 });
 
 test("an edge snaps to the nearest boundary within reach", () => {

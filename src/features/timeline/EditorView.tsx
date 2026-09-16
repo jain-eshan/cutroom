@@ -1,20 +1,23 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BBox, DetectFacesResponse, Health, OverlapWindow, Turn, Word } from "@/lib/api";
+import { getProgress, getWaveform, timelineThumbnailUrl, type BBox, type DetectFacesResponse, type Health, type OverlapWindow, type Turn, type Word } from "@/lib/api";
 import type { CastResult } from "@/features/faces/CastScreen";
 import { personCrop } from "@/lib/faceCrop";
 import { TimelineTray } from "@/features/timeline/TimelineTray";
-import { LAYOUT_LABELS, type FramingRegion } from "@/features/timeline/types";
+import { LAYOUT_LABELS, MAX_CROP_NUDGE, type FramingRegion } from "@/features/timeline/types";
 import {
+	MIN_REGION_S,
 	addRegion,
 	otherSpeakerNear,
 	regionAt,
 	resizeRegion,
 	resolveFraming,
+	splitRegion,
 	suggestRegions,
 } from "@/features/timeline/regions";
 import {
 	MIN_VIEW_S,
 	formatTimecode as formatTime,
+	parseTimecode,
 	reveal,
 	stepToEdge,
 	zoomView,
@@ -45,9 +48,11 @@ const SHORTCUTS: [string, string][] = [
 	["J", "Back 5 seconds"],
 	["← →", "Back or forward 1 second, 10 with Shift"],
 	["↑ ↓", "Previous or next shot"],
+	["Tab", "Next line to review. With Shift, previous"],
 	["= −", "Zoom the timeline in or out"],
 	["Shift Z", "Show the whole episode"],
 	["⌘Z", "Undo. With Shift, redo"],
+	["S", "Split the picked shot at the playhead"],
 	["Delete", "Make the picked shot wide"],
 	["Esc", "Unpick the shot"],
 ];
@@ -92,6 +97,7 @@ function CroppedVideo({
 	paneWidth,
 	paneHeight,
 	label,
+	cropNudge,
 	driverRef,
 }: {
 	videoUrl: string;
@@ -101,6 +107,7 @@ function CroppedVideo({
 	paneWidth: number;
 	paneHeight: number;
 	label?: string;
+	cropNudge?: { x: number; y: number };
 	driverRef: React.RefObject<HTMLVideoElement | null>;
 }) {
 	const paneRef = useRef<HTMLVideoElement>(null);
@@ -134,7 +141,7 @@ function CroppedVideo({
 		return <div className="h-full w-full bg-black" />;
 	}
 
-	const crop = personCrop(bbox, frameWidth, frameHeight, paneWidth, paneHeight);
+	const crop = personCrop(bbox, frameWidth, frameHeight, paneWidth, paneHeight, undefined, cropNudge);
 	const displayScale = paneWidth / crop.width;
 
 	return (
@@ -162,8 +169,128 @@ function CroppedVideo({
 	);
 }
 
+/** How far one press of a nudge arrow moves the crop, as a fraction of its
+ * own size -- small enough that several presses feel like fine adjustment,
+ * not a jump. */
+const NUDGE_STEP = 0.05;
+
+/**
+ * What's selected: who it frames, its exact times (editable), split and
+ * go-wide, and a small manual crop nudge for when the automatic framing is
+ * close but not quite right. Everything here acts on `region` through the
+ * callbacks; undo integration lives with them in EditorView.
+ */
+function RegionInspector({
+	region,
+	label,
+	canSplit,
+	duration,
+	onSplit,
+	onGoWide,
+	onSetTimes,
+	onSetCropNudge,
+}: {
+	region: FramingRegion;
+	label: string;
+	canSplit: boolean;
+	duration: number;
+	onSplit: () => void;
+	onGoWide: () => void;
+	onSetTimes: (start: number, end: number) => void;
+	onSetCropNudge: (nudge: { x: number; y: number }) => void;
+}) {
+	function commitTimes(rawStart: string, rawEnd: string) {
+		const start = parseTimecode(rawStart);
+		const end = parseTimecode(rawEnd);
+		if (start === undefined || end === undefined) return;
+		onSetTimes(Math.max(0, start), Math.min(duration, end));
+	}
+
+	const nudge = region.cropNudge ?? { x: 0, y: 0 };
+	function nudgeBy(dx: number, dy: number) {
+		const clamp = (v: number) => Math.max(-MAX_CROP_NUDGE, Math.min(MAX_CROP_NUDGE, v));
+		onSetCropNudge({ x: clamp(nudge.x + dx), y: clamp(nudge.y + dy) });
+	}
+	const nudged = nudge.x !== 0 || nudge.y !== 0;
+
+	return (
+		<>
+			<span className="text-[11px] font-medium text-text2">{label}</span>
+			<input
+				key={`${region.id}-start-${region.start}`}
+				type="text"
+				defaultValue={formatTime(region.start, true)}
+				title="Start. Type a new time and press Enter."
+				onBlur={(e) => commitTimes(e.currentTarget.value, formatTime(region.end, true))}
+				onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+				className="w-16 rounded-control border border-line bg-control px-1.5 py-1 text-center font-mono text-[11px] text-text2"
+			/>
+			<span className="text-text3">–</span>
+			<input
+				key={`${region.id}-end-${region.end}`}
+				type="text"
+				defaultValue={formatTime(region.end, true)}
+				title="End. Type a new time and press Enter."
+				onBlur={(e) => commitTimes(formatTime(region.start, true), e.currentTarget.value)}
+				onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+				className="w-16 rounded-control border border-line bg-control px-1.5 py-1 text-center font-mono text-[11px] text-text2"
+			/>
+			<button
+				type="button"
+				onClick={onSplit}
+				disabled={!canSplit}
+				title="Split this shot at the playhead (S)"
+				className="rounded-control border border-line px-2 py-1 text-[11px] text-text2 disabled:opacity-40"
+			>
+				Split here
+			</button>
+			<button
+				type="button"
+				onClick={onGoWide}
+				className="rounded-control border border-line px-2 py-1 text-[11px] text-text2"
+			>
+				Go wide here
+			</button>
+			<div className="mx-1 h-4 w-px bg-line" />
+			<span className="text-[11px] text-text3" title="Shifts the automatic crop without changing what the region frames.">
+				Nudge crop
+			</span>
+			<div className="flex items-center gap-0.5">
+				{(
+					[
+						["←", -NUDGE_STEP, 0],
+						["→", NUDGE_STEP, 0],
+						["↑", 0, -NUDGE_STEP],
+						["↓", 0, NUDGE_STEP],
+					] as const
+				).map(([arrow, dx, dy]) => (
+					<button
+						key={arrow}
+						type="button"
+						onClick={() => nudgeBy(dx, dy)}
+						className="h-6 w-6 rounded-control border border-line bg-control text-[11px] text-text2"
+					>
+						{arrow}
+					</button>
+				))}
+			</div>
+			{nudged && (
+				<button
+					type="button"
+					onClick={() => onSetCropNudge({ x: 0, y: 0 })}
+					className="rounded-control border border-line px-2 py-1 text-[11px] text-text2"
+				>
+					Reset crop
+				</button>
+			)}
+		</>
+	);
+}
+
 export function EditorView({
-	file,
+	videoUrl,
+	fileName,
+	jobId,
 	turns,
 	words,
 	overlapWindows,
@@ -179,7 +306,15 @@ export function EditorView({
 	themeMode,
 	onThemeModeChange,
 }: {
-	file: File;
+	/** Playable directly -- a fresh upload's object URL, or (a resumed
+	 * session, a reopened saved episode) the server's own `/jobs/{id}/media`.
+	 * Owned by App, which knows which one it has. */
+	videoUrl: string;
+	fileName: string;
+	/** The `/process` job this recording ran as -- still good for fetching the
+	 * waveform and timeline thumbnails, which (unlike faces) aren't embedded
+	 * in the processing result itself. */
+	jobId: string;
 	turns: Turn[];
 	/** Word timings, so a dragged shot edge can snap between words. */
 	words: Word[];
@@ -199,15 +334,24 @@ export function EditorView({
 	onThemeModeChange: (mode: ThemeMode) => void;
 }) {
 	const captionsAvailable = health?.captions ?? true;
-	// Object URL has to be created *inside* the effect (not derived via useMemo)
-	// so StrictMode's mount->cleanup->mount dev-mode cycle recreates a fresh URL
-	// each time instead of revoking the one useMemo cached and never remaking.
-	const [videoUrl, setVideoUrl] = useState<string | null>(null);
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const [stageRef, stageSize] = useElementSize();
 
 	const suggested = useMemo(
 		() => suggestRegions(turns, overlapWindows, cast.speakerToPerson),
+		[turns, overlapWindows, cast.speakerToPerson],
+	);
+	// Lines worth a second look: no face to frame, or talking over someone
+	// else. The transcript already marks these; this is the same test, kept
+	// as start times so the playhead can step between them in order.
+	const flaggedTurnStarts = useMemo(
+		() =>
+			turns
+				.filter(
+					(t) =>
+						cast.speakerToPerson[t.speaker] === undefined || overlapFor(overlapWindows, t.start, t.end),
+				)
+				.map((t) => t.start),
 		[turns, overlapWindows, cast.speakerToPerson],
 	);
 	const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
@@ -233,11 +377,28 @@ export function EditorView({
 	// handle that doesn't move it is none.
 	const dragStart = useRef<FramingRegion[] | null>(null);
 
+	// Fetched once, not polled: both are computed during /process and don't
+	// change afterward. Missing either just means the timeline shows less --
+	// no waveform bars, no overview thumbnails -- rather than an error, since
+	// neither is needed to edit.
+	const [waveform, setWaveform] = useState<number[] | null>(null);
+	const [thumbnailCount, setThumbnailCount] = useState(0);
 	useEffect(() => {
-		const url = URL.createObjectURL(file);
-		setVideoUrl(url);
-		return () => URL.revokeObjectURL(url);
-	}, [file]);
+		let cancelled = false;
+		getWaveform(jobId)
+			.then((peaks) => {
+				if (!cancelled) setWaveform(peaks);
+			})
+			.catch(() => {});
+		getProgress(jobId)
+			.then((p) => {
+				if (!cancelled) setThumbnailCount(p.thumbnailCount);
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, [jobId]);
 
 	useEffect(() => {
 		const video = videoRef.current;
@@ -358,6 +519,16 @@ export function EditorView({
 		setSelectedRegionId(regionAt(regions, t)?.id ?? null);
 	}
 
+	/** Step the playhead to the next (or previous) line the transcript has
+	 * flagged, in order -- the keyboard route to the same list "N to review"
+	 * counts. */
+	function jumpToFlaggedTurn(direction: 1 | -1) {
+		const t = stepToEdge(flaggedTurnStarts, now(), direction);
+		if (t === undefined) return;
+		const index = turns.findIndex((turn) => turn.start === t);
+		if (index >= 0) selectTurn(index);
+	}
+
 	/** Apply a framing change as one undo step. */
 	function edit(next: FramingRegion[]) {
 		setHistory((h) => ({ past: [...h.past, regions].slice(-HISTORY_LIMIT), future: [] }));
@@ -449,12 +620,19 @@ export function EditorView({
 			case "Z":
 				setZoomed(null);
 				break;
+			case "s":
+			case "S":
+				splitHere();
+				break;
 			case "Delete":
 			case "Backspace":
 				if (selectedRegion) goWide(selectedRegion.id);
 				break;
 			case "Escape":
 				setSelectedRegionId(null);
+				break;
+			case "Tab":
+				jumpToFlaggedTurn(e.shiftKey ? -1 : 1);
 				break;
 			default:
 				return;
@@ -489,6 +667,22 @@ export function EditorView({
 		setSelectedRegionId(null);
 	}
 
+	function splitHere() {
+		if (!selectedRegion) return;
+		edit(splitRegion(regions, selectedRegion.id, now()));
+	}
+
+	/** Typed exact times from the inspector, as one undo step covering both
+	 * edges -- the same model a drag uses, just without a drag. */
+	function setRegionTimes(id: string, start: number, end: number) {
+		const withStart = resizeRegion(regions, id, "start", start, duration);
+		edit(resizeRegion(withStart, id, "end", end, duration));
+	}
+
+	function setCropNudge(id: string, nudge: { x: number; y: number }) {
+		edit(regions.map((r) => (r.id === id ? { ...r, cropNudge: nudge, source: "user" } : r)));
+	}
+
 	/** One clause saying what was done here and why, in the words the user
 	 * would use. Never announces that something was automatic -- it shows the
 	 * result and the reason, and the override does the reassuring. */
@@ -517,14 +711,11 @@ export function EditorView({
 	}
 
 	const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null;
-	const reviewCount = turns.filter(
-		(t) =>
-			cast.speakerToPerson[t.speaker] === undefined || overlapFor(overlapWindows, t.start, t.end),
-	).length;
+	const reviewCount = flaggedTurnStarts.length;
 
-	const dotExt = file.name.lastIndexOf(".");
-	const baseName = dotExt > 0 ? file.name.slice(0, dotExt) : file.name;
-	const ext = dotExt > 0 ? file.name.slice(dotExt) : "";
+	const dotExt = fileName.lastIndexOf(".");
+	const baseName = dotExt > 0 ? fileName.slice(0, dotExt) : fileName;
+	const ext = dotExt > 0 ? fileName.slice(dotExt) : "";
 
 	const framingLabel =
 		framing.kind === "wide"
@@ -557,9 +748,25 @@ export function EditorView({
 					<div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
 						<span className="text-[13px] font-semibold text-text">Transcript</span>
 						{reviewCount > 0 && (
-							<span className="flex items-center gap-1.5 rounded-card bg-raised px-2 py-1 font-mono text-[10px] text-text2">
-								<span className="h-2 w-2 rounded-[2px] bg-accent" />
-								{reviewCount} to review
+							<span className="flex items-center gap-1 rounded-card bg-raised px-1 py-1 font-mono text-[10px] text-text2">
+								<span className="ml-1 h-2 w-2 rounded-[2px] bg-accent" />
+								<span className="mr-1">{reviewCount} to review</span>
+								<button
+									type="button"
+									onClick={() => jumpToFlaggedTurn(-1)}
+									title="Previous line to review (Shift Tab)"
+									className="h-5 w-5 rounded-control text-text3 hover:bg-control hover:text-text2"
+								>
+									‹
+								</button>
+								<button
+									type="button"
+									onClick={() => jumpToFlaggedTurn(1)}
+									title="Next line to review (Tab)"
+									className="h-5 w-5 rounded-control text-text3 hover:bg-control hover:text-text2"
+								>
+									›
+								</button>
 							</span>
 						)}
 					</div>
@@ -649,6 +856,7 @@ export function EditorView({
 									frameHeight={faces.frameHeight}
 									paneWidth={stageSize.width}
 									paneHeight={stageSize.height}
+									cropNudge={framing.region.cropNudge}
 									driverRef={videoRef}
 								/>
 							</div>
@@ -671,6 +879,7 @@ export function EditorView({
 													paneWidth={stageSize.width / framing.subjects.length}
 													paneHeight={stageSize.height}
 													label={nameOf(subject.personId)}
+													cropNudge={framing.region.cropNudge}
 													driverRef={videoRef}
 												/>
 											</div>
@@ -689,6 +898,7 @@ export function EditorView({
 												paneWidth={stageSize.width * SPEAKER_FOCUS_MAIN_FRACTION}
 												paneHeight={stageSize.height}
 												label={nameOf(framing.subjects[0].personId)}
+												cropNudge={framing.region.cropNudge}
 												driverRef={videoRef}
 											/>
 										</div>
@@ -706,6 +916,7 @@ export function EditorView({
 														paneWidth={stageSize.width * (1 - SPEAKER_FOCUS_MAIN_FRACTION)}
 														paneHeight={stageSize.height / (framing.subjects.length - 1)}
 														label={nameOf(subject.personId)}
+														cropNudge={framing.region.cropNudge}
 														driverRef={videoRef}
 													/>
 												</div>
@@ -866,6 +1077,8 @@ export function EditorView({
 					selectedRegionId={selectedRegionId}
 					currentTime={currentTime}
 					nameOf={(id) => nameOf(id)}
+					waveform={waveform}
+					thumbnailUrls={Array.from({ length: thumbnailCount }, (_, i) => timelineThumbnailUrl(jobId, i))}
 					onViewChange={changeView}
 					onSelectRegion={setSelectedRegionId}
 					onEditStart={() => {
@@ -875,28 +1088,31 @@ export function EditorView({
 					onSeek={seek}
 				/>
 
-				<div className="mt-3 flex items-center justify-between gap-4">
-					<div className="flex items-center gap-3">
+				<div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+					<div className="flex flex-wrap items-center gap-2">
 						{selectedRegion ? (
-							<>
-								<span className="font-mono text-[11px] text-text2">
-									{formatTime(selectedRegion.start, true)}–{formatTime(selectedRegion.end, true)}
-								</span>
-								<span className="text-[11px] text-text3">
-									Drag either edge. It snaps to the nearest word; hold Option to place it freely.
-								</span>
-								<button
-									type="button"
-									onClick={() => goWide(selectedRegion.id)}
-									className="rounded-control border border-line px-2 py-1 text-[11px] text-text2"
-								>
-									Go wide here
-								</button>
-							</>
+							<RegionInspector
+								region={selectedRegion}
+								label={
+									selectedRegion.layout === "zoom"
+										? `Close on ${nameOf(selectedRegion.personIds[0])}`
+										: selectedRegion.personIds.map((id) => nameOf(id)).join(" + ")
+								}
+								canSplit={
+									currentTime - selectedRegion.start >= MIN_REGION_S &&
+									selectedRegion.end - currentTime >= MIN_REGION_S
+								}
+								duration={duration}
+								onSplit={splitHere}
+								onGoWide={() => goWide(selectedRegion.id)}
+								onSetTimes={(start, end) => setRegionTimes(selectedRegion.id, start, end)}
+								onSetCropNudge={(nudge) => setCropNudge(selectedRegion.id, nudge)}
+							/>
 						) : (
 							<span className="text-[11px] text-text3">
 								Pick a shot on the timeline to move its edges, or a line in the transcript to jump
-								there.
+								there. Drag either edge -- it snaps to the nearest word; hold Option to place it
+								freely.
 							</span>
 						)}
 					</div>

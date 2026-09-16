@@ -1,0 +1,33 @@
+name: Release
+
+# Builds the downloadable desktop app for macOS and Windows and attaches the
+# installers to a GitHub Release, so "download Cutroom" means grabbing a
+# file from Releases rather than cloning the repo and running it from a
+# terminal. Triggered by pushing a tag like v0.1.0.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build installer (macOS)
+        if: runner.os == 'macOS'
+        run: npm run dist:mac -- --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build installer (Windows)
+        if: runner.os == 'Windows'
+        run: npm run dist:win -- --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,11 +1,9 @@
-import { faceThumbnailUrl, type JobProgress } from "@/lib/api";
+import { useEffect, useRef } from "react";
+import { faceThumbnailUrl, jobMediaUrl, type JobProgress } from "@/lib/api";
 import { formatClock } from "@/lib/format";
+import { overallProgress, remainingLabel } from "@/features/upload/processingProgress";
 
 const SPEAKER_RING = ["border-s1", "border-s2", "border-s3"];
-
-/** Below this the extrapolation is mostly noise -- an estimate that starts at
- * "47 minutes" and falls to two is worse than no estimate. */
-const ESTIMATE_FLOOR = 0.08;
 
 function Bar({ fraction, indeterminate, done }: { fraction: number; indeterminate?: boolean; done: boolean }) {
 	return (
@@ -44,15 +42,6 @@ function Row({
 	);
 }
 
-/** Extrapolated from how far the job has actually got, not from a tuned
- * constant, so it corrects itself instead of being confidently wrong. */
-function remainingLabel(elapsed: number, fraction: number): string | null {
-	if (fraction < ESTIMATE_FLOOR || fraction >= 1) return null;
-	const remaining = (elapsed * (1 - fraction)) / fraction;
-	if (remaining < 60) return "under a minute left";
-	return `about ${Math.ceil(remaining / 60)} min left`;
-}
-
 export function ProcessingScreen({
 	jobId,
 	uploadFraction,
@@ -75,25 +64,46 @@ export function ProcessingScreen({
 	const faces = progress?.faces;
 	const match = progress?.match;
 
-	const stageFraction = (s: { fraction: number; done: boolean } | undefined) =>
-		s?.done ? 1 : (s?.fraction ?? 0);
-	const overall =
-		(uploadFraction + stageFraction(transcribe) + stageFraction(faces) + stageFraction(match)) / 4;
+	const overall = overallProgress(uploadFraction, transcribe, faces, match);
 	const remaining = remainingLabel(elapsedSeconds, overall);
 
 	const lines = progress?.lines ?? [];
 	const people = progress?.people ?? [];
 
+	// The upload is already saved server-side by the time this screen shows
+	// anything (see pipeline/jobs.py) -- a live preview of the actual
+	// recording, not just text, gives the wait something to look at.
+	const videoRef = useRef<HTMLVideoElement>(null);
+	const position = progress?.position ?? 0;
+	useEffect(() => {
+		const video = videoRef.current;
+		if (!video) return;
+		if (Math.abs(video.currentTime - position) > 1) video.currentTime = position;
+	}, [position]);
+
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-bg px-6 py-10">
 			<div className="flex w-full max-w-[640px] flex-col gap-6 rounded-panel border border-line bg-panel p-[26px]">
 				<div className="flex items-start justify-between gap-4">
-					<div className="flex flex-col gap-1">
-						<h2 className="text-[18px] font-semibold tracking-[-0.01em] text-text">{fileName}</h2>
-						<p className="text-[12.5px] text-text3">
-							{megabytes >= 1 ? `${megabytes.toFixed(0)} MB` : `${fileSizeBytes} bytes`} · this machine
-							is doing the work, not the cloud
-						</p>
+					<div className="flex items-center gap-3">
+						{!uploading && (
+							<video
+								ref={videoRef}
+								src={jobMediaUrl(jobId)}
+								muted
+								playsInline
+								preload="auto"
+								title="Follows along with the transcript below -- not a live playback, just the frame at that position."
+								className="h-[46px] w-[72px] shrink-0 rounded-control bg-black object-cover"
+							/>
+						)}
+						<div className="flex flex-col gap-1">
+							<h2 className="text-[18px] font-semibold tracking-[-0.01em] text-text">{fileName}</h2>
+							<p className="text-[12.5px] text-text3">
+								{megabytes >= 1 ? `${megabytes.toFixed(0)} MB` : `${fileSizeBytes} bytes`} · this machine
+								is doing the work, not the cloud
+							</p>
+						</div>
 					</div>
 					<div className="flex shrink-0 flex-col items-end">
 						<span className="font-mono text-[22px] text-accent">{formatClock(elapsedSeconds)}</span>
@@ -188,8 +198,10 @@ export function ProcessingScreen({
 				</div>
 
 				<p className="text-[11px] leading-[1.7] text-text3">
-					Roughly a fifth of the recording's length on a laptop. Keep this tab open — the work is
-					happening on your machine, not in the cloud.
+					Roughly a fifth of the recording's length on a laptop. Closing this tab won't stop it
+					{typeof Notification !== "undefined" && Notification.permission === "granted"
+						? " — you'll get a notification when it's ready."
+						: " — come back and this page will pick up where it left off."}
 				</p>
 			</div>
 		</div>

@@ -55,6 +55,8 @@ class Region:
 	layout: Literal["zoom", "split"]
 	person_ids: list[int]
 	source: Literal["suggested", "user"] = "suggested"
+	# Manual override from the editor's inspector; see framing.py's person_crop.
+	crop_nudge: tuple[float, float] = (0.0, 0.0)
 
 
 @dataclass
@@ -63,6 +65,7 @@ class RenderSegment:
 	end: float
 	layout: Layout
 	speaker_bboxes: list[tuple[int, BBox]]  # empty for "original"
+	crop_nudge: tuple[float, float] = (0.0, 0.0)
 
 
 def bust_shot_crop(
@@ -175,13 +178,15 @@ def build_render_segments(
 			continue
 
 		if region.layout == "split" and len(bboxes) >= 2:
-			segments.append(RenderSegment(start=b0, end=b1, layout="split", speaker_bboxes=bboxes))
+			segments.append(
+				RenderSegment(start=b0, end=b1, layout="split", speaker_bboxes=bboxes, crop_nudge=region.crop_nudge)
+			)
 			continue
 
 		# Either a close-up, or a "both on screen" with only one person
 		# findable -- close on whoever that is, rather than refusing.
 		segments.append(
-			RenderSegment(start=b0, end=b1, layout="zoom", speaker_bboxes=bboxes[:1])
+			RenderSegment(start=b0, end=b1, layout="zoom", speaker_bboxes=bboxes[:1], crop_nudge=region.crop_nudge)
 		)
 
 	return _merge_adjacent(segments)
@@ -205,10 +210,15 @@ def _merge_adjacent(segments: list[RenderSegment]) -> list[RenderSegment]:
 		if (
 			last.layout == seg.layout
 			and last.speaker_bboxes == seg.speaker_bboxes
+			and last.crop_nudge == seg.crop_nudge
 			and abs(last.end - seg.start) <= 1e-6
 		):
 			merged[-1] = RenderSegment(
-				start=last.start, end=seg.end, layout=last.layout, speaker_bboxes=last.speaker_bboxes
+				start=last.start,
+				end=seg.end,
+				layout=last.layout,
+				speaker_bboxes=last.speaker_bboxes,
+				crop_nudge=last.crop_nudge,
 			)
 		else:
 			merged.append(seg)
@@ -240,7 +250,7 @@ def _segment_filter(i: int, seg: RenderSegment, frame_w: int, frame_h: int) -> s
 
 	if seg.layout == "zoom" or len(seg.speaker_bboxes) == 1:
 		_, bbox = seg.speaker_bboxes[0]
-		crop = person_crop(bbox, frame_w, frame_h, frame_w, frame_h)
+		crop = person_crop(bbox, frame_w, frame_h, frame_w, frame_h, nudge=seg.crop_nudge)
 		parts = [f"{trim}[seg{i}]", _crop_scale(f"seg{i}", crop, frame_w, frame_h, f"v{i}", True)]
 		return ";".join(parts)
 
@@ -252,7 +262,7 @@ def _segment_filter(i: int, seg: RenderSegment, frame_w: int, frame_h: int) -> s
 		pane_w = frame_w // n
 		labels = []
 		for p, (_, bbox) in enumerate(seg.speaker_bboxes):
-			crop = person_crop(bbox, frame_w, frame_h, pane_w, frame_h)
+			crop = person_crop(bbox, frame_w, frame_h, pane_w, frame_h, nudge=seg.crop_nudge)
 			parts.append(_crop_scale(f"seg{i}p{p}", crop, pane_w, frame_h, f"pane{i}_{p}", True))
 			labels.append(f"[pane{i}_{p}]")
 		parts.append(f"{''.join(labels)}hstack=inputs={n}[stacked{i}]")
@@ -270,12 +280,12 @@ def _segment_filter(i: int, seg: RenderSegment, frame_w: int, frame_h: int) -> s
 		main_w = frame_w - side_w
 
 		_, main_bbox = seg.speaker_bboxes[0]
-		crop = person_crop(main_bbox, frame_w, frame_h, main_w, column_h)
+		crop = person_crop(main_bbox, frame_w, frame_h, main_w, column_h, nudge=seg.crop_nudge)
 		parts.append(_crop_scale(f"seg{i}p0", crop, main_w, column_h, f"main{i}", True))
 
 		labels = []
 		for p, (_, bbox) in enumerate(seg.speaker_bboxes[1:], start=1):
-			crop = person_crop(bbox, frame_w, frame_h, side_w, side_h)
+			crop = person_crop(bbox, frame_w, frame_h, side_w, side_h, nudge=seg.crop_nudge)
 			parts.append(_crop_scale(f"seg{i}p{p}", crop, side_w, side_h, f"side{i}_{p}", True))
 			labels.append(f"[side{i}_{p}]")
 		parts.append(f"{''.join(labels)}vstack=inputs={others}[sidecol{i}]")
