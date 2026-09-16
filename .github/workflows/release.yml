@@ -13,6 +13,12 @@ jobs:
     permissions:
       contents: write
     strategy:
+      # One platform at a time: electron-builder's GitHub publish looks for
+      # an existing draft release for the tag and adds its assets to it,
+      # rather than creating a new one, only if that draft already exists
+      # by the time it runs. Two platforms publishing in parallel raced this
+      # check and created two separate draft releases instead of one.
+      max-parallel: 1
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
