@@ -443,9 +443,10 @@ function Download() {
 					</Out>
 				</div>
 				<p className="mt-4 text-[13px] text-text3">
-					The Mac build isn't code-signed, so Gatekeeper will block it on first open -- right-click the app and
-					choose Open to run it anyway. ffmpeg is bundled; the app installs everything else it needs on first
-					launch.
+					The Mac build isn't notarized by Apple, so macOS will block it the first time you open it. Go to{" "}
+					<span className="text-text">System Settings → Privacy &amp; Security</span>, scroll to the bottom, and
+					click <span className="text-text">Open Anyway</span> next to Cutroom, then open the app again and
+					confirm. ffmpeg is bundled; the app installs everything else it needs on first launch.
 				</p>
 			</div>
 		</Section>
