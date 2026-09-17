@@ -665,6 +665,38 @@ the founder's call, to find testers and contributors early:
     fixes, confirmed to fail against the pre-fix code, not just pass
     against the post-fix one). 218 backend tests (was 177), 59 frontend
     (was 41).
+- **Edge-case shot rules, part 2, and v0.2.0, 2026-09-17.** Three more
+  EDGE_CASES.md items, each verified live in the browser (fixture mode),
+  not just by unit test:
+  - **Rule 7 (C1), done:** multi-person shots order panes by where people
+    actually sit (`orderBySeat` in `regions.ts`, from each person's median
+    keyframe centre-x), not by speaker or person id, so nobody swaps sides
+    between cuts.
+  - **Rule 8, done:** three framing styles -- Wide only (suggests nothing),
+    Gentle (the new default; close-ups need a 12s stretch, versus Dynamic's
+    4s), Dynamic (unchanged, now named). Switching style mid-edit
+    (`reconcileWithStyle`) never touches a shot the editor made, closing D2
+    the same day it was opened -- confirmed live: framing one line by hand
+    under Wide only, then switching to Dynamic, kept exactly that shot
+    while every other line picked up a fresh suggestion around it.
+  - **Rule 4 (A5), done:** a takeover -- B interrupts and keeps going, A
+    never comes back -- is one cut, on the new speaker's first word
+    (`takeoverAt` in `regions.ts`), not a flash through the both-on-screen
+    composite. Verified against a real case already in the fixture data (a
+    0.4s overlap at a genuine handoff), which is a takeover under Dynamic's
+    cutoff but not Gentle's higher one -- confirmed both ways live.
+  - EDGE_CASES.md's own Today lines updated for every case this touched,
+    including two (A4, A7, A9) marked "improved, not exactly as
+    prescribed" rather than done, and the one open item actually blocking
+    further work (C3, four or more people) called out explicitly.
+  - **v0.2.0.** Version bumped to mark this and the preceding bug-sweep
+    entry as one release -- a security fix (path traversal), the
+    app-data-location fix, and three new editing features is more than a
+    patch. `package.json`'s `dmg`/`nsis` `artifactName` fix from the bug
+    sweep is what makes this safe to tag: the download links don't need a
+    manual edit to keep working. No public users yet, so the old v0.1.1
+    release's assets going stale against the new links costs nothing --
+    see the bug-sweep entry above for that trade-off's origin.
 
 ---
 

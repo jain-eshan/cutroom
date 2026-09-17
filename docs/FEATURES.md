@@ -142,9 +142,11 @@ The timeline works like a video editor's, cut down to what a podcast needs:
   shots, Delete and Esc. The Shortcuts button lists them.
 
 Shipped: split at the playhead (`S`), waveforms on the speaker lanes and
-timeline thumbnails, stepping through the review flags (Tab/Shift+Tab), and
-a shot inspector with exact start/end times and a crop nudge. Not built yet:
-choosing exactly who's on screen beyond the automatic pairing. See
+timeline thumbnails, stepping through the review flags (Tab/Shift+Tab), a
+shot inspector with exact start/end times and a crop nudge, and a per-episode
+framing style (Wide only / Gentle / Dynamic) that governs how much automatic
+framing gets suggested -- switching it never touches a shot made by hand. Not
+built yet: choosing exactly who's on screen beyond the automatic pairing. See
 [STATUS.md](STATUS.md).
 
 *Implementation:* `src/features/timeline/EditorView.tsx`, `TimelineTray.tsx`,
