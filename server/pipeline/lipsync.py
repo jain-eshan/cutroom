@@ -10,8 +10,6 @@ worth doing (see fuse.py).
 Model is LR-ASD (MIT), AVA weights. See lrasd/NOTICE.md.
 """
 
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +18,7 @@ import numpy as np
 from scipy.fft import dct
 from scipy.io import wavfile
 
+from .download import download_once
 from .paths import DATA_DIR
 
 # Downloaded on first use, so it's written at runtime -- see paths.py.
@@ -76,27 +75,13 @@ def _ensure_weights(progress=None) -> Path:
 	arrangement as the SFace recognition model, including a real byte
 	fraction for `progress(label, fraction)` since this is a plain HTTP
 	download this project controls."""
-	if WEIGHTS.exists():
-		return WEIGHTS
-	MODELS_DIR.mkdir(parents=True, exist_ok=True)
-	tmp = WEIGHTS.with_suffix(".part")
-	label = "downloading the lip-sync model (first run only, ~3.3MB)"
-	print(f"[lipsync] {label} to {WEIGHTS} ...")
-
-	def reporthook(block_num: int, block_size: int, total_size: int) -> None:
-		if progress is not None and total_size > 0:
-			progress(label, min(1.0, block_num * block_size / total_size))
-
-	try:
-		urllib.request.urlretrieve(WEIGHTS_URL, tmp, reporthook=reporthook)
-		tmp.replace(WEIGHTS)
-	except (urllib.error.URLError, OSError) as err:
-		tmp.unlink(missing_ok=True)
-		raise RuntimeError(
-			f"Could not download the lip-sync model from {WEIGHTS_URL}. "
-			f"Download it manually and save it to {WEIGHTS}. Original error: {err}"
-		) from err
-	return WEIGHTS
+	return download_once(
+		WEIGHTS_URL,
+		WEIGHTS,
+		name="the lip-sync model",
+		label="downloading the lip-sync model (first run only, ~3.3MB)",
+		progress=progress,
+	)
 
 
 _model = None

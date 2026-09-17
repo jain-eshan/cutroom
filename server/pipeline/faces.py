@@ -1,10 +1,10 @@
-import urllib.request
 from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
 from sklearn.cluster import DBSCAN
 
+from .download import download_once
 from .paths import DATA_DIR, SERVER_DIR
 
 # Small enough to commit (232KB), so it ships inside the app bundle and is
@@ -77,27 +77,13 @@ def _ensure_recognition_model(progress=None) -> None:
 	controls), unlike the Whisper/pyannote model loads, where the same
 	honesty would mean guessing at a total.
 	"""
-	if RECOGNITION_MODEL.exists():
-		return
-	MODELS_DIR.mkdir(parents=True, exist_ok=True)
-	tmp = RECOGNITION_MODEL.with_suffix(".onnx.part")
-	label = "downloading the face recognition model (first run only, ~38MB)"
-	print(f"[faces] {label} to {RECOGNITION_MODEL} ...")
-
-	def reporthook(block_num: int, block_size: int, total_size: int) -> None:
-		if progress is not None and total_size > 0:
-			progress(label, min(1.0, block_num * block_size / total_size))
-
-	try:
-		urllib.request.urlretrieve(RECOGNITION_MODEL_URL, tmp, reporthook=reporthook)
-		tmp.replace(RECOGNITION_MODEL)
-		print("[faces] face recognition model ready.")
-	except Exception as err:
-		tmp.unlink(missing_ok=True)
-		raise RuntimeError(
-			f"Could not download the face recognition model from {RECOGNITION_MODEL_URL}. "
-			f"Download it manually and save it to {RECOGNITION_MODEL}. Original error: {err}"
-		) from err
+	download_once(
+		RECOGNITION_MODEL_URL,
+		RECOGNITION_MODEL,
+		name="the face recognition model",
+		label="downloading the face recognition model (first run only, ~38MB)",
+		progress=progress,
+	)
 
 
 def _iou(a: BBox, b: BBox) -> float:
