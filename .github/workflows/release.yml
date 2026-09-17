@@ -18,6 +18,19 @@ jobs:
       # rather than creating a new one, only if that draft already exists
       # by the time it runs. Two platforms publishing in parallel raced this
       # check and created two separate draft releases instead of one.
+      #
+      # max-parallel: 1 does NOT fully close this -- on the v0.2.0 tag, the
+      # two jobs still ran fully sequentially (confirmed from the Actions
+      # log) and still ended up as two separate draft releases both tagged
+      # v0.2.0, one holding the mac assets and the other the Windows ones.
+      # Root cause not found (electron-builder's GitHub publisher not
+      # reliably finding the other job's already-created draft, for reasons
+      # this comment can't yet explain). Until this is actually fixed:
+      # after tagging a release, check `gh api repos/OWNER/REPO/releases`
+      # for exactly one release per tag with all 8 expected assets
+      # (dmg/dmg.blockmap, mac zip/zip.blockmap, exe/exe.blockmap,
+      # latest.yml, latest-mac.yml) before publishing (undrafting) it --
+      # don't assume the workflow going green means the release is whole.
       max-parallel: 1
       matrix:
         include:

@@ -689,14 +689,36 @@ the founder's call, to find testers and contributors early:
     including two (A4, A7, A9) marked "improved, not exactly as
     prescribed" rather than done, and the one open item actually blocking
     further work (C3, four or more people) called out explicitly.
-  - **v0.2.0.** Version bumped to mark this and the preceding bug-sweep
-    entry as one release -- a security fix (path traversal), the
-    app-data-location fix, and three new editing features is more than a
-    patch. `package.json`'s `dmg`/`nsis` `artifactName` fix from the bug
-    sweep is what makes this safe to tag: the download links don't need a
-    manual edit to keep working. No public users yet, so the old v0.1.1
-    release's assets going stale against the new links costs nothing --
-    see the bug-sweep entry above for that trade-off's origin.
+  - **v0.2.0, tagged, published and live.** Version bumped to mark this and
+    the preceding bug-sweep entry as one release -- a security fix (path
+    traversal), the app-data-location fix, and three new editing features
+    is more than a patch. `package.json`'s `dmg`/`nsis` `artifactName` fix
+    from the bug sweep is what makes this safe to tag going forward: the
+    download links don't need a manual edit to keep working.
+    - **The release workflow's known duplicate-draft race (see
+      `release.yml`'s own comment) happened for real on this tag.** The mac
+      and Windows jobs, despite `max-parallel: 1` and running fully
+      sequentially, each created their own draft release for `v0.2.0`
+      instead of the second one finding and adding to the first's -- one
+      draft held the dmg/zip, the other the exe, and `gh release view`
+      only ever showed the one it resolved to, silently. Caught by
+      checking the actual asset list rather than trusting a green
+      workflow run. Fixed by hand: downloaded the orphaned draft's four
+      mac assets, verified them for real (mounted the dmg with `hdiutil
+      attach`, confirmed the shipped model file and the job-id validation
+      fix were actually inside it; `unzip -t` on the zip), uploaded them
+      into the surviving draft via the GitHub API, deleted the orphaned
+      release object without touching the underlying git tag, then
+      published. Root cause not found -- `release.yml` now carries a
+      checklist for the next tag rather than a false sense that
+      `max-parallel: 1` alone is sufficient.
+    - Published 2026-09-17: `gh release view v0.2.0` shows 8 assets,
+      `draft: false`, and both `releases/latest/download/Cutroom-arm64.dmg`
+      and `.../Cutroom-Setup.exe` return 200. The live site
+      (cutroom-ruddy.vercel.app, on the founder's own Vercel account, not
+      ISB-AAC -- auto-deploys from `main`) was confirmed serving the
+      current build with a working Download for Mac link pointed at
+      exactly that URL.
 
 ---
 
