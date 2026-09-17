@@ -365,6 +365,74 @@ the founder's call, to find testers and contributors early:
      mid-bugfix in another session); the plain-browser fallback path was
      confirmed unchanged by inspection, since it's byte-identical to the
      code before this change.
+   - **Renders to a folder, done 2026-09-17.** `/export` (`server/main.py`)
+     takes an optional `outputPath`; when it's set, the finished render is
+     moved there directly and the endpoint returns `{outputPath}` instead of
+     streaming the MP4 back as the response body -- the whole point being
+     that the video never has to pass through the renderer's memory as a
+     blob. The desktop app asks first, not after: `electron/main.mjs` adds a
+     native `dialog.showSaveDialog` and `shell.showItemInFolder`, wired
+     through `preload.mjs`'s `contextBridge` the same way the read-in-place
+     work above wired `webUtils.getPathForFile`. `PublishScreen.tsx` asks
+     `chooseExportPath` before the render starts (a 15-minute wait shouldn't
+     end in a cancelled save dialog), and the finished-state button is now
+     genuinely "Show me" on the desktop app -- the handoff's original
+     copy, reverted from "Save the MP4" now that there's a real folder to
+     reveal (see DESIGN_SYSTEM.md's "Known, deliberate deviations": that
+     line is now false only for the plain-browser fallback, which keeps the
+     download-blob path unchanged). A refusal before the render starts if
+     the chosen folder doesn't exist, same principle as the pre-flight
+     libass check just above it in this endpoint.
+     - Verified: `tsc`, `oxlint`, all 41 frontend tests, and 184 backend
+       tests (3 new -- a real render mocked at the `render_export` call and
+       moved to a chosen path, confirmed byte-identical at the destination
+       and returned as JSON not bytes; the folder-doesn't-exist refusal; and
+       that leaving `outputPath` out still streams a response exactly as
+       before) all pass. The plain-browser fallback was exercised live
+       against a real running instance -- reached Publish through the
+       fixture mode above, triggered a render, and confirmed the request
+       actually reaches `/export` with the right method and body (it then
+       fails on the same off-port CORS artifact every fixture-mode browser
+       check in this document has hit, not a defect in this change). Not
+       yet exercised inside a packaged Electron window, for the same reason
+       as the read-in-place work: the shared instance on this machine is
+       mid-bugfix in another session.
+   - **Real render progress, done 2026-09-17.** Pulled forward from "Then,
+     ordered by what the host test shows" below -- it needed no editorial
+     feedback to build, only ffmpeg's own `-progress` output, which
+     `render_export` (`server/pipeline/render.py`) now parses and reports
+     through an `on_progress` callback instead of the indeterminate pulsing
+     bar Publish showed before. A new `GET /export/progress/{job_id}`,
+     polled every 700ms alongside the still-open `/export` request, is a
+     side channel onto the same job id rather than a change to `/export`'s
+     own contract -- the render is still one synchronous request either way.
+     - `out_time_us` (confirmed against this project's own ffmpeg, 9.0.1 --
+       ffmpeg has shipped both an `out_time_ms` and an `out_time_us` field
+       with microsecond values across versions, so the unambiguous one was
+       used) divided by the segment-built duration, clamped to 1.0. The
+       parsing itself (`_progress_fraction`) is a small pure function,
+       unit-tested against canned lines copied from a real run -- automated
+       tests don't spawn ffmpeg at all (CI has none installed, same
+       constraint `render_export`'s own module docstring already noted for
+       the rest of this file), so the subprocess plumbing around it was
+       verified manually instead, the same way the rest of this module's
+       ffmpeg behaviour always has been.
+     - Manual verification: a real 6-second synthetic clip through the real
+       `render_export`, `on_progress` collected into a list -- reported,
+       monotonically non-decreasing, reached exactly 1.0, and the output
+       file played back correctly. Separately, pointing it at a missing
+       input file still raised `CalledProcessError` with a populated
+       `stderr`, unchanged from before this pass -- moving from
+       `subprocess.run` to `Popen` (needed to stream `-progress` output
+       while it's still running) didn't regress the existing error path
+       `/export` depends on for its "Render failed: ..." message.
+     - Verified: `tsc`, `oxlint`, all 52 frontend tests, and 193 backend
+       tests (9 new: 6 on `_progress_fraction`'s edge cases -- the real
+       `N/A` first line, other progress fields ignored, clamping past 1.0,
+       a zero duration -- and 3 on `/export/progress` itself, including one
+       that reads the progress store *during* a mocked render to confirm
+       `on_progress` really reaches somewhere pollable, not just that it's
+       called) all pass.
    - **Licence check, done 2026-09-15.** `pyannote` community-1 is CC-BY-4.0,
      and every file the pipeline loads (segmentation, embedding, PLDA, config)
      is in that one repo. The Hugging Face gate is an automatic form that asks
@@ -466,8 +534,8 @@ the founder's call, to find testers and contributors early:
   complaints. See [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) item 6b.
 - **The 3-pane cap**, decided with feedback from a real four-person show. See
   DESIGN_SYSTEM.md's open questions.
-- **Real render progress.** The desktop app removes the re-upload on export;
-  the render itself still reports nothing while it runs.
+- ~~**Real render progress.**~~ Done 2026-09-17 -- see "Where things stand"
+  above.
 - **Landing page, and renaming the repo to Cutroom**, once the app exists, so
   the download button is true.
 
