@@ -358,6 +358,18 @@ export function EditorView({
 	const [selectedTurn, setSelectedTurn] = useState<number | null>(null);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [playing, setPlaying] = useState(false);
+	// server/jobs/ has no eviction policy (see STATUS.md's Known
+	// limitations), so a saved episode's media can be gone by the time it's
+	// reopened. Without this, that's a black rectangle where the video
+	// should be and no indication anything is wrong.
+	//
+	// Tracks *which* url errored rather than a plain boolean, so a new
+	// videoUrl (a different episode) clears the error for free by no longer
+	// matching -- setting a plain boolean back to false would mean resetting
+	// it inside the effect below, which runs after render rather than during
+	// it and costs an extra render pass for no visible benefit.
+	const [erroredUrl, setErroredUrl] = useState<string | null>(null);
+	const mediaError = erroredUrl !== null && erroredUrl === videoUrl;
 	// Until the file's metadata loads, the last turn is the best length we
 	// have; the video's own duration is authoritative once it arrives.
 	const [duration, setDuration] = useState(() => Math.max(0, ...turns.map((t) => t.end)));
@@ -413,17 +425,20 @@ export function EditorView({
 		const onPlay = () => setPlaying(true);
 		const onPause = () => setPlaying(false);
 		const onRate = () => setRate(video.playbackRate);
+		const onError = () => setErroredUrl(videoUrl);
 		video.addEventListener("timeupdate", onTime);
 		video.addEventListener("loadedmetadata", onMeta);
 		video.addEventListener("play", onPlay);
 		video.addEventListener("pause", onPause);
 		video.addEventListener("ratechange", onRate);
+		video.addEventListener("error", onError);
 		return () => {
 			video.removeEventListener("timeupdate", onTime);
 			video.removeEventListener("loadedmetadata", onMeta);
 			video.removeEventListener("play", onPlay);
 			video.removeEventListener("pause", onPause);
 			video.removeEventListener("ratechange", onRate);
+			video.removeEventListener("error", onError);
 		};
 	}, [videoUrl]);
 
@@ -854,7 +869,16 @@ export function EditorView({
 							/>
 						)}
 
-						{videoUrl && framing.kind === "zoom" && (
+						{mediaError && (
+							<div className="absolute inset-0 flex items-center justify-center bg-black p-6 text-center">
+								<p className="max-w-[380px] text-[13px] leading-[1.6] text-white/80">
+									Couldn't load this recording. The file may have been moved, renamed, or deleted
+									since this episode was processed.
+								</p>
+							</div>
+						)}
+
+						{!mediaError && videoUrl && framing.kind === "zoom" && (
 							<div className="absolute inset-0">
 								<CroppedVideo
 									videoUrl={videoUrl}
@@ -869,7 +893,7 @@ export function EditorView({
 							</div>
 						)}
 
-						{videoUrl && framing.kind === "split" && (
+						{!mediaError && videoUrl && framing.kind === "split" && (
 							<div className="absolute inset-0">
 								{framing.subjects.length <= DUO_SPLIT_MAX ? (
 									<div className="flex h-full">

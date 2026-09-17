@@ -127,6 +127,14 @@ export function CastScreen({
 
 	const audioRef = useRef<HTMLVideoElement>(null);
 	const stopAt = useRef<number | null>(null);
+	// Same eviction risk as the editor's own video (server/jobs/ isn't kept
+	// forever) -- without this, clicking play just silently does nothing.
+	// Tracks *which* url errored, the same reason EditorView.tsx's mediaError
+	// does: a new videoUrl clears it for free by no longer matching, instead
+	// of resetting a plain boolean inside the effect (after render, for no
+	// visible benefit) every time this runs.
+	const [erroredUrl, setErroredUrl] = useState<string | null>(null);
+	const audioError = erroredUrl !== null && erroredUrl === videoUrl;
 
 	// Stop the sample at the end of the turn instead of playing on into the
 	// rest of the episode.
@@ -139,8 +147,16 @@ export function CastScreen({
 				setPlaying(false);
 			}
 		};
+		const onError = () => {
+			setErroredUrl(videoUrl);
+			setPlaying(false);
+		};
 		el.addEventListener("timeupdate", onTime);
-		return () => el.removeEventListener("timeupdate", onTime);
+		el.addEventListener("error", onError);
+		return () => {
+			el.removeEventListener("timeupdate", onTime);
+			el.removeEventListener("error", onError);
+		};
 	}, [videoUrl]);
 
 	const speakers = [...new Set(turns.map((t) => t.speaker))].sort((a, b) => a - b);
@@ -172,7 +188,7 @@ export function CastScreen({
 
 	function togglePlay() {
 		const el = audioRef.current;
-		if (!sample || !el) return;
+		if (!sample || !el || audioError) return;
 		if (playing) {
 			stop();
 			return;
@@ -239,15 +255,22 @@ export function CastScreen({
 							<button
 								type="button"
 								onClick={togglePlay}
-								className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent"
+								disabled={audioError}
+								className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent disabled:opacity-40"
 								aria-label={playing ? "Stop the clip" : "Play the clip"}
 							>
 								{playing ? "❚❚" : "▶"}
 							</button>
-							<Waveform heights={speechDensity(words, sample.start, sample.end)} />
-							<span className="font-mono text-[10px] text-text3">
-								{formatDuration(sample.end - sample.start)}
-							</span>
+							{audioError ? (
+								<span className="text-[12px] text-warn">Couldn't load the recording to play this clip.</span>
+							) : (
+								<>
+									<Waveform heights={speechDensity(words, sample.start, sample.end)} />
+									<span className="font-mono text-[10px] text-text3">
+										{formatDuration(sample.end - sample.start)}
+									</span>
+								</>
+							)}
 						</div>
 					</div>
 				)}

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { faceThumbnailUrl, jobMediaUrl, type JobProgress } from "@/lib/api";
 import { formatClock } from "@/lib/format";
 import { overallProgress, remainingLabel } from "@/features/upload/processingProgress";
@@ -80,19 +80,24 @@ export function ProcessingScreen({
 		if (!video) return;
 		if (Math.abs(video.currentTime - position) > 1) video.currentTime = position;
 	}, [position]);
+	// A decorative thumbnail, not something to explain a failure over in this
+	// little a space -- if the preview can't load, showing nothing is better
+	// than a broken-image glyph next to the file name.
+	const [previewFailed, setPreviewFailed] = useState(false);
 
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-bg px-6 py-10">
 			<div className="flex w-full max-w-[640px] flex-col gap-6 rounded-panel border border-line bg-panel p-[26px]">
 				<div className="flex items-start justify-between gap-4">
 					<div className="flex items-center gap-3">
-						{!uploading && (
+						{!uploading && !previewFailed && (
 							<video
 								ref={videoRef}
 								src={jobMediaUrl(jobId)}
 								muted
 								playsInline
 								preload="auto"
+								onError={() => setPreviewFailed(true)}
 								title="Follows along with the transcript below -- not a live playback, just the frame at that position."
 								className="h-[46px] w-[72px] shrink-0 rounded-control bg-black object-cover"
 							/>
