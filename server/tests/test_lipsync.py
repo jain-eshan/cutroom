@@ -2,6 +2,8 @@
 model enforces by crashing: exactly 4 audio feature rows per video frame in
 every window it scores."""
 
+import threading
+import time
 import urllib.request
 from pathlib import Path
 
@@ -102,3 +104,56 @@ class TestWeightsDownloadProgress:
 			lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not download when cached")),
 		)
 		_ensure_weights(progress=lambda label, fraction: (_ for _ in ()).throw(AssertionError("no download, no progress")))
+
+
+class TestConcurrentLoads:
+	def test_two_threads_racing_to_load_construct_the_model_only_once(self, monkeypatch, tmp_path):
+		# Same reasoning as transcribe.py's and diarize.py's equivalent tests:
+		# nothing limits concurrent jobs, so two jobs starting close together
+		# used to both see _model as None and both build the model at once.
+		monkeypatch.setattr(lipsync, "_model", None)
+		monkeypatch.setattr(lipsync, "_head", None)
+		weights = tmp_path / "weights.model"
+		weights.write_bytes(b"already here")  # exists -- no real download involved
+		monkeypatch.setattr(lipsync, "MODELS_DIR", tmp_path)
+		monkeypatch.setattr(lipsync, "WEIGHTS", weights)
+
+		construction_count = 0
+		start_barrier = threading.Barrier(2)
+		fake_state = {"lossAV.FC.weight": torch.zeros(2, 128), "lossAV.FC.bias": torch.zeros(2)}
+
+		def slow_torch_load(*a, **k):
+			nonlocal construction_count
+			construction_count += 1
+			time.sleep(0.05)
+			return fake_state
+
+		class FakeASDModel:
+			def load_state_dict(self, state, strict=True):
+				pass
+
+			def eval(self):
+				return self
+
+			def to(self, device):
+				return self
+
+		monkeypatch.setattr(torch, "load", slow_torch_load)
+		monkeypatch.setattr("pipeline.lrasd.ASD_Model", FakeASDModel)
+
+		def call():
+			start_barrier.wait(timeout=5)
+			return lipsync._load_model("cpu")
+
+		results = []
+		threads = [threading.Thread(target=lambda: results.append(call())) for _ in range(2)]
+		for t in threads:
+			t.start()
+		for t in threads:
+			t.join(timeout=5)
+
+		assert construction_count == 1
+		assert len(results) == 2
+		(model_a, head_a), (model_b, head_b) = results
+		assert model_a is model_b
+		assert head_a is head_b

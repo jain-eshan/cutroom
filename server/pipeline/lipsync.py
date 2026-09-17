@@ -10,6 +10,7 @@ worth doing (see fuse.py).
 Model is LR-ASD (MIT), AVA weights. See lrasd/NOTICE.md.
 """
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -86,30 +87,37 @@ def _ensure_weights(progress=None) -> Path:
 
 _model = None
 _head = None
+# Same reasoning as transcribe.py's _lock: nothing limits concurrent jobs, so
+# two jobs racing on a fresh install could both see _model as None and both
+# load and construct the model at once.
+_lock = threading.Lock()
 
 
 def _load_model(device: str, download_progress=None):
 	"""Weights only, and only the model classes are imported -- none of the
 	upstream repo's scripts are executed."""
 	global _model, _head
-	if _model is None:
-		import torch
+	if _model is not None:
+		return _model, _head
+	with _lock:
+		if _model is None:
+			import torch
 
-		from .lrasd import ASD_Model
+			from .lrasd import ASD_Model
 
-		state = torch.load(_ensure_weights(download_progress), weights_only=True, map_location="cpu")
-		model = ASD_Model()
-		model.load_state_dict(
-			{k[len("model.") :]: v for k, v in state.items() if k.startswith("model.")}, strict=True
-		)
-		# The speaking/not-speaking head lives outside ASD_Model in the training
-		# code, so it is rebuilt here from the same checkpoint.
-		head = torch.nn.Linear(128, 2)
-		head.load_state_dict({"weight": state["lossAV.FC.weight"], "bias": state["lossAV.FC.bias"]})
-		model.eval().to(device)
-		head.eval().to(device)
-		_model, _head = model, head
-	return _model, _head
+			state = torch.load(_ensure_weights(download_progress), weights_only=True, map_location="cpu")
+			model = ASD_Model()
+			model.load_state_dict(
+				{k[len("model.") :]: v for k, v in state.items() if k.startswith("model.")}, strict=True
+			)
+			# The speaking/not-speaking head lives outside ASD_Model in the
+			# training code, so it is rebuilt here from the same checkpoint.
+			head = torch.nn.Linear(128, 2)
+			head.load_state_dict({"weight": state["lossAV.FC.weight"], "bias": state["lossAV.FC.bias"]})
+			model.eval().to(device)
+			head.eval().to(device)
+			_model, _head = model, head
+		return _model, _head
 
 
 def mfcc(signal: np.ndarray, sample_rate: int = 16000, block_frames: int = 8192) -> np.ndarray:

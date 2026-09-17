@@ -6,6 +6,9 @@ the windows the renderer builds composites from, which is exactly the kind of
 logic that produces a plausible-but-wrong edit when it's subtly off.
 """
 
+import threading
+import time
+
 import pytest
 
 from pipeline.diarize import SpeakerSegment, overlap_windows
@@ -147,3 +150,46 @@ class TestPipelineLoadingAnnounced:
 
 		assert not called
 		assert result is diarize_module._pipeline
+
+
+class TestConcurrentLoads:
+	def test_two_threads_racing_to_load_construct_the_pipeline_only_once(self, monkeypatch):
+		# Same reasoning as transcribe.py's equivalent test: nothing limits
+		# concurrent jobs, so two jobs starting close together used to both
+		# see _pipeline as None and both load community-1 (several hundred
+		# MB) at once.
+		import pipeline.diarize as diarize_module
+		from pyannote.audio import Pipeline
+
+		monkeypatch.setattr(diarize_module, "_pipeline", None)
+		monkeypatch.setenv("HF_TOKEN", "hf_example")
+		monkeypatch.setattr(diarize_module, "_best_device", lambda: "cpu")
+
+		construction_count = 0
+		start_barrier = threading.Barrier(2)
+
+		class FakePipeline:
+			def to(self, device):
+				return self
+
+		def slow_from_pretrained(cls, *a, **k):
+			nonlocal construction_count
+			construction_count += 1
+			time.sleep(0.05)
+			return FakePipeline()
+
+		monkeypatch.setattr(Pipeline, "from_pretrained", classmethod(slow_from_pretrained))
+
+		def call():
+			start_barrier.wait(timeout=5)
+			return diarize_module._get_pipeline()
+
+		results = []
+		threads = [threading.Thread(target=lambda: results.append(call())) for _ in range(2)]
+		for t in threads:
+			t.start()
+		for t in threads:
+			t.join(timeout=5)
+
+		assert construction_count == 1
+		assert len(results) == 2 and results[0] is results[1]

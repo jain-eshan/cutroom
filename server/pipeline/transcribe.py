@@ -1,3 +1,4 @@
+import threading
 from dataclasses import dataclass
 
 from faster_whisper import WhisperModel
@@ -19,20 +20,30 @@ class TranscribedSegment:
 
 
 _model: WhisperModel | None = None
+# main.py runs transcription in a thread (asyncio.to_thread) and puts no
+# limit on how many jobs can run at once, so two jobs starting close
+# together could both see _model as None and both construct a WhisperModel
+# -- each one several hundred MB, loaded twice for no reason, and racing to
+# assign the module-level global last. Double-checked locking: the lock is
+# only ever taken on the (rare) first load, not on every transcription call.
+_lock = threading.Lock()
 
 
 def get_model(model_size: str = "small", on_loading=None) -> WhisperModel:
 	global _model
-	if _model is None:
-		# Whether this downloads (first run) or loads from an existing cache
-		# (every run after) isn't worth telling apart here: either way it's a
-		# real pause the "transcribing speech" stage can't otherwise explain,
-		# and this stays honest in both cases rather than guessing which one
-		# is happening.
-		if on_loading is not None:
-			on_loading("loading the speech model (downloads once, the first time)")
-		_model = WhisperModel(model_size, device="cpu", compute_type="int8")
-	return _model
+	if _model is not None:
+		return _model
+	with _lock:
+		if _model is None:
+			# Whether this downloads (first run) or loads from an existing
+			# cache (every run after) isn't worth telling apart here: either
+			# way it's a real pause the "transcribing speech" stage can't
+			# otherwise explain, and this stays honest in both cases rather
+			# than guessing which one is happening.
+			if on_loading is not None:
+				on_loading("loading the speech model (downloads once, the first time)")
+			_model = WhisperModel(model_size, device="cpu", compute_type="int8")
+		return _model
 
 
 def transcribe(

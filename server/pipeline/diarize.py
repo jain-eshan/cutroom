@@ -1,4 +1,5 @@
 import os
+import threading
 from dataclasses import dataclass
 
 import soundfile as sf
@@ -68,12 +69,17 @@ def diarization_configured() -> bool:
 
 
 _pipeline = None
+# Same reasoning as transcribe.py's _lock: nothing limits concurrent jobs, so
+# two jobs racing on a fresh install could both see _pipeline as None and
+# both load community-1 (several hundred MB) at once.
+_lock = threading.Lock()
 
 
 def forget_pipeline() -> None:
 	"""Drop the loaded model, so the next job loads it with the current token."""
 	global _pipeline
-	_pipeline = None
+	with _lock:
+		_pipeline = None
 
 
 def _best_device():
@@ -90,29 +96,32 @@ def _best_device():
 
 def _get_pipeline(on_loading=None):
 	global _pipeline
-	if _pipeline is None:
-		if not diarization_configured():
-			raise DiarizationUnavailable(MISSING_TOKEN_MESSAGE)
-		token = os.environ["HF_TOKEN"]
-		from pyannote.audio import Pipeline
+	if _pipeline is not None:
+		return _pipeline
+	if not diarization_configured():
+		raise DiarizationUnavailable(MISSING_TOKEN_MESSAGE)
+	with _lock:
+		if _pipeline is None:
+			token = os.environ["HF_TOKEN"]
+			from pyannote.audio import Pipeline
 
-		# community-1 is several hundred MB; whether this run downloads it or
-		# loads it from cache isn't distinguished here, same reasoning as
-		# transcribe.py's model load -- either way it's a real pause that
-		# needs a label, not a guess about which case this is.
-		if on_loading is not None:
-			on_loading("loading the diarisation model (downloads once, the first time)")
-		try:
-			pipeline = Pipeline.from_pretrained(DIARIZATION_MODEL, token=token)
-		except Exception as err:
-			raise DiarizationUnavailable(
-				f"Could not load {DIARIZATION_MODEL}: {err}. The licence at "
-				f"{DIARIZATION_SETUP_URL} has to be accepted by the account the token "
-				"belongs to."
-			) from err
-		pipeline.to(_best_device())
-		_pipeline = pipeline
-	return _pipeline
+			# community-1 is several hundred MB; whether this run downloads it
+			# or loads it from cache isn't distinguished here, same reasoning
+			# as transcribe.py's model load -- either way it's a real pause
+			# that needs a label, not a guess about which case this is.
+			if on_loading is not None:
+				on_loading("loading the diarisation model (downloads once, the first time)")
+			try:
+				pipeline = Pipeline.from_pretrained(DIARIZATION_MODEL, token=token)
+			except Exception as err:
+				raise DiarizationUnavailable(
+					f"Could not load {DIARIZATION_MODEL}: {err}. The licence at "
+					f"{DIARIZATION_SETUP_URL} has to be accepted by the account the token "
+					"belongs to."
+				) from err
+			pipeline.to(_best_device())
+			_pipeline = pipeline
+		return _pipeline
 
 
 def diarize(wav_path: str, on_loading=None) -> Diarization:
