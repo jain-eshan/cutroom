@@ -71,6 +71,7 @@
         "filter": [
           "main.py",
           "pipeline/**",
+          ".models/face_detection_yunet.onnx",
           "pyproject.toml",
           "uv.lock",
           ".python-version",

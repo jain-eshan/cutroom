@@ -35,6 +35,28 @@ const unpack = (p) => p.replace("app.asar", "app.asar.unpacked");
 process.env.FFMPEG_BINARY = app.isPackaged ? unpack(ffmpegPath) : ffmpegPath;
 process.env.FFPROBE_BINARY = app.isPackaged ? unpack(ffprobeStatic.path) : ffprobeStatic.path;
 
+// Everything the service writes -- saved episodes, the Hugging Face token,
+// downloaded model weights, the Python environment itself -- has to land
+// outside the app bundle. macOS replaces the bundle wholesale on update, so
+// anything in there is destroyed on every release, and an app that writes
+// inside its own bundle breaks the signature notarisation checks. Electron
+// already keeps its own data in exactly this directory.
+//
+// Dev is left alone: with these unset, server/pipeline/paths.py falls back to
+// server/ and uv to server/.venv, which is what `npm run dev` has always used.
+if (app.isPackaged) {
+	const dataDir = app.getPath("userData");
+	process.env.CUTROOM_DATA_DIR = dataDir;
+	// uv would otherwise build this at server/.venv -- ~1.2GB inside the
+	// bundle, rebuilt from scratch every time the app is replaced.
+	process.env.UV_PROJECT_ENVIRONMENT = path.join(dataDir, "venv");
+	// Python writes __pycache__ next to each source file, which for a packaged
+	// install means inside the bundle. Small, but it's still the app modifying
+	// its own signed contents -- redirect the whole tree instead of turning
+	// bytecode caching off and paying the recompile on every launch.
+	process.env.PYTHONPYCACHEPREFIX = path.join(dataDir, "pycache");
+}
+
 // Must match server/main.py's CORS allowlist (http://127.0.0.1:3460).
 const FRONTEND_PORT = 3460;
 

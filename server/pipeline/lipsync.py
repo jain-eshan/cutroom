@@ -20,7 +20,10 @@ import numpy as np
 from scipy.fft import dct
 from scipy.io import wavfile
 
-MODELS_DIR = Path(__file__).parent.parent / ".models"
+from .paths import DATA_DIR
+
+# Downloaded on first use, so it's written at runtime -- see paths.py.
+MODELS_DIR = DATA_DIR / ".models"
 WEIGHTS = MODELS_DIR / "lrasd_pretrain_AVA.model"
 WEIGHTS_URL = "https://raw.githubusercontent.com/Junhua-Liao/LR-ASD/main/weight/pretrain_AVA.model"
 

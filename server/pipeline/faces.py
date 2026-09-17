@@ -1,13 +1,19 @@
 import urllib.request
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import cv2
 import numpy as np
 from sklearn.cluster import DBSCAN
 
-MODELS_DIR = Path(__file__).parent.parent / ".models"
-DETECTION_MODEL = MODELS_DIR / "face_detection_yunet.onnx"
+from .paths import DATA_DIR, SERVER_DIR
+
+# Small enough to commit (232KB), so it ships inside the app bundle and is
+# only ever read -- see package.json's extraResources.
+DETECTION_MODEL = SERVER_DIR / ".models" / "face_detection_yunet.onnx"
+# Downloaded on first use rather than committed, so it's written at runtime
+# and belongs with the rest of this install's data, not in the bundle. See
+# paths.py for why that distinction matters.
+MODELS_DIR = DATA_DIR / ".models"
 RECOGNITION_MODEL = MODELS_DIR / "face_recognition_sface_2021dec.onnx"
 RECOGNITION_MODEL_URL = (
 	"https://github.com/opencv/opencv_zoo/raw/main/models/"

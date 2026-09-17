@@ -29,6 +29,7 @@ from pipeline.faces import BBox, detect_and_track_faces, get_video_dimensions, g
 from pipeline.fuse import fuse
 from pipeline import jobs
 from pipeline.lipsync import analyse
+from pipeline.paths import DATA_DIR
 from pipeline.progress import (
 	clear_render_progress,
 	face_thumbnail,
@@ -57,7 +58,10 @@ from pipeline.trim import dead_air_ranges, filler_word_ranges, merge_ranges, rem
 from pipeline.turns import build_turns
 from pipeline.waveform import compute_timeline_thumbnails, compute_waveform_peaks
 
-load_dotenv()
+# Explicit rather than dotenv's search-upward default: in a packaged install
+# the token is saved beside the rest of this install's data, not next to the
+# source. Same file as before in dev, where DATA_DIR is server/ itself.
+load_dotenv(DATA_DIR / ".env")
 
 app = FastAPI(title="Cutroom processing service")
 
@@ -236,15 +240,15 @@ async def setup_hf_token(token: str = Body(..., embed=True)) -> dict[str, bool]:
 
 	Checked with Hugging Face first -- including whether the account accepted
 	the model licence, which the /health presence check can't see -- and only
-	saved to server/.env once it can actually load the model. Applied to this
-	process immediately, so there's nothing to restart. The token is never
-	echoed back or logged.
+	saved to the data directory's .env once it can actually load the model.
+	Applied to this process immediately, so there's nothing to restart. The
+	token is never echoed back or logged.
 	"""
 	token = token.strip()
 	problem = token_format_problem(token) or await asyncio.to_thread(check_access, token)
 	if problem:
 		raise HTTPException(400, problem)
-	save_token(token, Path(__file__).parent / ".env")
+	save_token(token, DATA_DIR / ".env")
 	return {"ok": True}
 
 
@@ -668,7 +672,10 @@ def export_progress(job_id: str) -> dict[str, float]:
 
 
 def _log_decision(session_id: str, regions: list[dict]) -> None:
-	log_dir = Path(__file__).parent / "logs" / session_id
+	# Kept out of the job's own directory on purpose: deleting an episode
+	# shouldn't delete the record of what the editor changed about it, which
+	# is the only measure of where the automatic framing is wrong.
+	log_dir = DATA_DIR / "logs" / jobs.validate_job_id(session_id)
 	log_dir.mkdir(parents=True, exist_ok=True)
 	log_path = log_dir / "decisions.jsonl"
 	# `source` on each region is the whole point of keeping these: the
