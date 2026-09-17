@@ -47,3 +47,19 @@ export const LAYOUT_LABELS: Record<RegionLayout, string> = {
 };
 
 export const WIDE_LABEL = "Wide";
+
+/** How much automatic framing an episode gets (EDGE_CASES.md rule 8).
+ * `wideOnly` suggests nothing at all -- the whole episode stays wide, the
+ * same result as deleting every shot by hand; `gentle` (the default for a
+ * new episode) only cuts to a close-up for a stretch long enough to be a
+ * real contribution; `dynamic` is every shot rule at its normal sensitivity.
+ * Always about what gets *suggested* -- a manual "+ Close-up" or "+ Both on
+ * screen" works under any style, and changing style never touches a shot the
+ * editor made (`source: "user"`), only ones still marked `"suggested"`. */
+export type FramingStyle = "wideOnly" | "gentle" | "dynamic";
+
+export const FRAMING_STYLE_LABELS: Record<FramingStyle, string> = {
+	wideOnly: "Wide only",
+	gentle: "Gentle",
+	dynamic: "Dynamic",
+};

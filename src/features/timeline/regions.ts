@@ -5,7 +5,7 @@ import type { BBox, OverlapWindow, Person, Turn } from "@/lib/api";
 // its own, so this is the one import in the module graph that has to be
 // resolvable without Vite.
 import { bboxAtTime } from "../../lib/faceCrop.ts";
-import type { FramingRegion, RegionLayout } from "@/features/timeline/types";
+import type { FramingRegion, FramingStyle, RegionLayout } from "@/features/timeline/types";
 
 /** Shorter than this and a region is a flash rather than a shot, and the drag
  * handles have nothing left to grab. */
@@ -18,13 +18,22 @@ const JOIN_EPSILON_S = 0.05;
 /** A line said in a gap, with nobody else holding the floor, needs to be at
  * least this long to earn a shot of its own. Anything shorter is a "right" or
  * a one-word answer, and cutting to it costs two cuts to show half a second of
- * someone (EDGE_CASES.md A2, the case the founder reported).
+ * someone (EDGE_CASES.md A2, the case the founder reported). This is the
+ * `dynamic` style's threshold; `gentle` uses a higher one below.
  *
  * Product call, 2026-09-17, from a range of 3-5s. The 1.5s the document
  * originally proposed was judged too low. Not measured against a professional
  * edit yet, unlike framing.py's crop sizes -- see EDGE_CASES.md section 5 for
  * what measuring it would look like. */
 const MIN_LINE_FOR_SHOT_S = 4;
+
+/** `gentle`'s threshold: "close-ups only for longer stretches, and wide
+ * through quick exchanges" (EDGE_CASES.md rule 8). Roughly 3x dynamic's
+ * cutoff -- high enough that a normal back-and-forth exchange stays wide and
+ * only a genuinely substantial turn earns a close-up, without being so high
+ * that gentle just becomes wideOnly in practice. Product call, 2026-09-17,
+ * same caveat as MIN_LINE_FOR_SHOT_S: a starting point, not a measurement. */
+const GENTLE_MIN_LINE_FOR_SHOT_S = 12;
 
 /** Silence longer than this cuts to wide. Below it the shot simply holds until
  * whoever speaks next starts, instead of flashing wide in the hand-off gap
@@ -78,10 +87,10 @@ function floorHeldAcross(turns: Turn[], index: number): boolean {
  * then a line also has to say something -- four seconds of "yeah, yeah, right"
  * is still an acknowledgement.
  */
-function earnsItsOwnShot(turns: Turn[], index: number): boolean {
+function earnsItsOwnShot(turns: Turn[], index: number, minLineForShot: number): boolean {
 	const turn = turns[index];
 	if (floorHeldAcross(turns, index)) return false;
-	if (turn.end - turn.start < MIN_LINE_FOR_SHOT_S) return false;
+	if (turn.end - turn.start < minLineForShot) return false;
 	return !isAcknowledgementOnly(turn.text);
 }
 
@@ -210,7 +219,15 @@ export function suggestRegions(
 	overlapWindows: OverlapWindow[],
 	speakerToPerson: Record<number, number>,
 	people: Person[],
+	style: FramingStyle,
 ): FramingRegion[] {
+	// Rule 8: no automatic framing at all -- not even the both-on-screen
+	// composite for a genuine overlap. The same result as an editor deleting
+	// every suggested shot by hand; a manual "+ Close-up" or "+ Both on
+	// screen" still works, since this only ever governs what's *suggested*.
+	if (style === "wideOnly") return [];
+	const minLineForShot = style === "gentle" ? GENTLE_MIN_LINE_FOR_SHOT_S : MIN_LINE_FOR_SHOT_S;
+
 	const splits: FramingRegion[] = [];
 	for (const window of overlapWindows) {
 		const personIds = orderBySeat(
@@ -241,7 +258,7 @@ export function suggestRegions(
 	turns.forEach((turn, index) => {
 		const personId = speakerToPerson[turn.speaker];
 		if (personId === undefined) return; // nobody to close in on
-		if (!earnsItsOwnShot(turns, index)) return;
+		if (!earnsItsOwnShot(turns, index, minLineForShot)) return;
 		shots.push({ turn, personId, index });
 	});
 
@@ -264,6 +281,35 @@ export function suggestRegions(
 	});
 
 	return mergeTouching([...splits, ...closeUps]);
+}
+
+/**
+ * Re-suggests regions under a new style without touching what the editor
+ * made by hand (EDGE_CASES.md D2: "only shots marked suggested are
+ * replaced. Shots marked yours always survive.") -- what the framing-style
+ * control uses when the episode already has edits, as opposed to "Reset to
+ * suggested", which is a deliberate full reset the editor explicitly asks
+ * for and discards user shots on purpose.
+ *
+ * Same fold `addRegion` already uses for one region, generalised to every
+ * user region at once: start from a fresh suggestion, then punch each user
+ * region's hole into it and drop the region back in, so a user shot always
+ * wins wherever it sits.
+ */
+export function reconcileWithStyle(
+	regions: FramingRegion[],
+	turns: Turn[],
+	overlapWindows: OverlapWindow[],
+	speakerToPerson: Record<number, number>,
+	people: Person[],
+	style: FramingStyle,
+): FramingRegion[] {
+	const userRegions = regions.filter((r) => r.source === "user");
+	let result = suggestRegions(turns, overlapWindows, speakerToPerson, people, style);
+	for (const userRegion of userRegions) {
+		result = [...result.flatMap((existing) => subtract(existing, [userRegion])), userRegion];
+	}
+	return result.sort((a, b) => a.start - b.start);
 }
 
 export interface Subject {

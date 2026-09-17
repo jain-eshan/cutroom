@@ -5,7 +5,7 @@ import { PublishScreen } from "@/features/publish/PublishScreen";
 import { SetupGate } from "@/features/setup/SetupGate";
 import { EditorView } from "@/features/timeline/EditorView";
 import { suggestRegions } from "@/features/timeline/regions";
-import type { FramingRegion } from "@/features/timeline/types";
+import type { FramingRegion, FramingStyle } from "@/features/timeline/types";
 import { ProcessingFailed } from "@/features/upload/ProcessingFailed";
 import { ProcessingScreen } from "@/features/upload/ProcessingScreen";
 import { UploadScreen } from "@/features/upload/UploadScreen";
@@ -155,9 +155,20 @@ function App() {
 	const [health, setHealth] = useState<Health | null>(null);
 	// Edit decisions live here rather than in the editor, so going to the
 	// publish screen and back doesn't throw them away.
+	// Gentle by default (product call, 2026-09-15): fewer automatic cuts is a
+	// safer first impression than Dynamic's full sensitivity, and switching
+	// later never costs an edit the editor already made -- see
+	// reconcileWithStyle in regions.ts.
+	const [framingStyle, setFramingStyle] = useState<FramingStyle>("gentle");
 	const [regions, setRegions] = useState<FramingRegion[]>(() =>
 		isFixtureMode()
-			? suggestRegions(fixtureData.turns, fixtureData.overlapWindows, fixtureCast.speakerToPerson, fixtureData.faces.people)
+			? suggestRegions(
+					fixtureData.turns,
+					fixtureData.overlapWindows,
+					fixtureCast.speakerToPerson,
+					fixtureData.faces.people,
+					"gentle",
+				)
 			: [],
 	);
 	const [captions, setCaptions] = useState(false);
@@ -420,7 +431,13 @@ function App() {
 				words={status.words}
 				match={status.match}
 				onComplete={(cast) => {
-					setRegions(suggestRegions(status.turns, status.overlapWindows, cast.speakerToPerson, status.faces.people));
+					// Gentle every time a cast is (re)confirmed, same reasoning as
+					// trimDeadAir resetting below -- a fresh episode starts from the
+					// same safe default, not whatever the previous one ended on.
+					setFramingStyle("gentle");
+					setRegions(
+						suggestRegions(status.turns, status.overlapWindows, cast.speakerToPerson, status.faces.people, "gentle"),
+					);
 					// On when this install can burn captions in; never requested when it
 					// can't, since /export would refuse the whole job.
 					setCaptions(health?.captions ?? false);
@@ -459,6 +476,8 @@ function App() {
 				captionsEnabled={captions}
 				trimDeadAirEnabled={trimDeadAir}
 				onTrimDeadAirChange={setTrimDeadAir}
+				framingStyle={framingStyle}
+				onFramingStyleChange={setFramingStyle}
 				onPublish={(duration) => setStatus({ ...status, state: "publishing", duration })}
 				themeMode={themeMode}
 				onThemeModeChange={setThemeMode}

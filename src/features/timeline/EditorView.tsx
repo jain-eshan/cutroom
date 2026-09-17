@@ -3,12 +3,19 @@ import { getProgress, getWaveform, timelineThumbnailUrl, type BBox, type DetectF
 import type { CastResult } from "@/features/faces/CastScreen";
 import { personCrop } from "@/lib/faceCrop";
 import { TimelineTray } from "@/features/timeline/TimelineTray";
-import { LAYOUT_LABELS, MAX_CROP_NUDGE, type FramingRegion } from "@/features/timeline/types";
+import {
+	FRAMING_STYLE_LABELS,
+	LAYOUT_LABELS,
+	MAX_CROP_NUDGE,
+	type FramingRegion,
+	type FramingStyle,
+} from "@/features/timeline/types";
 import {
 	MIN_REGION_S,
 	addRegion,
 	orderBySeat,
 	otherSpeakerNear,
+	reconcileWithStyle,
 	regionAt,
 	resizeRegion,
 	resolveFraming,
@@ -337,6 +344,8 @@ export function EditorView({
 	captionsEnabled,
 	trimDeadAirEnabled,
 	onTrimDeadAirChange,
+	framingStyle,
+	onFramingStyleChange,
 	onPublish,
 	themeMode,
 	onThemeModeChange,
@@ -364,6 +373,10 @@ export function EditorView({
 	captionsEnabled: boolean;
 	trimDeadAirEnabled: boolean;
 	onTrimDeadAirChange: (enabled: boolean) => void;
+	/** Owned by App, same reasoning as regions: survives a trip to the
+	 * publish screen, and resets to the default on a fresh cast confirm. */
+	framingStyle: FramingStyle;
+	onFramingStyleChange: (style: FramingStyle) => void;
 	onPublish: (duration: number) => void;
 	themeMode: ThemeMode;
 	onThemeModeChange: (mode: ThemeMode) => void;
@@ -373,9 +386,18 @@ export function EditorView({
 	const [stageRef, stageSize] = useElementSize();
 
 	const suggested = useMemo(
-		() => suggestRegions(turns, overlapWindows, cast.speakerToPerson, faces.people),
-		[turns, overlapWindows, cast.speakerToPerson, faces.people],
+		() => suggestRegions(turns, overlapWindows, cast.speakerToPerson, faces.people, framingStyle),
+		[turns, overlapWindows, cast.speakerToPerson, faces.people, framingStyle],
 	);
+
+	// The style control's own change handler: unlike "Reset to suggested"
+	// (a deliberate full reset the editor explicitly asks for), switching
+	// style should never discard a shot the editor made -- see
+	// reconcileWithStyle's own comment for why this isn't just `edit(suggested)`.
+	function changeFramingStyle(style: FramingStyle) {
+		onFramingStyleChange(style);
+		edit(reconcileWithStyle(regions, turns, overlapWindows, cast.speakerToPerson, faces.people, style));
+	}
 	// Lines worth a second look: no face to frame, or talking over someone
 	// else. The transcript already marks these; this is the same test, kept
 	// as start times so the playhead can step between them in order.
@@ -1187,6 +1209,23 @@ export function EditorView({
 						)}
 					</div>
 					<div className="flex items-center gap-3">
+						<label
+							className="flex items-center gap-2 text-[12px] text-text2"
+							title="How much automatic framing this episode gets. Wide only suggests nothing; Gentle cuts only for longer stretches; Dynamic uses every rule. A manual + Close-up or + Both on screen always works, and switching never touches a shot you made."
+						>
+							Framing
+							<select
+								value={framingStyle}
+								onChange={(e) => changeFramingStyle(e.target.value as FramingStyle)}
+								className="rounded-control border border-line bg-control px-1.5 py-1 text-[12px] text-text2"
+							>
+								{(Object.keys(FRAMING_STYLE_LABELS) as FramingStyle[]).map((style) => (
+									<option key={style} value={style}>
+										{FRAMING_STYLE_LABELS[style]}
+									</option>
+								))}
+							</select>
+						</label>
 						<label
 							className="flex items-center gap-2 text-[12px] text-text2"
 							title="Cuts long pauses down to a short beat and removes standalone filler words (um, uh). Conservative on purpose -- see docs/FEATURES.md."

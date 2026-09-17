@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addRegion, orderBySeat, regionAt, resizeRegion, splitRegion, suggestRegions, wideGaps } from "./regions.ts";
+import {
+	addRegion,
+	orderBySeat,
+	reconcileWithStyle,
+	regionAt,
+	resizeRegion,
+	splitRegion,
+	suggestRegions,
+	wideGaps,
+} from "./regions.ts";
 import type { FramingRegion } from "./types.ts";
 import type { Person, Turn } from "../../lib/api.ts";
 
@@ -122,7 +131,7 @@ test("a one-word interjection doesn't take the shot from whoever is holding fort
 		turn(2, 20.3, 20.9, "right"),
 		turn(0, 21, 40),
 	];
-	const regions = suggestRegions(turns, [], CAST, PEOPLE);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
 	assert.equal(regions.length, 1, "one held shot, not three shots and two wide flashes");
 	assert.deepEqual(regions[0].personIds, [10]);
 	assert.deepEqual([regions[0].start, regions[0].end], [0, 40]);
@@ -131,7 +140,7 @@ test("a one-word interjection doesn't take the shot from whoever is holding fort
 test("a hand-off between speakers doesn't flash wide in the gap", () => {
 	// EDGE_CASES.md A11: any gap used to render wide, even a 0.5s one.
 	const turns = [turn(0, 0, 20), turn(1, 20.5, 40)];
-	const regions = suggestRegions(turns, [], CAST, PEOPLE);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
 	assert.equal(regions.length, 2);
 	assert.equal(regions[0].end, regions[1].start, "the outgoing shot holds until the next one starts");
 	assert.equal(wideGaps(regions, 40).length, 0);
@@ -140,7 +149,7 @@ test("a hand-off between speakers doesn't flash wide in the gap", () => {
 test("a real silence still goes wide", () => {
 	// Rule 6 only holds through hand-offs, not through someone leaving the room.
 	const turns = [turn(0, 0, 20), turn(1, 30, 50)];
-	const regions = suggestRegions(turns, [], CAST, PEOPLE);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
 	assert.deepEqual(
 		wideGaps(regions, 50).map((g) => [g.start, g.end]),
 		[[20, 30]],
@@ -150,7 +159,7 @@ test("a real silence still goes wide", () => {
 test("a short line in a clean gap doesn't earn a shot", () => {
 	// Nobody holds the floor across it, so length decides: under the cutoff.
 	const turns = [turn(0, 0, 20), turn(1, 21, 22.5, "I agree with that"), turn(2, 30, 50)];
-	const regions = suggestRegions(turns, [], CAST, PEOPLE);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
 	assert.ok(
 		regions.every((r) => !r.personIds.includes(11)),
 		"the 1.5s line gets no shot of its own",
@@ -159,7 +168,7 @@ test("a short line in a clean gap doesn't earn a shot", () => {
 
 test("a line long enough to say something does earn a shot", () => {
 	const turns = [turn(0, 0, 20), turn(1, 21, 30), turn(2, 40, 60)];
-	const regions = suggestRegions(turns, [], CAST, PEOPLE);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
 	assert.ok(regions.some((r) => r.personIds.includes(11)));
 });
 
@@ -167,7 +176,7 @@ test("a long line still loses the shot if the other speaker was holding the floo
 	// The product call: the floor comes first, length second. B talks for 6s,
 	// but A was already going and then runs for another 30.
 	const turns = [turn(0, 0, 20), turn(1, 20.5, 26.5), turn(0, 27, 57)];
-	const regions = suggestRegions(turns, [], CAST, PEOPLE);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
 	assert.equal(regions.length, 1);
 	assert.deepEqual(regions[0].personIds, [10]);
 });
@@ -176,27 +185,27 @@ test("the floor changes hands when the interruption outlasts the resumption", ()
 	// Same shape, but B talks for 30s and A only manages 3 afterwards -- B took
 	// the floor, so B gets the shot.
 	const turns = [turn(0, 0, 20), turn(1, 20.5, 50.5), turn(0, 51, 54)];
-	const regions = suggestRegions(turns, [], CAST, PEOPLE);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
 	assert.ok(regions.some((r) => r.personIds.includes(11)));
 });
 
 test("a line that is only acknowledgement earns no shot however long it runs", () => {
 	const turns = [turn(0, 0, 20), turn(1, 25, 35, "yeah yeah right okay"), turn(2, 40, 60)];
-	const regions = suggestRegions(turns, [], CAST, PEOPLE);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
 	assert.ok(regions.every((r) => !r.personIds.includes(11)));
 });
 
 test("a short answer that means something is not treated as acknowledgement", () => {
 	// "No." is a real answer -- the document makes this exact point.
 	const turns = [turn(0, 0, 20), turn(1, 25, 35, "No."), turn(2, 40, 60)];
-	const regions = suggestRegions(turns, [], CAST, PEOPLE);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
 	assert.ok(regions.some((r) => r.personIds.includes(11)));
 });
 
 test("talking over each other still wins over a held shot", () => {
 	const turns = [turn(0, 0, 20), turn(1, 20.5, 40)];
 	const overlaps = [{ start: 19, end: 21, speakers: [0, 1] }];
-	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE);
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
 	const split = regions.find((r) => r.layout === "split");
 	assert.ok(split, "the overlap window is still a both-on-screen shot");
 	assert.deepEqual([split.start, split.end], [19, 21]);
@@ -224,7 +233,7 @@ test("a both-on-screen shot orders its panes left to right by seat, regardless o
 	// the left pane. 10 sits left of 11, so 10 has to lead regardless.
 	const turns = [turn(0, 0, 20), turn(1, 19, 40)];
 	const overlaps = [{ start: 19, end: 21, speakers: [1, 0] }];
-	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE);
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
 	const split = regions.find((r) => r.layout === "split");
 	assert.ok(split);
 	assert.deepEqual(split.personIds, [10, 11], "10 sits left of 11, so 10 leads despite being listed second");
@@ -240,10 +249,63 @@ test("the founder's case: four cuts around one word become none", () => {
 		turn(1, 57, 60),
 		turn(1, 62.5, 70),
 	];
-	const regions = suggestRegions(turns, [], CAST, PEOPLE);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
 	// A holds 0-40, then B from 40.5 to the end: two shots, one cut.
 	assert.equal(regions.length, 2);
 	assert.deepEqual(regions[0].personIds, [10]);
 	assert.deepEqual(regions[1].personIds, [11]);
 	assert.equal(wideGaps(regions, 70).length, 0, "no wide flashes anywhere");
+});
+
+// --- Rule 8: framing styles (EDGE_CASES.md rule 8, C5, D2) ----------------
+
+test("wideOnly suggests nothing at all, not even a both-on-screen composite", () => {
+	const turns = [turn(0, 0, 20), turn(1, 20.5, 60)];
+	const overlaps = [{ start: 19, end: 30, speakers: [0, 1] }]; // would easily earn a split otherwise
+	assert.deepEqual(suggestRegions(turns, overlaps, CAST, PEOPLE, "wideOnly"), []);
+});
+
+test("gentle needs a longer stretch than dynamic before a line earns its own shot", () => {
+	// 8 seconds: below dynamic's 4s cutoff? No -- above it, so dynamic cuts to
+	// it. Below gentle's 12s cutoff, so gentle leaves it wide.
+	const turns = [turn(0, 0, 20), turn(1, 21, 29), turn(2, 40, 60)];
+	const dynamic = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
+	const gentle = suggestRegions(turns, [], CAST, PEOPLE, "gentle");
+	assert.ok(dynamic.some((r) => r.personIds.includes(11)), "dynamic cuts to an 8s line");
+	assert.ok(!gentle.some((r) => r.personIds.includes(11)), "gentle stays wide through the same 8s line");
+});
+
+test("gentle still cuts to a genuinely long stretch", () => {
+	const turns = [turn(0, 0, 20), turn(1, 21, 40), turn(2, 50, 70)];
+	const gentle = suggestRegions(turns, [], CAST, PEOPLE, "gentle");
+	assert.ok(gentle.some((r) => r.personIds.includes(11)), "19s is well past gentle's cutoff too");
+});
+
+test("reconcileWithStyle keeps a shot the editor made and only replaces suggested ones around it", () => {
+	const turns = [turn(0, 0, 20), turn(1, 21, 40), turn(2, 50, 70)];
+	const dynamic = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
+	// The editor manually reframes the middle of B's shot onto C instead.
+	const withUserEdit = addRegion(dynamic, 25, 30, "zoom", [12]);
+	const userShot = withUserEdit.find((r) => r.source === "user");
+	assert.ok(userShot);
+
+	const reconciled = reconcileWithStyle(withUserEdit, turns, [], CAST, PEOPLE, "wideOnly");
+	// wideOnly suggests nothing, so every *suggested* shot is gone --
+	assert.ok(reconciled.every((r) => r.source !== "suggested"));
+	// -- but the editor's own shot survives untouched, exactly where it was.
+	assert.deepEqual(
+		reconciled.find((r) => r.id === userShot.id),
+		userShot,
+	);
+});
+
+test("reset to suggested (a full edit(suggested)) is deliberately different from reconcileWithStyle: it does discard user shots", () => {
+	// Documents the distinction the two exist for -- not a bug if this ever
+	// looks like it "should" preserve user edits too. "Reset to suggested" in
+	// EditorView.tsx calls suggestRegions directly for exactly this reason.
+	const turns = [turn(0, 0, 20), turn(1, 21, 40)];
+	const dynamic = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
+	const withUserEdit = addRegion(dynamic, 5, 10, "zoom", [11]);
+	assert.ok(withUserEdit.some((r) => r.source === "user"));
+	assert.ok(suggestRegions(turns, [], CAST, PEOPLE, "dynamic").every((r) => r.source === "suggested"));
 });
