@@ -30,11 +30,14 @@ from pipeline.fuse import fuse
 from pipeline import jobs
 from pipeline.lipsync import analyse
 from pipeline.progress import (
+	clear_render_progress,
 	face_thumbnail,
+	render_progress,
 	report,
 	report_error,
 	report_line,
 	report_people,
+	report_render_progress,
 	report_timeline_thumbnails,
 	report_waveform,
 	snapshot,
@@ -607,9 +610,24 @@ async def export_endpoint(
 			write_ass(cues, ass_path, frame_w, frame_h)
 
 		output_path = Path(tmp) / "export.mp4"
-		await asyncio.to_thread(
-			render_export, input_path, output_path, segments, frame_w, frame_h, duration, ass_path=ass_path
-		)
+		try:
+			await asyncio.to_thread(
+				render_export,
+				input_path,
+				output_path,
+				segments,
+				frame_w,
+				frame_h,
+				duration,
+				ass_path=ass_path,
+				on_progress=lambda f: report_render_progress(jobId, f),
+			)
+		finally:
+			# Whether it finished or failed -- either way there's nothing left
+			# to poll for. GET /export/progress reports 0 for a job it's never
+			# heard of, so a request that lands right after this is a no-op,
+			# not an error.
+			clear_render_progress(jobId)
 	except subprocess.CalledProcessError as err:
 		shutil.rmtree(tmp, ignore_errors=True)
 		stderr_tail = (err.stderr or b"").decode(errors="replace")[-2000:]
@@ -637,6 +655,16 @@ async def export_endpoint(
 		filename=output_name,
 		background=BackgroundTask(shutil.rmtree, tmp, ignore_errors=True),
 	)
+
+
+@app.get("/export/progress/{job_id}")
+def export_progress(job_id: str) -> dict[str, float]:
+	"""Polled alongside the still-open `/export` request above -- real
+	progress parsed from ffmpeg's own output (see render_export), not a
+	guess from elapsed time. 0 both before a render has started and after
+	it's finished; the caller already knows which from its own `/export`
+	promise, so there's nothing to disambiguate here."""
+	return {"fraction": render_progress(job_id)}
 
 
 def _log_decision(session_id: str, regions: list[dict]) -> None:

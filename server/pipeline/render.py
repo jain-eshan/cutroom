@@ -1,4 +1,6 @@
 import subprocess
+import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -401,6 +403,21 @@ def _escape_filter_path(path: Path) -> str:
 	return f"'{escaped}'"
 
 
+def _progress_fraction(line: str, duration: float) -> float | None:
+	"""One line of ffmpeg's `-progress pipe:1` output, or `None` if it isn't
+	a time update (most lines are frame counts, bitrate, speed -- one line
+	per block is `out_time_us=`) or ffmpeg hasn't measured any yet (`N/A`,
+	always the first line of the first block). `out_time_us` despite the
+	name really is microseconds, confirmed against this project's own
+	ffmpeg (9.0.1) -- ffmpeg has shipped both `out_time_ms` fields with
+	microsecond values across versions, so this is read from the
+	unambiguously-named one."""
+	key, _, value = line.strip().partition("=")
+	if key != "out_time_us" or not value.isdigit() or duration <= 0:
+		return None
+	return min(1.0, int(value) / (duration * 1_000_000))
+
+
 def render_export(
 	input_path: Path,
 	output_path: Path,
@@ -409,6 +426,7 @@ def render_export(
 	frame_h: int,
 	duration: float,
 	ass_path: Path | None = None,
+	on_progress: Callable[[float], None] | None = None,
 ) -> None:
 	"""One ffmpeg invocation, one filter_complex graph: each segment gets its
 	own trim+crop+scale filter chain, all segments concat back into a single
@@ -425,7 +443,14 @@ def render_export(
 	of loss for it). When `segments` has gaps (pipeline/trim.py cut something),
 	the audio needs the exact same cuts or it drifts out of sync with the
 	video almost immediately -- so it gets its own trim+concat filter chain
-	mirroring the video one, which forces a real re-encode."""
+	mirroring the video one, which forces a real re-encode.
+
+	Reports real progress through `on_progress`, when given, parsed from
+	ffmpeg's own `-progress` output rather than guessed from elapsed time --
+	see `_progress_fraction`. Verified manually against this project's
+	ffmpeg on a real encode, the same way the rest of this module's
+	subprocess behaviour is (see docs/TECHNICAL_ARCHITECTURE.md §8):
+	automated tests don't spawn ffmpeg (CI has none installed)."""
 	filter_parts = [_segment_filter(i, seg, frame_w, frame_h) for i, seg in enumerate(segments)]
 	concat_inputs = "".join(f"[v{i}]" for i in range(len(segments)))
 	concat_label = "vconcat" if ass_path is not None else "vout"
@@ -458,5 +483,24 @@ def render_export(
 		cmd += ["-map", "[aout]", "-c:a", "aac", "-b:a", AUDIO_BITRATE]
 	else:
 		cmd += ["-map", "0:a?", *_audio_args(input_path)]
-	cmd += ["-movflags", "+faststart", str(output_path)]
-	subprocess.run(cmd, check=True, capture_output=True)
+	# -nostats silences the human-readable progress line ffmpeg would
+	# otherwise also write to stderr -- -progress pipe:1 is the only progress
+	# reporting wanted, and it goes to stdout so it can't be confused with
+	# the real error output on stderr that a failure needs.
+	cmd += ["-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(output_path)]
+
+	# stderr goes to a real file, not a pipe: a pipe's OS buffer is small
+	# (~64KB) and nothing here drains it concurrently with stdout, so a
+	# verbose ffmpeg run (warnings, an unusual codec) could fill it and
+	# deadlock the subprocess. A file has no such limit.
+	with tempfile.TemporaryFile() as stderr_capture:
+		proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=stderr_capture, text=True, bufsize=1)
+		assert proc.stdout is not None
+		for line in proc.stdout:
+			fraction = _progress_fraction(line, duration)
+			if fraction is not None and on_progress is not None:
+				on_progress(fraction)
+		proc.wait()
+		if proc.returncode != 0:
+			stderr_capture.seek(0)
+			raise subprocess.CalledProcessError(proc.returncode, cmd, stderr=stderr_capture.read())

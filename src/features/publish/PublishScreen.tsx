@@ -1,12 +1,22 @@
 import { useEffect, useState } from "react";
-import { exportVideo, exportVideoToPath, type DetectFacesResponse, type Health, type Turn, type Word } from "@/lib/api";
+import {
+	exportVideo,
+	exportVideoToPath,
+	getRenderProgress,
+	type DetectFacesResponse,
+	type Health,
+	type Turn,
+	type Word,
+} from "@/lib/api";
 import { chooseExportPath, hasElectronBridge, showItemInFolder } from "@/lib/electron";
 import { formatDuration } from "@/lib/format";
 import type { FramingRegion } from "@/features/timeline/types";
 
 type RenderState =
 	| { status: "idle" }
-	| { status: "rendering" }
+	// Real progress, parsed by the service from ffmpeg's own output -- 0
+	// until the first update arrives, same as the pipeline's own stages.
+	| { status: "rendering"; fraction: number }
 	// The desktop app writes straight to `outputPath` and never holds the
 	// render in memory; a plain browser has nothing but the downloaded blob.
 	| { status: "done"; filename: string; save: { kind: "download"; url: string } | { kind: "path"; outputPath: string } }
@@ -166,7 +176,15 @@ export function PublishScreen({
 			if (outputPath === null) return; // the user cancelled the save dialog
 		}
 
-		setRender({ status: "rendering" });
+		setRender({ status: "rendering", fraction: 0 });
+		// Polled independently of the request below, which stays open for the
+		// whole render and carries no progress of its own -- this is a side
+		// channel onto the same job id, not part of that request/response.
+		const pollId = setInterval(() => {
+			void getRenderProgress(sessionId)
+				.then(({ fraction }) => setRender((r) => (r.status === "rendering" ? { status: "rendering", fraction } : r)))
+				.catch(() => {}); // transient -- the next tick retries
+		}, 700);
 		try {
 			const regionArgs = regions.map((r) => ({
 				start: r.start,
@@ -189,6 +207,8 @@ export function PublishScreen({
 				status: "error",
 				message: err instanceof Error ? err.message : "The render failed for an unknown reason.",
 			});
+		} finally {
+			clearInterval(pollId);
 		}
 	}
 
@@ -323,10 +343,14 @@ export function PublishScreen({
 
 					{render.status === "rendering" && (
 						<div className="flex flex-col gap-3">
-							{/* Indeterminate on purpose: /export reports no progress, and a
-							    bar at a made-up percentage would be a lie with a colour. */}
+							{/* Real progress, parsed by the service from ffmpeg's own output
+							    -- see getRenderProgress. Sits at 0% until the encode itself
+							    starts, which is honest: nothing has rendered yet. */}
 							<div className="h-[5px] w-full overflow-hidden rounded-full bg-track">
-								<div className="h-full w-full animate-pulse rounded-full bg-accent/60" />
+								<div
+									className="h-full rounded-full bg-accent transition-[width] duration-300"
+									style={{ width: `${Math.round(render.fraction * 100)}%` }}
+								/>
 							</div>
 							<div className="flex items-center justify-between gap-4">
 								<div className="flex flex-col gap-0.5">
@@ -338,9 +362,9 @@ export function PublishScreen({
 								<button
 									type="button"
 									disabled
-									className="shrink-0 rounded-control bg-control px-4 py-2 text-[13px] font-medium text-text3"
+									className="shrink-0 rounded-control bg-control px-4 py-2 text-[13px] font-medium font-mono text-text3"
 								>
-									Rendering…
+									{Math.round(render.fraction * 100)}%
 								</button>
 							</div>
 						</div>

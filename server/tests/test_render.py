@@ -13,6 +13,7 @@ from pipeline.render import (
 	Region,
 	RenderSegment,
 	Track,
+	_progress_fraction,
 	_segments_are_contiguous,
 	build_render_segments,
 )
@@ -292,3 +293,33 @@ class TestSegmentsAreContiguous:
 	def test_gap_at_the_end_is_not_contiguous(self):
 		segments = [RenderSegment(start=0.0, end=9.0, layout="original", speaker_bboxes=[])]
 		assert not _segments_are_contiguous(segments, 10.0)
+
+
+class TestProgressFraction:
+	"""Parses ffmpeg's `-progress pipe:1` output -- see render_export's
+	docstring for why this is unit-tested against canned lines rather than
+	a real ffmpeg process (CI has none installed). The lines below are
+	copied verbatim from a real run against this project's ffmpeg (9.0.1)."""
+
+	def test_reads_the_real_out_time_us_line(self):
+		assert _progress_fraction("out_time_us=5000000", duration=10.0) == 0.5
+
+	def test_strips_the_trailing_newline_a_real_line_has(self):
+		assert _progress_fraction("out_time_us=5000000\n", duration=10.0) == 0.5
+
+	def test_the_first_update_of_a_run_is_not_a_number_yet(self):
+		# ffmpeg's very first progress block reports out_time_us=N/A, before
+		# it has measured anything -- not a value to crash on or report as 0%.
+		assert _progress_fraction("out_time_us=N/A", duration=10.0) is None
+
+	def test_other_lines_in_the_same_block_are_ignored(self):
+		for line in ["frame=30", "fps=0.00", "bitrate=114.0kbits/s", "progress=continue"]:
+			assert _progress_fraction(line, duration=10.0) is None
+
+	def test_clamped_to_one_rather_than_overshooting(self):
+		# out_time_us can land a hair past the nominal duration (encoder
+		# padding, rounding) -- this is a fraction of *done*, never over.
+		assert _progress_fraction("out_time_us=10500000", duration=10.0) == 1.0
+
+	def test_a_zero_duration_reports_nothing_rather_than_dividing_by_it(self):
+		assert _progress_fraction("out_time_us=0", duration=0.0) is None

@@ -9,6 +9,7 @@ same way test_error_reporting.py avoids real ffmpeg calls."""
 
 import asyncio
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ from pipeline.diarize import DiarizationUnavailable
 from pipeline.audio import NoAudioTrack
 
 ORIGIN = "http://localhost:3460"
+FACES = b'{"frameWidth": 1, "frameHeight": 1, "people": []}'
 
 
 @pytest.fixture(autouse=True)
@@ -249,8 +251,6 @@ class TestExportToPath:
 	"""The desktop app's path: no response body, a real file written where
 	the user chose -- see src/lib/electron.ts's chooseExportPath."""
 
-	FACES = b'{"frameWidth": 1, "frameHeight": 1, "people": []}'
-
 	def _prepare_job(self, job_id="j"):
 		input_path = jobs.save_input(job_id, "clip.mp4")
 		input_path.write_bytes(b"fake video")
@@ -259,7 +259,7 @@ class TestExportToPath:
 		self._prepare_job()
 		monkeypatch.setattr(main, "get_video_duration", lambda *a, **k: 5.0)
 
-		def fake_render_export(input_path, output_path, segments, frame_w, frame_h, duration, ass_path=None):
+		def fake_render_export(input_path, output_path, segments, frame_w, frame_h, duration, ass_path=None, on_progress=None):
 			Path(output_path).write_bytes(b"rendered mp4 bytes")
 
 		monkeypatch.setattr(main, "render_export", fake_render_export)
@@ -270,7 +270,7 @@ class TestExportToPath:
 		response = client.post(
 			"/export",
 			headers={"Origin": ORIGIN},
-			files={"faces": ("faces.json", self.FACES, "application/json")},
+			files={"faces": ("faces.json", FACES, "application/json")},
 			data={"regions": "[]", "jobId": "j", "outputPath": str(destination)},
 		)
 		assert response.status_code == 200
@@ -282,7 +282,7 @@ class TestExportToPath:
 		response = client.post(
 			"/export",
 			headers={"Origin": ORIGIN},
-			files={"faces": ("faces.json", self.FACES, "application/json")},
+			files={"faces": ("faces.json", FACES, "application/json")},
 			data={"regions": "[]", "jobId": "j", "outputPath": "/nonexistent-dir-xyz/out.mp4"},
 		)
 		assert response.status_code == 400
@@ -291,7 +291,7 @@ class TestExportToPath:
 		self._prepare_job()
 		monkeypatch.setattr(main, "get_video_duration", lambda *a, **k: 5.0)
 
-		def fake_render_export(input_path, output_path, segments, frame_w, frame_h, duration, ass_path=None):
+		def fake_render_export(input_path, output_path, segments, frame_w, frame_h, duration, ass_path=None, on_progress=None):
 			Path(output_path).write_bytes(b"rendered mp4 bytes")
 
 		monkeypatch.setattr(main, "render_export", fake_render_export)
@@ -299,9 +299,66 @@ class TestExportToPath:
 		response = client.post(
 			"/export",
 			headers={"Origin": ORIGIN},
-			files={"faces": ("faces.json", self.FACES, "application/json")},
+			files={"faces": ("faces.json", FACES, "application/json")},
 			data={"regions": "[]", "jobId": "j"},
 		)
 		assert response.status_code == 200
 		assert response.content == b"rendered mp4 bytes"
 		assert response.headers["content-type"] == "video/mp4"
+
+
+class TestExportProgress:
+	"""GET /export/progress/{job_id}, polled alongside the still-open
+	/export request above -- see render_export's on_progress."""
+
+	def test_reports_zero_for_a_job_that_has_never_rendered(self, client):
+		assert client.get("/export/progress/nobody").json() == {"fraction": 0.0}
+
+	def test_reflects_render_export_s_on_progress_callback_while_it_runs(self, client, monkeypatch, tmp_path):
+		input_path = jobs.save_input("j", "clip.mp4")
+		input_path.write_bytes(b"fake video")
+		monkeypatch.setattr(main, "get_video_duration", lambda *a, **k: 5.0)
+
+		seen_mid_render = {}
+
+		def fake_render_export(input_path, output_path, segments, frame_w, frame_h, duration, ass_path=None, on_progress=None):
+			on_progress(0.5)
+			# The endpoint's own progress store, read the same way the
+			# frontend's poll would -- not just asserting the callback was
+			# called, but that it actually reached somewhere pollable.
+			seen_mid_render["fraction"] = progress.render_progress("j")
+			Path(output_path).write_bytes(b"rendered mp4 bytes")
+
+		monkeypatch.setattr(main, "render_export", fake_render_export)
+
+		response = client.post(
+			"/export",
+			headers={"Origin": ORIGIN},
+			files={"faces": ("faces.json", FACES, "application/json")},
+			data={"regions": "[]", "jobId": "j"},
+		)
+		assert response.status_code == 200
+		assert seen_mid_render == {"fraction": 0.5}
+		# Cleared once the request that was rendering has returned -- nothing
+		# left to poll for, and a stale 0.5 would misreport a finished job.
+		assert client.get("/export/progress/j").json() == {"fraction": 0.0}
+
+	def test_still_cleared_when_the_render_fails(self, client, monkeypatch):
+		input_path = jobs.save_input("j", "clip.mp4")
+		input_path.write_bytes(b"fake video")
+		monkeypatch.setattr(main, "get_video_duration", lambda *a, **k: 5.0)
+
+		def failing_render_export(*a, on_progress=None, **k):
+			on_progress(0.3)
+			raise subprocess.CalledProcessError(1, ["ffmpeg"], stderr=b"boom")
+
+		monkeypatch.setattr(main, "render_export", failing_render_export)
+
+		response = client.post(
+			"/export",
+			headers={"Origin": ORIGIN},
+			files={"faces": ("faces.json", FACES, "application/json")},
+			data={"regions": "[]", "jobId": "j"},
+		)
+		assert response.status_code == 500
+		assert client.get("/export/progress/j").json() == {"fraction": 0.0}

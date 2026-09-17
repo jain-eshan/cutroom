@@ -70,6 +70,13 @@ _jobs: dict[str, JobProgress] = {}
 _faces: dict[str, dict[int, bytes]] = {}
 _waveform: dict[str, list[float]] = {}
 _timeline_thumbnails: dict[str, list[bytes]] = {}
+# Separate from `_jobs` on purpose: a render happens well after processing
+# (at Publish, once editing is done), by which point a page reload has often
+# already dropped the original job from `_jobs` via `_prune`, or the
+# snapshot's own "load from disk" fallback would misreport a fresh render as
+# the already-finished processing job. Keyed the same way, but its own
+# lifecycle -- one render at a time per job id, cleared once it settles.
+_render: dict[str, float] = {}
 
 
 def _prune(now: float) -> None:
@@ -188,6 +195,27 @@ def timeline_thumbnail(job_id: str, index: int) -> bytes | None:
 	if thumbnails is not None:
 		return thumbnails[index] if 0 <= index < len(thumbnails) else None
 	return jobs.load_thumbnail(job_id, index)
+
+
+def report_render_progress(job_id: str, fraction: float) -> None:
+	"""Called from `render_export`'s `on_progress`, which runs inside the
+	worker thread `asyncio.to_thread` gives it in `/export` -- the same
+	lock every other writer here already takes protects this too."""
+	with _lock:
+		_render[job_id] = max(0.0, min(1.0, fraction))
+
+
+def render_progress(job_id: str) -> float:
+	"""0 for a job that hasn't started rendering, was never asked to, or
+	already finished (see `clear_render_progress`) -- polling this after a
+	render completes is expected, not an error, so there's nothing to raise."""
+	with _lock:
+		return _render.get(job_id, 0.0)
+
+
+def clear_render_progress(job_id: str) -> None:
+	with _lock:
+		_render.pop(job_id, None)
 
 
 def snapshot(job_id: str) -> dict:

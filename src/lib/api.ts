@@ -405,3 +405,13 @@ export async function exportVideoToPath(
 	const res = await fetch(new URL("/export", API_BASE), { method: "POST", body: form });
 	if (!res.ok) throw new Error(`Export failed (${res.status}): ${await exportErrorDetail(res)}`);
 }
+
+/** Polled alongside the still-open `exportVideo`/`exportVideoToPath` call
+ * above -- real progress parsed from ffmpeg's own output (see
+ * server/pipeline/render.py's `_progress_fraction`), not a guess from
+ * elapsed time. */
+export async function getRenderProgress(jobId: string): Promise<{ fraction: number }> {
+	const res = await fetch(new URL(`/export/progress/${jobId}`, API_BASE));
+	if (!res.ok) throw new Error(`Render progress unavailable (${res.status})`);
+	return res.json();
+}
