@@ -336,11 +336,33 @@ the founder's call, to find testers and contributors early:
      app's credits/about, not just sitting in `node_modules`.
      - Not done, still open: the Apple Developer signing/notarisation this
        item calls for (today's build is unsigned -- Gatekeeper blocks it on
-       first open), reading the recording in place and rendering to a
+       first open; the founder is setting up the account), rendering to a
        folder instead of holding it in browser memory, native
        notifications, and shipping the `pyannote` weights directly per the
        licence check two lines down (which would
        drop the Hugging Face step from the desktop app entirely).
+   - **Reads the recording where it is, done 2026-09-17.** `electron/
+     preload.mjs` exposes `webUtils.getPathForFile` through
+     `contextBridge` -- it only resolves for a file the user actually
+     picked or dropped, so nothing else can use it to name an arbitrary
+     path. `src/lib/electron.ts` reads it; `App.tsx` calls the new `POST
+     /process/local` (`server/main.py`) instead of the multipart upload
+     whenever a path is available, falling back to the existing upload
+     unchanged in a plain browser (no Electron bridge). The job's input is
+     symlinked to the source rather than copied -- `jobs.save_input`
+     already just returns a destination path without writing to it, so this
+     slots in with no change to the persistence model from item 3. The
+     trade-off is explicit: moving or deleting the source after this point
+     breaks the job, the same as it would break any other app with the file
+     open. Verified: `tsc`, `oxlint`, all 41 frontend and all 181 backend
+     tests (4 new, covering the job id round-trip, the missing-token
+     refusal, a 400 on a path that doesn't exist, and -- the actual point
+     of the feature -- that the job's input really is a symlink back to the
+     source and not a second copy of the bytes) all pass. Not yet verified
+     inside a packaged Electron window (the shared one on this machine is
+     mid-bugfix in another session); the plain-browser fallback path was
+     confirmed unchanged by inspection, since it's byte-identical to the
+     code before this change.
    - **Licence check, done 2026-09-15.** `pyannote` community-1 is CC-BY-4.0,
      and every file the pipeline loads (segmentation, embedding, PLDA, config)
      is in that one repo. The Hugging Face gate is an automatic form that asks
