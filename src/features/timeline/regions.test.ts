@@ -202,13 +202,93 @@ test("a short answer that means something is not treated as acknowledgement", ()
 	assert.ok(regions.some((r) => r.personIds.includes(11)));
 });
 
-test("talking over each other still wins over a held shot", () => {
-	const turns = [turn(0, 0, 20), turn(1, 20.5, 40)];
+test("a genuine, ongoing overlap still wins over a held shot -- when it isn't a clean handoff", () => {
+	// B's own turn after the overlap (19.5-20.5, one second) is too short to
+	// earn a shot on its own -- this is A4's brief double-talk, not A5's
+	// takeover -- so the composite still shows, same as before rule 4.
+	const turns = [turn(0, 0, 20), turn(1, 19.5, 20.5)];
 	const overlaps = [{ start: 19, end: 21, speakers: [0, 1] }];
 	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
 	const split = regions.find((r) => r.layout === "split");
 	assert.ok(split, "the overlap window is still a both-on-screen shot");
 	assert.deepEqual([split.start, split.end], [19, 21]);
+});
+
+// --- Rule 4: a takeover is one cut, not the composite (EDGE_CASES.md A5) --
+
+test("a takeover -- B interrupts and keeps going -- is one cut to B, not a flash through both-on-screen", () => {
+	// The exact shape EDGE_CASES.md section 1 and A5 describe: A talks, B
+	// interrupts and keeps talking, A never comes back.
+	const turns = [turn(0, 0, 20), turn(1, 19, 40)];
+	const overlaps = [{ start: 19, end: 21, speakers: [0, 1] }];
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
+	assert.equal(regions.length, 2, "one cut: A's shot, then B's -- no third, composite shot in between");
+	assert.equal(regions.filter((r) => r.layout === "split").length, 0, "no both-on-screen shot for a takeover");
+	assert.deepEqual(regions[0].personIds, [10]);
+	assert.deepEqual(regions[1].personIds, [11]);
+});
+
+test("a takeover cuts on the new speaker's first word -- where the overlap starts, not where the old turn's own words end", () => {
+	// Product call, 2026-09-17: cut on B's first word. window.start (19) is
+	// what stands in for that, and it lands before B's own transcribed turn
+	// start (20) -- Whisper's word-level boundary and pyannote's overlap
+	// detector don't have to agree to the frame.
+	const turns = [turn(0, 0, 20), turn(1, 20, 40)];
+	const overlaps = [{ start: 19, end: 21, speakers: [0, 1] }];
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
+	assert.equal(regions.length, 2);
+	assert.equal(regions[0].end, 19, "A's shot ends where B's overlap-detected start is, not at 20");
+	assert.equal(regions[1].start, 19, "B's shot starts there too -- the cut is at exactly one point");
+});
+
+test("a takeover never cuts later than the incoming turn's own transcribed start", () => {
+	// Defensive direction on the Math.min: if the overlap detector's start
+	// somehow lands after the turn's own start (the two signals disagreeing
+	// the other way), the cut must not be pushed later than the turn itself
+	// starts -- that would show the outgoing speaker a beat into what's
+	// already B's turn.
+	const turns = [turn(0, 0, 20), turn(1, 18, 40)];
+	const overlaps = [{ start: 19, end: 21, speakers: [0, 1] }]; // starts after turns[1].start (18)
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
+	assert.equal(regions[0].end, 18);
+	assert.equal(regions[1].start, 18);
+});
+
+test("a floor-held interjection is never mistaken for a takeover, even though a real overlap sits right where one would look for one", () => {
+	// takeoverAt looks at the turn right after the overlap starts (B's brief
+	// "yeah") to decide if the floor changed hands. It didn't: rule 1's own
+	// floor-holding says B's interjection doesn't earn a shot of its own,
+	// because A's resumption afterward is both longer and the real point of
+	// the sentence -- earnsItsOwnShot is the single source of truth both
+	// rules share, so takeoverAt can't disagree with it.
+	//
+	// The 2s overlap window is still real, detected audio, though, and A4
+	// says exactly this length is enough to show both people even while A
+	// keeps editorial "credit" for the line -- so the composite still
+	// appears, splitting A's hold into two shots around it. That's A4
+	// working correctly, not a bug: floor-holding decides who's *credited*
+	// with the close-up, not whether the audio genuinely overlapped.
+	const turns = [turn(0, 0, 20), turn(1, 19, 21, "yeah"), turn(0, 21, 45)];
+	const overlaps = [{ start: 19, end: 21, speakers: [0, 1] }];
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
+	assert.equal(regions.length, 3, "A's hold, split around the genuine 2s overlap, then A's hold again");
+	assert.deepEqual(
+		regions.map((r) => r.layout),
+		["zoom", "split", "zoom"],
+	);
+	assert.deepEqual(regions[1].personIds, [10, 11], "both shown for the real overlap, despite A holding the floor");
+});
+
+test("gentle's higher cutoff also governs whether an overlap counts as a takeover", () => {
+	// B's post-overlap turn (9s) clears dynamic's 4s bar but not gentle's 12s
+	// one -- so the same recording is a takeover under one style and a
+	// genuine overlap under the other.
+	const turns = [turn(0, 0, 20), turn(1, 19, 28)];
+	const overlaps = [{ start: 19, end: 21, speakers: [0, 1] }];
+	const dynamic = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
+	const gentle = suggestRegions(turns, overlaps, CAST, PEOPLE, "gentle");
+	assert.equal(dynamic.filter((r) => r.layout === "split").length, 0, "dynamic: 9s clears its cutoff -- a takeover");
+	assert.equal(gentle.filter((r) => r.layout === "split").length, 1, "gentle: 9s doesn't clear its cutoff -- not one");
 });
 
 // --- Rule 7: panes follow seating, not speaker or person id (EDGE_CASES.md C1) --
@@ -231,7 +311,13 @@ test("a both-on-screen shot orders its panes left to right by seat, regardless o
 	// speaker 0 (person 10, seated left) -- the old code just mapped over
 	// window.speakers in listed order, so this exact case used to put 11 in
 	// the left pane. 10 sits left of 11, so 10 has to lead regardless.
-	const turns = [turn(0, 0, 20), turn(1, 19, 40)];
+	//
+	// B's interjection (19-21) is deliberately too short to earn a shot on
+	// its own, so this is a brief double-talk (A4), not a takeover (A5) --
+	// see the takeover tests below for that case. Kept as a genuine
+	// composite here on purpose, to isolate what this test is actually
+	// about: pane order.
+	const turns = [turn(0, 0, 20), turn(1, 19, 21)];
 	const overlaps = [{ start: 19, end: 21, speakers: [1, 0] }];
 	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
 	const split = regions.find((r) => r.layout === "split");

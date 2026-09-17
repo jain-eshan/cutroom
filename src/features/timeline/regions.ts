@@ -111,6 +111,39 @@ function holdUntil(turns: Turn[], from: number, nextShot: number | undefined): n
 	return nextShot === undefined ? turns[limit].end : turns[nextShot].start;
 }
 
+/**
+ * Whether an overlap window is a takeover -- B interrupts and A gives up --
+ * rather than a moment to genuinely show both people (EDGE_CASES.md A5 vs
+ * A4/A6). Today's code gave every overlap the same both-on-screen treatment,
+ * which for a takeover means two cuts (close on A, both on screen, close on
+ * B) where an editor would make one, straight to B.
+ *
+ * Detected from the turn immediately either side of the overlap: if they
+ * belong to different people and the one after earns a shot on its own
+ * merits (not a fleeting interjection), the floor changed hands here. If the
+ * same person's turn spans both sides, nobody gave up anything -- that's
+ * A4's territory (hold if short, show both if it goes on), untouched by this.
+ * A6 (three or more people, or a real back-and-forth argument) isn't this
+ * shape either: this only fires on a clean two-turn handoff.
+ *
+ * Product call, 2026-09-17, per EDGE_CASES.md section 4 question 2: cuts on
+ * the new speaker's first word, which `window.start` stands in for -- that's
+ * the moment pyannote's overlap detector says the second voice began, as
+ * close to "B's first word" as the data this runs on actually has.
+ */
+function takeoverAt(
+	window: OverlapWindow,
+	turns: Turn[],
+	minLineForShot: number,
+): { outgoingIndex: number; incomingIndex: number } | null {
+	const incomingIndex = turns.findIndex((t) => t.start >= window.start);
+	if (incomingIndex <= 0) return null;
+	const outgoingIndex = incomingIndex - 1;
+	if (turns[outgoingIndex].speaker === turns[incomingIndex].speaker) return null;
+	if (!earnsItsOwnShot(turns, incomingIndex, minLineForShot)) return null;
+	return { outgoingIndex, incomingIndex };
+}
+
 let nextId = 0;
 function makeId(): string {
 	nextId += 1;
@@ -228,8 +261,23 @@ export function suggestRegions(
 	if (style === "wideOnly") return [];
 	const minLineForShot = style === "gentle" ? GENTLE_MIN_LINE_FOR_SHOT_S : MIN_LINE_FOR_SHOT_S;
 
-	const splits: FramingRegion[] = [];
+	// Rule 4/A5: a takeover is one cut, on the new speaker's first word, not
+	// the both-on-screen composite -- classified up front, per window, so it
+	// can both keep the window out of `splits` and pull the incoming shot's
+	// start back to where the handoff actually began.
+	const takeoverCutAt = new Map<number, number>(); // incoming turn index -> cut point
+	const genuineOverlaps: OverlapWindow[] = [];
 	for (const window of overlapWindows) {
+		const takeover = takeoverAt(window, turns, minLineForShot);
+		if (takeover) {
+			takeoverCutAt.set(takeover.incomingIndex, Math.min(window.start, turns[takeover.incomingIndex].start));
+		} else {
+			genuineOverlaps.push(window);
+		}
+	}
+
+	const splits: FramingRegion[] = [];
+	for (const window of genuineOverlaps) {
 		const personIds = orderBySeat(
 			[
 				...new Set(
@@ -266,11 +314,15 @@ export function suggestRegions(
 	shots.forEach(({ turn, personId, index }, i) => {
 		// Rule 6: a shot runs until the next one starts, and only a real
 		// silence goes wide -- otherwise every hand-off flashed the wide shot
-		// for the tenth of a second between two turns.
-		const end = holdUntil(turns, index, shots[i + 1]?.index);
+		// for the tenth of a second between two turns. A takeover overrides
+		// this with an earlier cut, never a later one -- Math.min guards that.
+		const nextIndex = shots[i + 1]?.index;
+		const naturalEnd = holdUntil(turns, index, nextIndex);
+		const takeoverEnd = nextIndex !== undefined ? takeoverCutAt.get(nextIndex) : undefined;
+		const end = takeoverEnd !== undefined ? Math.min(takeoverEnd, naturalEnd) : naturalEnd;
 		const region: FramingRegion = {
 			id: makeId(),
-			start: turn.start,
+			start: takeoverCutAt.get(index) ?? turn.start,
 			end,
 			layout: "zoom",
 			personIds: [personId],
