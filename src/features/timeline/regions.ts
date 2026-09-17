@@ -15,6 +15,93 @@ export const MIN_REGION_S = 0.25;
  * boundaries land on transcription timings, which are not exact to the frame. */
 const JOIN_EPSILON_S = 0.05;
 
+/** A line said in a gap, with nobody else holding the floor, needs to be at
+ * least this long to earn a shot of its own. Anything shorter is a "right" or
+ * a one-word answer, and cutting to it costs two cuts to show half a second of
+ * someone (EDGE_CASES.md A2, the case the founder reported).
+ *
+ * Product call, 2026-09-17, from a range of 3-5s. The 1.5s the document
+ * originally proposed was judged too low. Not measured against a professional
+ * edit yet, unlike framing.py's crop sizes -- see EDGE_CASES.md section 5 for
+ * what measuring it would look like. */
+const MIN_LINE_FOR_SHOT_S = 4;
+
+/** Silence longer than this cuts to wide. Below it the shot simply holds until
+ * whoever speaks next starts, instead of flashing wide in the hand-off gap
+ * (EDGE_CASES.md A11, rule 6). */
+const WIDE_AFTER_SILENCE_S = 3;
+
+/** Words that carry nothing on their own, so a line made only of them is an
+ * acknowledgement rather than a contribution. Deliberately excludes "no" and
+ * "yes": those are real answers, and the document makes exactly that point
+ * about "No." versus "Absolutely not, that's wrong". */
+const BACKCHANNEL_WORDS = new Set([
+	"um", "umm", "uh", "uhh", "uhm", "erm", "er", "hmm", "mhm", "mm", "mmm",
+	"yeah", "yep", "yup", "ok", "okay", "right", "sure", "ha", "haha",
+]);
+
+function isAcknowledgementOnly(text: string): boolean {
+	const words = text.toLowerCase().match(/[a-z']+/g);
+	return words !== null && words.length > 0 && words.every((word) => BACKCHANNEL_WORDS.has(word));
+}
+
+/**
+ * Whether someone else held the floor across this line and carried on after it.
+ *
+ * The transcript has no overlapping lines to test against -- `build_turns`
+ * gives every word to exactly one speaker, and when two people talk at once
+ * Whisper mostly writes only the louder one (EDGE_CASES.md A13). So "they were
+ * already talking and kept going" shows up as the same other speaker on both
+ * sides of this line, close enough either side to read as one continuous
+ * stretch of them talking rather than two separate exchanges.
+ *
+ * Bounded by length: if the interjection outlasts the speaker's own
+ * resumption, the floor changed hands and it was never an interjection.
+ */
+function floorHeldAcross(turns: Turn[], index: number): boolean {
+	const turn = turns[index];
+	const before = turns[index - 1];
+	const after = turns[index + 1];
+	if (!before || !after) return false;
+	if (before.speaker !== after.speaker || before.speaker === turn.speaker) return false;
+	if (turn.start - before.end >= WIDE_AFTER_SILENCE_S) return false;
+	if (after.start - turn.end >= WIDE_AFTER_SILENCE_S) return false;
+	return turn.end - turn.start < after.end - after.start;
+}
+
+/**
+ * Whether this line should get a shot of its own.
+ *
+ * Product call, 2026-09-17: the floor comes first. If someone else was already
+ * talking and carried on afterwards, the shot stays with them however long the
+ * interjection was. Only when nobody holds the floor does length decide, and
+ * then a line also has to say something -- four seconds of "yeah, yeah, right"
+ * is still an acknowledgement.
+ */
+function earnsItsOwnShot(turns: Turn[], index: number): boolean {
+	const turn = turns[index];
+	if (floorHeldAcross(turns, index)) return false;
+	if (turn.end - turn.start < MIN_LINE_FOR_SHOT_S) return false;
+	return !isAcknowledgementOnly(turn.text);
+}
+
+/**
+ * How long a shot holds: until the next shot starts, or until the room
+ * actually goes quiet, whichever comes first.
+ *
+ * Walks every turn in between rather than just the two shots either side. The
+ * lines that didn't earn a shot are still someone speaking, so measuring shot
+ * to shot both reads an interjection as silence and, at the other end, drops
+ * the shot while its own speaker is still finishing.
+ */
+function holdUntil(turns: Turn[], from: number, nextShot: number | undefined): number {
+	const limit = nextShot ?? turns.length - 1;
+	for (let i = from; i < limit; i++) {
+		if (turns[i + 1].start - turns[i].end >= WIDE_AFTER_SILENCE_S) return turns[i].end;
+	}
+	return nextShot === undefined ? turns[limit].end : turns[nextShot].start;
+}
+
 let nextId = 0;
 function makeId(): string {
 	nextId += 1;
@@ -119,21 +206,34 @@ export function suggestRegions(
 		});
 	}
 
-	const closeUps: FramingRegion[] = [];
-	for (const turn of turns) {
+	// Only the lines that earn a shot. A line that doesn't isn't left to render
+	// wide -- it falls inside whichever shot is held across it below, which is
+	// the whole point: the camera stays on whoever is actually holding forth.
+	const shots: { turn: Turn; personId: number; index: number }[] = [];
+	turns.forEach((turn, index) => {
 		const personId = speakerToPerson[turn.speaker];
-		if (personId === undefined) continue; // nobody to close in on -- stays wide
+		if (personId === undefined) return; // nobody to close in on
+		if (!earnsItsOwnShot(turns, index)) return;
+		shots.push({ turn, personId, index });
+	});
+
+	const closeUps: FramingRegion[] = [];
+	shots.forEach(({ turn, personId, index }, i) => {
+		// Rule 6: a shot runs until the next one starts, and only a real
+		// silence goes wide -- otherwise every hand-off flashed the wide shot
+		// for the tenth of a second between two turns.
+		const end = holdUntil(turns, index, shots[i + 1]?.index);
 		const region: FramingRegion = {
 			id: makeId(),
 			start: turn.start,
-			end: turn.end,
+			end,
 			layout: "zoom",
 			personIds: [personId],
 			source: "suggested",
 		};
 		// Talking over each other wins over either person's close-up.
 		closeUps.push(...subtract(region, splits));
-	}
+	});
 
 	return mergeTouching([...splits, ...closeUps]);
 }
