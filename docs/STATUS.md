@@ -349,8 +349,23 @@ the founder's call, to find testers and contributors early:
      CC-BY-4.0 allows redistribution with attribution, so the app can ship the
      weights, credit pyannote with a link to the licence, and drop the Hugging
      Face step entirely. This is a reading of the licence, not legal advice:
-     confirm before release. The Whisper, YuNet/SFace and LR-ASD weights need
-     the same check.
+     confirm before release.
+   - **The rest of the licence check, done 2026-09-17.** faster-whisper's
+     converted weights (`Systran/faster-whisper-*` on Hugging Face, what
+     `transcribe.py`'s `WhisperModel` pulls) are MIT. YuNet
+     (`face_detection_yunet`, OpenCV Zoo) is MIT. SFace was already decided
+     Apache-2.0 (see "Decisions worth not re-litigating," below). LR-ASD's
+     AVA weights are MIT, and were already vetted when they were chosen over
+     TalkSet specifically to avoid a non-commercial research restriction --
+     see `server/pipeline/lrasd/NOTICE.md`. All four read as freely
+     redistributable with attribution, same as pyannote above -- same
+     caveat: a reading of the licences, not legal advice, and the app
+     doesn't actually bundle any of them yet. That's separate engineering
+     (vendoring several GB of weights into the installer instead of
+     downloading them on first use, plus an about/credits screen crediting
+     all five projects) that touches the same packaging scripts the
+     Electron shell work above does, so it should land as its own pass
+     rather than inside this one.
 5. **Waiting that keeps people.** A notification when processing finishes, a
    live video preview that follows the transcript, a time estimate weighted by
    how long each stage really takes (on the 47-minute run, faces finished well
