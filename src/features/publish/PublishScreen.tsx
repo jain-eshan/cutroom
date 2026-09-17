@@ -390,23 +390,29 @@ export function PublishScreen({
 								>
 									New
 								</button>
-								{render.save.kind === "path" ? (
-									<button
-										type="button"
-										onClick={() => showItemInFolder(render.save.outputPath)}
-										className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
-									>
-										Show me
-									</button>
-								) : (
-									<a
-										href={render.save.url}
-										download={render.filename}
-										className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
-									>
-										Save the MP4
-									</a>
-								)}
+								{(() => {
+									// Narrowing `render.save.kind` doesn't carry into the onClick
+									// closure below -- TS can't prove the property won't change
+									// by the time it runs -- so it's captured in a local first.
+									const save = render.save;
+									return save.kind === "path" ? (
+										<button
+											type="button"
+											onClick={() => showItemInFolder(save.outputPath)}
+											className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
+										>
+											Show me
+										</button>
+									) : (
+										<a
+											href={save.url}
+											download={render.filename}
+											className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
+										>
+											Save the MP4
+										</a>
+									);
+								})()}
 							</div>
 						</div>
 					)}
