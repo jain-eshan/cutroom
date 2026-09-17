@@ -7,6 +7,7 @@ import { LAYOUT_LABELS, MAX_CROP_NUDGE, type FramingRegion } from "@/features/ti
 import {
 	MIN_REGION_S,
 	addRegion,
+	orderBySeat,
 	otherSpeakerNear,
 	regionAt,
 	resizeRegion,
@@ -372,8 +373,8 @@ export function EditorView({
 	const [stageRef, stageSize] = useElementSize();
 
 	const suggested = useMemo(
-		() => suggestRegions(turns, overlapWindows, cast.speakerToPerson),
-		[turns, overlapWindows, cast.speakerToPerson],
+		() => suggestRegions(turns, overlapWindows, cast.speakerToPerson, faces.people),
+		[turns, overlapWindows, cast.speakerToPerson, faces.people],
 	);
 	// Lines worth a second look: no face to frame, or talking over someone
 	// else. The transcript already marks these; this is the same test, kept
@@ -715,7 +716,7 @@ export function EditorView({
 		const other = otherSpeakerNear(turns, cast.speakerToPerson, targetTurn.start, targetPerson);
 		const ids = [targetPerson, other].filter((id): id is number => id !== undefined);
 		if (ids.length < 2) return;
-		edit(addRegion(regions, targetTurn.start, targetTurn.end, "split", ids));
+		edit(addRegion(regions, targetTurn.start, targetTurn.end, "split", orderBySeat(ids, faces.people)));
 	}
 
 	function goWide(id: string) {

@@ -156,7 +156,9 @@ function App() {
 	// Edit decisions live here rather than in the editor, so going to the
 	// publish screen and back doesn't throw them away.
 	const [regions, setRegions] = useState<FramingRegion[]>(() =>
-		isFixtureMode() ? suggestRegions(fixtureData.turns, fixtureData.overlapWindows, fixtureCast.speakerToPerson) : [],
+		isFixtureMode()
+			? suggestRegions(fixtureData.turns, fixtureData.overlapWindows, fixtureCast.speakerToPerson, fixtureData.faces.people)
+			: [],
 	);
 	const [captions, setCaptions] = useState(false);
 	const [trimDeadAir, setTrimDeadAir] = useState(false);
@@ -418,7 +420,7 @@ function App() {
 				words={status.words}
 				match={status.match}
 				onComplete={(cast) => {
-					setRegions(suggestRegions(status.turns, status.overlapWindows, cast.speakerToPerson));
+					setRegions(suggestRegions(status.turns, status.overlapWindows, cast.speakerToPerson, status.faces.people));
 					// On when this install can burn captions in; never requested when it
 					// can't, since /export would refuse the whole job.
 					setCaptions(health?.captions ?? false);

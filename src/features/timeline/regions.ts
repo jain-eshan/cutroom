@@ -181,20 +181,48 @@ function mergeTouching(regions: FramingRegion[]): FramingRegion[] {
  * up front means every automatic decision is visible on the timeline and
  * draggable, instead of being policy buried in the renderer.
  */
+
+/** Each person's typical horizontal position, as the median centre-x of every
+ * keyframe's bbox -- median rather than mean so someone leaning across frame
+ * for one moment doesn't shift where they're considered to sit. A person with
+ * no keyframes (never actually located) sorts last: there's no seat to place
+ * them at, so they shouldn't jump ahead of people we do know the position of. */
+function seatPosition(personId: number, people: Person[]): number {
+	const person = people.find((p) => p.id === personId);
+	if (!person || person.keyframes.length === 0) return Infinity;
+	const centres = person.keyframes.map((kf) => kf.bbox.x + kf.bbox.width / 2).sort((a, b) => a - b);
+	return centres[Math.floor(centres.length / 2)];
+}
+
+/** Rule 7: whoever sits on the left of the frame is in the left pane, every
+ * time, so a multi-person shot doesn't swap sides from one cut to the next
+ * the way ordering by speaker or person id happened to (EDGE_CASES.md C1).
+ * `personIds` order is what both the live preview (resolveFraming) and the
+ * export (render.py's build_render_segments, reading person_ids in the same
+ * order) lay panes out in, so sorting it here is the one place this needs
+ * deciding. */
+export function orderBySeat(personIds: number[], people: Person[]): number[] {
+	return [...personIds].sort((a, b) => seatPosition(a, people) - seatPosition(b, people));
+}
+
 export function suggestRegions(
 	turns: Turn[],
 	overlapWindows: OverlapWindow[],
 	speakerToPerson: Record<number, number>,
+	people: Person[],
 ): FramingRegion[] {
 	const splits: FramingRegion[] = [];
 	for (const window of overlapWindows) {
-		const personIds = [
-			...new Set(
-				window.speakers
-					.map((speaker) => speakerToPerson[speaker])
-					.filter((id): id is number => id !== undefined),
-			),
-		];
+		const personIds = orderBySeat(
+			[
+				...new Set(
+					window.speakers
+						.map((speaker) => speakerToPerson[speaker])
+						.filter((id): id is number => id !== undefined),
+				),
+			],
+			people,
+		);
 		if (personIds.length < 2 || window.end - window.start < MIN_REGION_S) continue;
 		splits.push({
 			id: makeId(),

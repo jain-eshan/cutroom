@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addRegion, regionAt, resizeRegion, splitRegion, suggestRegions, wideGaps } from "./regions.ts";
+import { addRegion, orderBySeat, regionAt, resizeRegion, splitRegion, suggestRegions, wideGaps } from "./regions.ts";
 import type { FramingRegion } from "./types.ts";
-import type { Turn } from "../../lib/api.ts";
+import type { Person, Turn } from "../../lib/api.ts";
 
 const EPISODE = 600;
 
@@ -105,6 +105,16 @@ function turn(speaker: number, start: number, end: number, text = "a real contri
 	return { speaker, start, end, text };
 }
 
+function personAt(id: number, x: number): Person {
+	return { id, thumbnail: "", detectionCount: 1, keyframes: [{ t: 0, bbox: { x, y: 0, width: 10, height: 10 } }] };
+}
+
+/** Seated left to right in id order -- 10, then 11, then 12 -- so any test
+ * that doesn't care about seating can ignore it, and one that does can flip
+ * the expectation to prove ordering isn't just coincidentally matching id
+ * order. */
+const PEOPLE = [personAt(10, 0), personAt(11, 100), personAt(12, 200)];
+
 test("a one-word interjection doesn't take the shot from whoever is holding forth", () => {
 	// A talks, C says "right", A carries on. EDGE_CASES.md A2.
 	const turns = [
@@ -112,7 +122,7 @@ test("a one-word interjection doesn't take the shot from whoever is holding fort
 		turn(2, 20.3, 20.9, "right"),
 		turn(0, 21, 40),
 	];
-	const regions = suggestRegions(turns, [], CAST);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE);
 	assert.equal(regions.length, 1, "one held shot, not three shots and two wide flashes");
 	assert.deepEqual(regions[0].personIds, [10]);
 	assert.deepEqual([regions[0].start, regions[0].end], [0, 40]);
@@ -121,7 +131,7 @@ test("a one-word interjection doesn't take the shot from whoever is holding fort
 test("a hand-off between speakers doesn't flash wide in the gap", () => {
 	// EDGE_CASES.md A11: any gap used to render wide, even a 0.5s one.
 	const turns = [turn(0, 0, 20), turn(1, 20.5, 40)];
-	const regions = suggestRegions(turns, [], CAST);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE);
 	assert.equal(regions.length, 2);
 	assert.equal(regions[0].end, regions[1].start, "the outgoing shot holds until the next one starts");
 	assert.equal(wideGaps(regions, 40).length, 0);
@@ -130,7 +140,7 @@ test("a hand-off between speakers doesn't flash wide in the gap", () => {
 test("a real silence still goes wide", () => {
 	// Rule 6 only holds through hand-offs, not through someone leaving the room.
 	const turns = [turn(0, 0, 20), turn(1, 30, 50)];
-	const regions = suggestRegions(turns, [], CAST);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE);
 	assert.deepEqual(
 		wideGaps(regions, 50).map((g) => [g.start, g.end]),
 		[[20, 30]],
@@ -140,7 +150,7 @@ test("a real silence still goes wide", () => {
 test("a short line in a clean gap doesn't earn a shot", () => {
 	// Nobody holds the floor across it, so length decides: under the cutoff.
 	const turns = [turn(0, 0, 20), turn(1, 21, 22.5, "I agree with that"), turn(2, 30, 50)];
-	const regions = suggestRegions(turns, [], CAST);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE);
 	assert.ok(
 		regions.every((r) => !r.personIds.includes(11)),
 		"the 1.5s line gets no shot of its own",
@@ -149,7 +159,7 @@ test("a short line in a clean gap doesn't earn a shot", () => {
 
 test("a line long enough to say something does earn a shot", () => {
 	const turns = [turn(0, 0, 20), turn(1, 21, 30), turn(2, 40, 60)];
-	const regions = suggestRegions(turns, [], CAST);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE);
 	assert.ok(regions.some((r) => r.personIds.includes(11)));
 });
 
@@ -157,7 +167,7 @@ test("a long line still loses the shot if the other speaker was holding the floo
 	// The product call: the floor comes first, length second. B talks for 6s,
 	// but A was already going and then runs for another 30.
 	const turns = [turn(0, 0, 20), turn(1, 20.5, 26.5), turn(0, 27, 57)];
-	const regions = suggestRegions(turns, [], CAST);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE);
 	assert.equal(regions.length, 1);
 	assert.deepEqual(regions[0].personIds, [10]);
 });
@@ -166,30 +176,58 @@ test("the floor changes hands when the interruption outlasts the resumption", ()
 	// Same shape, but B talks for 30s and A only manages 3 afterwards -- B took
 	// the floor, so B gets the shot.
 	const turns = [turn(0, 0, 20), turn(1, 20.5, 50.5), turn(0, 51, 54)];
-	const regions = suggestRegions(turns, [], CAST);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE);
 	assert.ok(regions.some((r) => r.personIds.includes(11)));
 });
 
 test("a line that is only acknowledgement earns no shot however long it runs", () => {
 	const turns = [turn(0, 0, 20), turn(1, 25, 35, "yeah yeah right okay"), turn(2, 40, 60)];
-	const regions = suggestRegions(turns, [], CAST);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE);
 	assert.ok(regions.every((r) => !r.personIds.includes(11)));
 });
 
 test("a short answer that means something is not treated as acknowledgement", () => {
 	// "No." is a real answer -- the document makes this exact point.
 	const turns = [turn(0, 0, 20), turn(1, 25, 35, "No."), turn(2, 40, 60)];
-	const regions = suggestRegions(turns, [], CAST);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE);
 	assert.ok(regions.some((r) => r.personIds.includes(11)));
 });
 
 test("talking over each other still wins over a held shot", () => {
 	const turns = [turn(0, 0, 20), turn(1, 20.5, 40)];
 	const overlaps = [{ start: 19, end: 21, speakers: [0, 1] }];
-	const regions = suggestRegions(turns, overlaps, CAST);
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE);
 	const split = regions.find((r) => r.layout === "split");
 	assert.ok(split, "the overlap window is still a both-on-screen shot");
 	assert.deepEqual([split.start, split.end], [19, 21]);
+});
+
+// --- Rule 7: panes follow seating, not speaker or person id (EDGE_CASES.md C1) --
+
+test("orderBySeat sorts by where people actually sit, not by id", () => {
+	// 12 sits left of 10 in this fixture -- the opposite of id order -- so a
+	// fix that happened to just sort ids ascending would still pass every
+	// other test in this file without actually reading a seat position.
+	const seatedRightToLeft = [personAt(10, 200), personAt(11, 100), personAt(12, 0)];
+	assert.deepEqual(orderBySeat([10, 11, 12], seatedRightToLeft), [12, 11, 10]);
+});
+
+test("orderBySeat puts a person with no keyframes last, not first", () => {
+	const neverLocated: Person = { id: 99, thumbnail: "", detectionCount: 0, keyframes: [] };
+	assert.deepEqual(orderBySeat([99, 10], [...PEOPLE, neverLocated]), [10, 99]);
+});
+
+test("a both-on-screen shot orders its panes left to right by seat, regardless of the overlap window's own speaker order", () => {
+	// The overlap window lists speaker 1 (person 11, seated middle) before
+	// speaker 0 (person 10, seated left) -- the old code just mapped over
+	// window.speakers in listed order, so this exact case used to put 11 in
+	// the left pane. 10 sits left of 11, so 10 has to lead regardless.
+	const turns = [turn(0, 0, 20), turn(1, 19, 40)];
+	const overlaps = [{ start: 19, end: 21, speakers: [1, 0] }];
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE);
+	const split = regions.find((r) => r.layout === "split");
+	assert.ok(split);
+	assert.deepEqual(split.personIds, [10, 11], "10 sits left of 11, so 10 leads despite being listed second");
 });
 
 test("the founder's case: four cuts around one word become none", () => {
@@ -202,7 +240,7 @@ test("the founder's case: four cuts around one word become none", () => {
 		turn(1, 57, 60),
 		turn(1, 62.5, 70),
 	];
-	const regions = suggestRegions(turns, [], CAST);
+	const regions = suggestRegions(turns, [], CAST, PEOPLE);
 	// A holds 0-40, then B from 40.5 to the end: two shots, one cut.
 	assert.equal(regions.length, 2);
 	assert.deepEqual(regions[0].personIds, [10]);
