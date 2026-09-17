@@ -10,6 +10,13 @@ const CONFIRM_MS = 700;
 /** How long to wait for the dev server to report the service before assuming
  * this copy of the app can't start it (a static build, say). */
 const UNMANAGED_AFTER_MS = 8000;
+/** How long the service can claim to be up while /health still doesn't answer
+ * before this is treated as a fault rather than a slow start. Measured from
+ * when it first said so, not from when this screen opened, so a legitimately
+ * long first install doesn't trip it. Once it reports "Application startup
+ * complete" uvicorn is already listening, so /health answers on the next poll
+ * or something is actually wrong. */
+const UNRESPONSIVE_AFTER_MS = 20000;
 
 type Service = {
 	state: "starting" | "running" | "exited" | "external";
@@ -136,6 +143,9 @@ export function SetupGate({ onReady }: { onReady: (health: Health) => void }) {
 	const [startedAt] = useState(() => Date.now());
 	const [now, setNow] = useState(() => Date.now());
 	const [retrying, setRetrying] = useState(false);
+	// When the service first claimed to be up, so "up but not answering" is
+	// timed from that rather than from when this screen opened.
+	const [upSince, setUpSince] = useState<number | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -145,6 +155,8 @@ export function SetupGate({ onReady }: { onReady: (health: Health) => void }) {
 			setHealth(h);
 			setService(s);
 			setNow(Date.now());
+			const up = s?.state === "running" || s?.state === "external";
+			setUpSince((previous) => (up ? (previous ?? Date.now()) : null));
 		};
 		void tick();
 		const id = setInterval(tick, POLL_MS);
@@ -153,6 +165,8 @@ export function SetupGate({ onReady }: { onReady: (health: Health) => void }) {
 			clearInterval(id);
 		};
 	}, []);
+
+	const serviceUp = service?.state === "running" || service?.state === "external";
 
 	// Speaker detection is required: without speaker turns there's nothing to
 	// edit, and finding out after a multi-minute transcription is what this
@@ -217,6 +231,37 @@ export function SetupGate({ onReady }: { onReady: (health: Health) => void }) {
 				</Heading>
 				<code className="block max-h-44 overflow-auto rounded-control bg-terminal px-2.5 py-2 font-mono text-[10.5px] leading-[1.5] whitespace-pre-wrap text-plate-ink">
 					{service.log.slice(-12).join("\n") || "It didn't print anything."}
+				</code>
+				<button
+					type="button"
+					onClick={retry}
+					disabled={retrying}
+					className="w-fit rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent disabled:opacity-40"
+				>
+					{retrying ? "Starting…" : "Try again"}
+				</button>
+			</>
+		);
+	} else if (serviceUp && upSince !== null && now - upSince > UNRESPONSIVE_AFTER_MS) {
+		// Everything above this is a state that explains itself. This one used
+		// to fall through to "Getting ready" and sit there forever: the service
+		// says it is up, /health keeps failing, and nothing on screen says so or
+		// offers a way out.
+		body = (
+			<>
+				<Heading
+					title={
+						service?.state === "external"
+							? "Something else is on port 8787"
+							: "The processing service isn't answering"
+					}
+				>
+					{service?.state === "external"
+						? "Cutroom found a service already running on its port and left it alone, but it isn't answering as Cutroom would. If that's another copy of Cutroom, close it and try again; if it's a different program, quit it first."
+						: "It started, but it isn't responding to requests. This is the last thing it said:"}
+				</Heading>
+				<code className="block max-h-44 overflow-auto rounded-control bg-terminal px-2.5 py-2 font-mono text-[10.5px] leading-[1.5] whitespace-pre-wrap text-plate-ink">
+					{service?.log.slice(-12).join("\n") || "It didn't print anything."}
 				</code>
 				<button
 					type="button"
