@@ -357,8 +357,6 @@ const TONE: Record<Tone, string> = {
 
 function Limits() {
 	const rows: { what: string; status: string; tone: Tone; href: string }[] = [
-		{ what: "Install without a terminal", status: "Planned: a Mac app", tone: "planned", href: doc("docs/STATUS.md") },
-		{ what: "Keep your work if you close the window", status: "Next up", tone: "planned", href: doc("docs/STATUS.md") },
 		{
 			what: "Stay on the main speaker through a quick “yeah” or “right”",
 			status: "Rules written, help wanted",
@@ -604,7 +602,7 @@ function WaitlistSection() {
 					</h2>
 					<p className="mt-4 max-w-[560px] text-[16px] leading-relaxed text-text2">
 						We're looking for podcast hosts who record on one camera to try Cutroom on a real episode, and tell us
-						where the edit falls short. We'll write when there's a version you can install without a terminal.
+						where the edit falls short. Download it above, or leave your email and we'll follow up.
 					</p>
 				</div>
 				<Waitlist />

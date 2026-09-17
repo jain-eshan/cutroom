@@ -24,7 +24,7 @@ design). For measured accuracy and performance numbers, see
 | 13 | [Style learning from corrections](#13-style-learning) | Not started |
 | 14 | [Automatic social clips](#14-automatic-social-clips) | Not started |
 | 15 | [Multi-camera support](#15-multi-camera-support) | Not started |
-| 16 | [Desktop packaging](#16-desktop-packaging) | Not started |
+| 16 | [Desktop packaging](#16-desktop-packaging) | Shipped |
 | — | [Vary shot length](#vary-shot-length-deferred) | Deferred |
 
 ---
@@ -141,9 +141,11 @@ The timeline works like a video editor's, cut down to what a podcast needs:
 - Keyboard: Space, J (back 5 s), K, L (2×, 4×), the arrows, ↑/↓ between
   shots, Delete and Esc. The Shortcuts button lists them.
 
-Not built yet: split at the playhead, waveforms, stepping through the review
-flags, and a settings panel for the picked shot that would let you choose
-exactly who's on screen. See [STATUS.md](STATUS.md).
+Shipped: split at the playhead (`S`), waveforms on the speaker lanes and
+timeline thumbnails, stepping through the review flags (Tab/Shift+Tab), and
+a shot inspector with exact start/end times and a crop nudge. Not built yet:
+choosing exactly who's on screen beyond the automatic pairing. See
+[STATUS.md](STATUS.md).
 
 *Implementation:* `src/features/timeline/EditorView.tsx`, `TimelineTray.tsx`,
 `regions.ts` (shot suggestions and edits, mirrors `render.py`) and
@@ -267,5 +269,7 @@ Wrapping this as a standalone desktop app (e.g. via Electron) instead of
 "run two local services and open a browser tab." The architecture already
 supports this without a rewrite — the frontend only ever talks to
 `localhost` over HTTP, so where that service actually runs doesn't change
-anything about how the frontend is built. Not started, but planned as a macOS
-`.dmg` after the editing basics and saved episodes. See [STATUS.md](STATUS.md).
+anything about how the frontend is built. Shipped: an Electron shell and
+`electron-builder` pipeline producing a real macOS `.dmg`/`.zip` (and a
+Windows `.exe` build in CI). Not signed/notarised yet. See
+[STATUS.md](STATUS.md).

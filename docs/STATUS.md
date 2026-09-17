@@ -365,6 +365,46 @@ the founder's call, to find testers and contributors early:
      mid-bugfix in another session); the plain-browser fallback path was
      confirmed unchanged by inspection, since it's byte-identical to the
      code before this change.
+   - **Nothing is written inside the app bundle any more, done 2026-09-17.**
+     Everything the service wrote -- saved episodes, the Hugging Face token,
+     the downloaded SFace and LR-ASD weights, the decision logs, and the
+     1.2GB Python environment -- used to land in `Cutroom.app/Contents/
+     Resources/server/`, because every path was computed relative to the
+     source file that used it. macOS replaces an app bundle wholesale on
+     update, so each release destroyed all of it: the token, every saved
+     episode, and a multi-minute environment rebuild before the app worked
+     again. This was not a theoretical risk -- it happened twice in one
+     afternoon while fixing other bugs. It also blocked the signing and
+     notarisation this item still calls for, since an app that writes inside
+     its own bundle invalidates its own signature, and it fails outright on
+     a Mac where the bundle isn't writable by the person running it (an
+     all-users install, or a managed machine).
+     - New `server/pipeline/paths.py` holds the one decision: `DATA_DIR`,
+       from `CUTROOM_DATA_DIR` if the shell set it, else `server/` exactly as
+       before. `electron/main.mjs` sets it to Electron's own
+       `app.getPath("userData")` when packaged, alongside
+       `UV_PROJECT_ENVIRONMENT` (so uv builds the venv there instead of
+       `server/.venv`) and `PYTHONPYCACHEPREFIX` (so `__pycache__` doesn't
+       land in the bundle either) -- the same env-var route `FFMPEG_BINARY`
+       already takes, so `scripts/processing-service.mjs` needed no change.
+       `jobs.py`, `faces.py`, `lipsync.py` and `main.py` read from it.
+     - The one thing that stays in the bundle is the 232KB YuNet detector,
+       which ships committed and is only ever read; `faces.py` now points
+       `DETECTION_MODEL` at `SERVER_DIR` and only the downloaded weights at
+       `DATA_DIR`. Dev is untouched: with the variables unset both resolve to
+       `server/`, which is what `npm run dev` and the test suite have always
+       used.
+     - Verified on a real packaged install: first launch created the venv at
+       `~/Library/Application Support/cutroom/venv` and came up healthy, then
+       deleting `/Applications/Cutroom.app` outright and putting a fresh
+       build down -- the exact operation that destroyed the data twice
+       earlier -- left the token, the saved episode and the venv intact. The
+       app came back with `diarization: true` from the surviving token, the
+       episode still listed in `GET /jobs`, and no "Creating virtual
+       environment" line in the startup log.
+     - Not migrated, deliberately: nothing reads the old in-bundle location,
+       because a bundle old enough to have data in it is one the update just
+       deleted. There was nothing left to move.
    - **Renders to a folder, done 2026-09-17.** `/export` (`server/main.py`)
      takes an optional `outputPath`; when it's set, the finished render is
      moved there directly and the endpoint returns `{outputPath}` instead of

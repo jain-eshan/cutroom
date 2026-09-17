@@ -1,4 +1,4 @@
-# Podcast Editor — Project Documentation
+# Cutroom — Project Documentation
 
 Everything about this project in one place: the plan, what's actually built,
 how it's architected, every dependency and why it's there, and what's still

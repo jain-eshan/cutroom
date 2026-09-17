@@ -66,14 +66,16 @@ rough edges and its packaged installer is untested outside this repo.
 - Export to MP4 at the source resolution, with the audio copied through
   untouched, optional burned-in captions, and optional trimming of long
   pauses and filler words
+- Keep your work if you close the browser tab: a job keeps processing in the
+  background and reopens from the upload screen's recent-episodes list
+  without reprocessing (in-progress edits and cast confirmations aren't
+  saved yet, so reopening skips back to the Cast screen)
 
 **Doesn't yet**
 
 - Ship a signed Mac installer or a Windows build anyone's tried running (the
   desktop app and its installer pipeline exist -- see
   [Download](#download) -- but neither has had real-world use yet)
-- Keep your work if you close the browser tab: processing and edits live in
-  that tab until you export
 - Stay on the main speaker through a quick "yeah" or "right". The rules for
   this are written up in [docs/EDGE_CASES.md](docs/EDGE_CASES.md), but not
   built
