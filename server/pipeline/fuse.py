@@ -95,7 +95,7 @@ def fuse(
 	"""Match each voice to a face."""
 	voices, counts = cooccurrence(segments, speaking, person_ids)
 	if not voices or not person_ids:
-		return Fusion(matches=[], notes=["No voices or no faces to match."])
+		return Fusion(matches=[])
 
 	# Hungarian first: the usual case really is one voice per person, and a
 	# globally optimal assignment beats per-voice greed when two voices both
