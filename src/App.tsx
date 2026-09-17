@@ -9,6 +9,7 @@ import type { FramingRegion } from "@/features/timeline/types";
 import { ProcessingFailed } from "@/features/upload/ProcessingFailed";
 import { ProcessingScreen } from "@/features/upload/ProcessingScreen";
 import { UploadScreen } from "@/features/upload/UploadScreen";
+import { getLocalPath } from "@/lib/electron";
 import { fixtureCast, fixtureData, FIXTURE_FILE_NAME, FIXTURE_JOB_ID, isFixtureMode } from "@/lib/fixture";
 import { useThemeMode } from "@/lib/theme";
 import {
@@ -18,6 +19,7 @@ import {
 	jobMediaUrl,
 	listJobs,
 	processVideo,
+	processVideoAtPath,
 	type DetectFacesResponse,
 	type Health,
 	type JobProgress,
@@ -297,7 +299,15 @@ function App() {
 		rememberActiveJob(active);
 		setStatus({ state: "processing", ...active });
 		try {
-			await processVideo(file, jobId, setUploadFraction);
+			// The desktop app can read the recording where it already is; a
+			// plain browser has no filesystem access and has to upload it.
+			const localPath = getLocalPath(file);
+			if (localPath) {
+				setUploadFraction(1);
+				await processVideoAtPath(localPath, jobId);
+			} else {
+				await processVideo(file, jobId, setUploadFraction);
+			}
 			// The rest happens in the poll above once the background job
 			// reports done -- /process itself only confirms the upload landed.
 		} catch (err) {

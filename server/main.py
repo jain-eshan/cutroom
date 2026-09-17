@@ -100,6 +100,14 @@ class ReportUnexpectedErrors:
 			await response(scope, receive, send)
 
 
+@app.exception_handler(ValueError)
+async def _value_error_handler(request, err: ValueError) -> JSONResponse:
+	"""A malformed job id (`pipeline.jobs.job_dir`'s validation) is a bad
+	request, not a server bug -- give it a 400 instead of falling through to
+	`ReportUnexpectedErrors`'s generic 500."""
+	return JSONResponse({"detail": str(err)}, status_code=400)
+
+
 app.add_middleware(ReportUnexpectedErrors)
 app.add_middleware(
 	CORSMiddleware,
@@ -439,6 +447,41 @@ async def process_endpoint(file: UploadFile, jobId: str | None = None) -> dict:
 	return {"jobId": job_id}
 
 
+@app.post("/process/local")
+async def process_local_endpoint(path: str = Body(..., embed=True), jobId: str | None = Body(None, embed=True)) -> dict:
+	"""Same as `/process`, for the desktop app: the recording already exists
+	on this machine, so point at it instead of uploading a copy through the
+	request body -- for a multi-GB recording, that copy is most of what
+	makes `/process` slow. `path` only ever comes from Electron's
+	`webUtils.getPathForFile`, which resolves solely for a file the user
+	actually picked or dropped (see `electron/preload.mjs`); nothing else in
+	this app lets the renderer name an arbitrary path.
+
+	Symlinked into the job's own directory rather than copied, so "reads it
+	where it is" is literal -- the trade-off being that moving or deleting
+	the source after this point breaks the job, same as it would break any
+	other app with the file open.
+	"""
+	if not diarization_configured():
+		raise HTTPException(400, MISSING_TOKEN_MESSAGE)
+
+	source = Path(path)
+	if not source.is_file():
+		raise HTTPException(400, f"No such file: {path}")
+
+	job_id = jobId or str(uuid.uuid4())
+	report(job_id, "transcribe", "reading the recording")
+	report(job_id, "faces", "reading the recording")
+	input_path = jobs.save_input(job_id, source.name)
+	input_path.symlink_to(source.resolve())
+
+	task = asyncio.create_task(_run_pipeline(job_id, input_path, source.name))
+	_background_jobs.add(task)
+	task.add_done_callback(_background_jobs.discard)
+
+	return {"jobId": job_id}
+
+
 @app.post("/export")
 async def export_endpoint(
 	# A file part, not a text field: Starlette caps text fields at 1MB, and face
@@ -517,7 +560,7 @@ async def export_endpoint(
 	# which Starlette runs once the response has actually been sent.
 	tmp = tempfile.mkdtemp()
 	try:
-		duration = get_video_duration(str(input_path))
+		duration = await asyncio.to_thread(get_video_duration, str(input_path))
 
 		# Dead air / filler words to cut, if asked for. Computed from the
 		# speaker turns plus word-level timestamps when they're available --
@@ -557,7 +600,9 @@ async def export_endpoint(
 			write_ass(cues, ass_path, frame_w, frame_h)
 
 		output_path = Path(tmp) / "export.mp4"
-		render_export(input_path, output_path, segments, frame_w, frame_h, duration, ass_path=ass_path)
+		await asyncio.to_thread(
+			render_export, input_path, output_path, segments, frame_w, frame_h, duration, ass_path=ass_path
+		)
 	except subprocess.CalledProcessError as err:
 		shutil.rmtree(tmp, ignore_errors=True)
 		stderr_tail = (err.stderr or b"").decode(errors="replace")[-2000:]

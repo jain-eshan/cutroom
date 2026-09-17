@@ -27,8 +27,13 @@ const serviceRoot = app.isPackaged ? process.resourcesPath : projectRoot;
 // unpacked from the asar (see package.json's asarUnpack) so they're real,
 // spawnable files on disk. server/pipeline/ffmpeg.py already reads these
 // env vars instead of assuming "ffmpeg"/"ffprobe" are on PATH.
-process.env.FFMPEG_BINARY = ffmpegPath;
-process.env.FFPROBE_BINARY = ffprobeStatic.path;
+// The packages still compute their path as if it lived inside app.asar --
+// asarUnpack only moves the real file to app.asar.unpacked alongside it, it
+// doesn't rewrite the string -- so swap the prefix back to where the file
+// actually is on disk.
+const unpack = (p) => p.replace("app.asar", "app.asar.unpacked");
+process.env.FFMPEG_BINARY = app.isPackaged ? unpack(ffmpegPath) : ffmpegPath;
+process.env.FFPROBE_BINARY = app.isPackaged ? unpack(ffprobeStatic.path) : ffprobeStatic.path;
 
 // Must match server/main.py's CORS allowlist (http://127.0.0.1:3460).
 const FRONTEND_PORT = 3460;
@@ -95,6 +100,7 @@ function createWindow() {
 		width: 1280,
 		height: 800,
 		title: "Cutroom",
+		webPreferences: { preload: path.join(__dirname, "preload.mjs") },
 	});
 	win.loadURL(`http://127.0.0.1:${FRONTEND_PORT}/`);
 }

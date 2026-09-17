@@ -138,6 +138,67 @@ class TestProcessEndpoint:
 		assert response.status_code == 400
 
 
+class TestProcessLocalEndpoint:
+	"""The desktop app's path: no upload body, just a location on disk --
+	see electron/preload.mjs and src/lib/electron.ts."""
+
+	def test_returns_a_job_id_without_waiting_for_the_pipeline(self, client, monkeypatch, tmp_path):
+		monkeypatch.setattr(main, "diarization_configured", lambda: True)
+		source = tmp_path / "recording.mp4"
+		source.write_bytes(b"fake video")
+
+		started = asyncio.Event()
+
+		async def slow_pipeline(job_id, input_path, filename):
+			started.set()
+			await asyncio.sleep(10)  # would time the test out if actually awaited
+
+		monkeypatch.setattr(main, "_run_pipeline", slow_pipeline)
+
+		response = client.post(
+			"/process/local",
+			headers={"Origin": ORIGIN},
+			json={"path": str(source), "jobId": "j1"},
+		)
+		assert response.status_code == 200
+		assert response.json() == {"jobId": "j1"}
+
+	def test_reads_the_recording_in_place_rather_than_copying_it(self, client, monkeypatch, tmp_path):
+		"""The whole point of this endpoint: the job's input is a symlink
+		back to the source, not a second copy of the bytes."""
+		monkeypatch.setattr(main, "diarization_configured", lambda: True)
+		monkeypatch.setattr(main, "_run_pipeline", lambda *a, **k: asyncio.sleep(0))
+		source = tmp_path / "recording.mp4"
+		source.write_bytes(b"fake video")
+
+		response = client.post(
+			"/process/local",
+			headers={"Origin": ORIGIN},
+			json={"path": str(source), "jobId": "j2"},
+		)
+		assert response.status_code == 200
+		input_path = jobs.input_path("j2")
+		assert input_path is not None
+		assert input_path.is_symlink()
+		assert input_path.resolve() == source.resolve()
+
+	def test_refuses_without_a_hugging_face_token(self, client, monkeypatch, tmp_path):
+		monkeypatch.setattr(main, "diarization_configured", lambda: False)
+		source = tmp_path / "recording.mp4"
+		source.write_bytes(b"fake video")
+		response = client.post("/process/local", headers={"Origin": ORIGIN}, json={"path": str(source)})
+		assert response.status_code == 400
+
+	def test_a_path_that_does_not_exist_400s_rather_than_500ing(self, client, monkeypatch, tmp_path):
+		monkeypatch.setattr(main, "diarization_configured", lambda: True)
+		response = client.post(
+			"/process/local",
+			headers={"Origin": ORIGIN},
+			json={"path": str(tmp_path / "nope.mp4")},
+		)
+		assert response.status_code == 400
+
+
 class TestSavedEpisodes:
 	def test_an_unfinished_job_is_not_listed(self, client):
 		jobs.save_input("j", "ep.mp4")

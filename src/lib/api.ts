@@ -251,6 +251,27 @@ export function processVideo(
 	return postFile("/process", file, { jobId }, onUploadProgress);
 }
 
+/** Same as `processVideo`, but for the desktop app: `path` is the
+ * recording's real location on this machine (see `src/lib/electron.ts`), so
+ * the service reads it directly instead of the browser uploading a copy
+ * through the request body. */
+export async function processVideoAtPath(path: string, jobId: string): Promise<{ jobId: string }> {
+	const res = await fetch(new URL("/process/local", API_BASE), {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ path, jobId }),
+	});
+	if (res.ok) return res.json();
+	let detail = `Processing failed (${res.status}).`;
+	try {
+		const parsed = ((await res.json()) as { detail?: unknown }).detail;
+		if (typeof parsed === "string") detail = parsed;
+	} catch {
+		// Not JSON -- keep the generic line.
+	}
+	throw new Error(detail);
+}
+
 /** The finished result of a job started with `processVideo` -- what used to
  * come back directly from that call. Also how a saved episode is reopened:
  * same shape, whether the job finished a second ago or a week ago. */
