@@ -20,8 +20,10 @@ disk rather than in a module-level dict.
 """
 
 import json
+import os
 import re
 import shutil
+import tempfile
 import time
 from pathlib import Path
 
@@ -63,6 +65,25 @@ def _ensure_dir(job_id: str) -> Path:
 	return d
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+	"""Write, then rename into place, so a reader never sees a partial file.
+
+	`save_result` writes two files a `GET /jobs/{id}` depends on both
+	existing and parsing; a crash (or, before `delete_job` cancelled the
+	pipeline first, a delete racing a write) partway through a plain
+	`write_text` could leave either truncated. `os.replace` is atomic on the
+	same filesystem, and the temp file lives right next to its destination so
+	it always is one."""
+	fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+	try:
+		with os.fdopen(fd, "w") as f:
+			f.write(text)
+		os.replace(tmp_name, path)
+	except BaseException:
+		Path(tmp_name).unlink(missing_ok=True)
+		raise
+
+
 def input_path(job_id: str) -> Path | None:
 	"""The original upload, wherever `save_input` put it -- named `input.<ext>`,
 	so the extension (ffprobe/ffmpeg both use it to sniff format) survives."""
@@ -76,7 +97,17 @@ def wav_path(job_id: str) -> Path:
 
 def save_input(job_id: str, filename: str) -> Path:
 	"""Where the upload should be streamed to. Named `input<ext>` so a later
-	`input_path()` lookup can find it regardless of the original filename."""
+	`input_path()` lookup can find it regardless of the original filename.
+
+	Removes any `input.*` already there first: a retry under the same job id
+	(a different file picked after a failure, or a different container for
+	the same recording) used to leave the old one behind, and `input_path`'s
+	plain alphabetical sort would then hand `/export` and playback whichever
+	name sorted first -- the stale file, not the one just uploaded -- rather
+	than the one this call is about to write.
+	"""
+	for stale in job_dir(job_id).glob("input.*"):
+		stale.unlink(missing_ok=True)
 	suffix = Path(filename or "input").suffix or ".bin"
 	return _ensure_dir(job_id) / f"input{suffix}"
 
@@ -85,22 +116,28 @@ def save_result(job_id: str, filename: str, result: dict) -> None:
 	"""The finished pipeline output, plus enough metadata to list this job as
 	a saved episode without reading the (potentially large) result back."""
 	d = _ensure_dir(job_id)
-	(d / "result.json").write_text(json.dumps(result))
-	(d / "meta.json").write_text(json.dumps({"filename": filename, "createdAt": time.time()}))
+	_atomic_write_text(d / "result.json", json.dumps(result))
+	_atomic_write_text(d / "meta.json", json.dumps({"filename": filename, "createdAt": time.time()}))
 
 
 def original_filename(job_id: str) -> str | None:
 	path = job_dir(job_id) / "meta.json"
-	if not path.exists():
+	try:
+		return json.loads(path.read_text())["filename"]
+	except (FileNotFoundError, json.JSONDecodeError, KeyError):
+		# A job interrupted between writing meta.json and result.json, or
+		# killed mid-write to either -- the same "server crash mid-job" this
+		# store has always accepted as a risk, just not previously guarded
+		# here the way `list_jobs` already guards its own read of this file.
 		return None
-	return json.loads(path.read_text())["filename"]
 
 
 def load_result(job_id: str) -> dict | None:
 	path = job_dir(job_id) / "result.json"
-	if not path.exists():
+	try:
+		return json.loads(path.read_text())
+	except (FileNotFoundError, json.JSONDecodeError):
 		return None
-	return json.loads(path.read_text())
 
 
 def list_jobs() -> list[dict]:
@@ -133,12 +170,15 @@ def delete_job(job_id: str) -> None:
 
 
 def save_waveform(job_id: str, peaks: list[float]) -> None:
-	(_ensure_dir(job_id) / "waveform.json").write_text(json.dumps(peaks))
+	_atomic_write_text(_ensure_dir(job_id) / "waveform.json", json.dumps(peaks))
 
 
 def load_waveform(job_id: str) -> list[float] | None:
 	path = job_dir(job_id) / "waveform.json"
-	return json.loads(path.read_text()) if path.exists() else None
+	try:
+		return json.loads(path.read_text())
+	except (FileNotFoundError, json.JSONDecodeError):
+		return None
 
 
 def save_thumbnails(job_id: str, thumbnails: list[bytes]) -> None:

@@ -234,6 +234,45 @@ class TestSavedEpisodes:
 		assert client.get("/jobs").json() == []
 		assert client.get("/jobs/j").status_code == 404
 
+	def test_deleting_a_job_still_running_stops_it_rather_than_letting_it_resurrect(self, monkeypatch):
+		# Before this, delete_job just rmtree'd the directory -- a pipeline
+		# still running past that point would recreate it on its very next
+		# write (every jobs.py save_* calls _ensure_dir first), so a "deleted"
+		# job could come back, minus its input file, unplayable and only
+		# removable by deleting it a second time.
+		#
+		# Driven with a plain asyncio.run() rather than TestClient: httpx's
+		# ASGI transport scopes each call to its own task group and cancels
+		# anything spawned inside it once that call returns, which would
+		# cancel this test's fake pipeline for a reason that has nothing to
+		# do with delete_job_endpoint -- the thing actually under test.
+		never = asyncio.Event()
+		reached_save = False
+
+		async def pipeline_that_would_resurrect_the_job(job_id, input_path, filename):
+			await never.wait()  # only returns via cancellation in this test
+			nonlocal reached_save
+			reached_save = True
+			jobs.save_result(job_id, filename, {"should": "never be written"})
+
+		monkeypatch.setattr(main, "_run_pipeline", pipeline_that_would_resurrect_the_job)
+
+		async def body():
+			input_path = jobs.save_input("j", "clip.mp4")
+			input_path.write_bytes(b"fake video")
+			main._start_pipeline("j", input_path, "clip.mp4")
+			await asyncio.sleep(0)  # let the task actually start and reach never.wait()
+			assert "j" in main._running_jobs
+
+			await main.delete_job_endpoint("j")
+
+		asyncio.run(body())
+
+		assert not reached_save, "the pipeline must not have reached save_result"
+		assert "j" not in main._running_jobs, "the done callback should have cleared it"
+		assert jobs.load_result("j") is None
+		assert not jobs.job_dir("j").exists()
+
 
 class TestExportReadsTheSavedInput:
 	def test_export_404s_when_the_job_has_no_saved_input(self, client):

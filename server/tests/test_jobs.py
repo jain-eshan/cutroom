@@ -45,6 +45,19 @@ class TestInputFile:
 		dest.write_bytes(b"x")
 		assert jobs.input_path("j") == dest
 
+	def test_a_retry_under_the_same_job_id_replaces_the_old_file_instead_of_sitting_beside_it(self):
+		# A different file picked after a failure, or a different container for
+		# the same recording -- input_path()'s plain alphabetical sort would
+		# otherwise hand back whichever name sorts first, not the one just
+		# uploaded.
+		first = jobs.save_input("j", "first-attempt.mov")
+		first.write_bytes(b"first bytes")
+		second = jobs.save_input("j", "retry.mp4")
+		second.write_bytes(b"retry bytes")
+		assert not first.exists()
+		assert jobs.input_path("j") == second
+		assert jobs.input_path("j").read_bytes() == b"retry bytes"
+
 
 class TestResult:
 	def test_a_saved_result_round_trips(self):
@@ -65,6 +78,26 @@ class TestResult:
 		jobs.save_result("new", "second.mp4", {})
 		assert [j["jobId"] for j in jobs.list_jobs()] == ["new", "old"]
 
+	def test_a_truncated_result_reads_as_not_found_rather_than_raising(self):
+		# The same "killed mid-write" risk list_jobs already guards its own
+		# read against -- load_result and original_filename need the same
+		# guard, or GET /jobs/{id} 500s on a job that GET /jobs still lists.
+		d = jobs.job_dir("j")
+		d.mkdir(parents=True)
+		(d / "result.json").write_text("{not valid json")
+		(d / "meta.json").write_text("{not valid json")
+		assert jobs.load_result("j") is None
+		assert jobs.original_filename("j") is None
+
+	def test_a_large_result_round_trips_intact_and_leaves_no_temp_file_behind(self):
+		# save_result writes via a temp file renamed into place; confirm that
+		# actually lands a complete, parseable file rather than a plausible
+		# but subtly wrong one.
+		big = {"turns": [{"speaker": i} for i in range(5000)]}
+		jobs.save_result("j", "ep1.mp4", big)
+		assert jobs.load_result("j") == big
+		assert sorted(p.name for p in jobs.job_dir("j").iterdir()) == ["meta.json", "result.json"]
+
 
 class TestWaveformAndThumbnails:
 	def test_waveform_round_trips(self):
@@ -80,6 +113,12 @@ class TestWaveformAndThumbnails:
 	def test_an_out_of_range_thumbnail_is_not_served(self):
 		jobs.save_thumbnails("j", [b"\xff\xd8only"])
 		assert jobs.load_thumbnail("j", 1) is None
+
+	def test_a_truncated_waveform_reads_as_not_found_rather_than_raising(self):
+		d = jobs.job_dir("j")
+		d.mkdir(parents=True)
+		(d / "waveform.json").write_text("[1, 2,")
+		assert jobs.load_waveform("j") is None
 
 
 class TestDelete:

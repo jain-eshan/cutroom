@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import contextlib
 import json
 import logging
 import shutil
@@ -229,7 +230,15 @@ def job_media_endpoint(job_id: str) -> FileResponse:
 
 
 @app.delete("/jobs/{job_id}")
-def delete_job_endpoint(job_id: str) -> dict[str, bool]:
+async def delete_job_endpoint(job_id: str) -> dict[str, bool]:
+	# Cancel the pipeline before removing its directory, not after: jobs.py's
+	# save_* functions all call _ensure_dir first, so a still-running task
+	# just recreates what this deletes on its very next write.
+	task = _running_jobs.get(job_id)
+	if task is not None:
+		task.cancel()
+		with contextlib.suppress(asyncio.CancelledError):
+			await task
 	jobs.delete_job(job_id)
 	return {"ok": True}
 
@@ -362,6 +371,27 @@ def _faces_work(input_path: Path, job_id: str | None) -> dict:
 # garbage-collect one mid-run -- a real gotcha, not a hypothetical one. This
 # is that somewhere; `_run_pipeline`'s own done-callback is what empties it.
 _background_jobs: set[asyncio.Task] = set()
+# job_id -> its running pipeline task, so a delete can cancel the work
+# instead of just removing the directory out from under it. Before this,
+# jobs._ensure_dir recreated the directory on the pipeline's next write
+# (save_result, save_waveform, ...) regardless of the delete, so a "deleted"
+# job could reappear in GET /jobs afterwards -- with its input file gone
+# (deleted before the resurrection), so unplayable and only removable by
+# deleting it a second time.
+_running_jobs: dict[str, asyncio.Task] = {}
+
+
+def _start_pipeline(job_id: str, input_path: Path, filename: str) -> None:
+	task = asyncio.create_task(_run_pipeline(job_id, input_path, filename))
+	_background_jobs.add(task)
+	_running_jobs[job_id] = task
+
+	def _done(t: asyncio.Task) -> None:
+		_background_jobs.discard(t)
+		if _running_jobs.get(job_id) is t:
+			del _running_jobs[job_id]
+
+	task.add_done_callback(_done)
 
 
 async def _run_pipeline(job_id: str, input_path: Path, filename: str) -> None:
@@ -447,9 +477,7 @@ async def process_endpoint(file: UploadFile, jobId: str | None = None) -> dict:
 	input_path = jobs.save_input(job_id, file.filename or "input")
 	await _save_upload(file, input_path)
 
-	task = asyncio.create_task(_run_pipeline(job_id, input_path, file.filename or "input"))
-	_background_jobs.add(task)
-	task.add_done_callback(_background_jobs.discard)
+	_start_pipeline(job_id, input_path, file.filename or "input")
 
 	return {"jobId": job_id}
 
@@ -482,9 +510,7 @@ async def process_local_endpoint(path: str = Body(..., embed=True), jobId: str |
 	input_path = jobs.save_input(job_id, source.name)
 	input_path.symlink_to(source.resolve())
 
-	task = asyncio.create_task(_run_pipeline(job_id, input_path, source.name))
-	_background_jobs.add(task)
-	task.add_done_callback(_background_jobs.discard)
+	_start_pipeline(job_id, input_path, source.name)
 
 	return {"jobId": job_id}
 
