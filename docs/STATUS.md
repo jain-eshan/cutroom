@@ -451,8 +451,22 @@ the founder's call, to find testers and contributors early:
   [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
 - **Public-release readiness**: CI, cross-platform checks, CONTRIBUTING.md, a
   demo GIF. (Docker setup is cut above.)
-- **Agent-friendly fixture mode**: a way to load canned state into the editor
-  without walking the whole upload flow. Still worth doing.
+- ~~**Agent-friendly fixture mode**~~: done, 2026-09-17. `?fixture` on the
+  dev server's URL (`src/lib/fixture.ts`) drops straight into the editor with
+  a canned three-person, 70-second conversation -- turns, words, an overlap
+  window, three faces and a voice-face match already made, one deliberately
+  low-confidence to exercise the review-flag stepper -- instead of walking
+  upload → process → cast. Dev-only (`import.meta.env.DEV`): a packaged
+  install has no reason to expose a way to skip real processing. `videoUrl`
+  is empty, so there's no picture, only black -- the point is the editor's
+  own data and controls (transcript, timeline, regions, review stepper),
+  which don't need real footage; the waveform and thumbnail fetches for the
+  fake job id fail the same way they already do for any job the server
+  doesn't recognise (silently, per the comment at `EditorView.tsx`'s
+  `waveform` state). Verified live: `tsc`, `oxlint` and the 41 frontend tests
+  all clean, and a real dev server at `/?fixture=1` rendered the transcript,
+  named speakers, "1 to review" flag and computed framing regions exactly as
+  built, with no console errors beyond the expected failed fetches.
 
 ---
 

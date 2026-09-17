@@ -9,6 +9,7 @@ import type { FramingRegion } from "@/features/timeline/types";
 import { ProcessingFailed } from "@/features/upload/ProcessingFailed";
 import { ProcessingScreen } from "@/features/upload/ProcessingScreen";
 import { UploadScreen } from "@/features/upload/UploadScreen";
+import { fixtureCast, fixtureData, FIXTURE_FILE_NAME, FIXTURE_JOB_ID, isFixtureMode } from "@/lib/fixture";
 import { useThemeMode } from "@/lib/theme";
 import {
 	deleteJob,
@@ -128,15 +129,33 @@ type Status =
 			duration: number;
 	  };
 
+/** `?fixture` in the dev server's URL skips straight to this instead of
+ * `checking` -- see src/lib/fixture.ts. */
+function fixtureStatus(): Status {
+	return {
+		state: "editing",
+		videoUrl: "",
+		fileName: FIXTURE_FILE_NAME,
+		sessionId: FIXTURE_JOB_ID,
+		turns: fixtureData.turns,
+		overlapWindows: fixtureData.overlapWindows,
+		words: fixtureData.words,
+		faces: fixtureData.faces,
+		cast: fixtureCast,
+	};
+}
+
 function App() {
 	const [themeMode, setThemeMode] = useThemeMode();
-	const [status, setStatus] = useState<Status>({ state: "checking" });
+	const [status, setStatus] = useState<Status>(() => (isFixtureMode() ? fixtureStatus() : { state: "checking" }));
 	// What the local install can actually do, learned at the setup gate and
 	// carried forward so later screens can say so before a render, not after.
 	const [health, setHealth] = useState<Health | null>(null);
 	// Edit decisions live here rather than in the editor, so going to the
 	// publish screen and back doesn't throw them away.
-	const [regions, setRegions] = useState<FramingRegion[]>([]);
+	const [regions, setRegions] = useState<FramingRegion[]>(() =>
+		isFixtureMode() ? suggestRegions(fixtureData.turns, fixtureData.overlapWindows, fixtureCast.speakerToPerson) : [],
+	);
 	const [captions, setCaptions] = useState(false);
 	const [trimDeadAir, setTrimDeadAir] = useState(false);
 	const [uploadFraction, setUploadFraction] = useState(0);
