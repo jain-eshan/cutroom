@@ -20,11 +20,33 @@ disk rather than in a module-level dict.
 """
 
 import json
+import re
 import shutil
 import time
 from pathlib import Path
 
-JOBS_DIR = Path(__file__).parent.parent / "jobs"
+from .paths import DATA_DIR
+
+JOBS_DIR = DATA_DIR / "jobs"
+
+# Every job id the app itself hands out is a `crypto.randomUUID()` (frontend)
+# or `uuid.uuid4()` (server fallback) -- both just hex digits and hyphens.
+# Validated here, the one place every other function in this module routes
+# through, so a `job_id` of `"../../etc"` or `".."` can't turn into a path
+# outside `JOBS_DIR` (arbitrary file write via `save_input`, or `delete_job`'s
+# `shutil.rmtree` walking up to a parent directory).
+_SAFE_JOB_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def validate_job_id(job_id: str) -> str:
+	"""Raise unless this id is safe to put in a filesystem path.
+
+	Public because the decision log in `main.py` builds its own path from the
+	same id, and depending on some earlier lookup having rejected it first is
+	one reordering away from being wrong."""
+	if not _SAFE_JOB_ID.match(job_id):
+		raise ValueError(f"not a valid job id: {job_id!r}")
+	return job_id
 
 
 def job_dir(job_id: str) -> Path:
@@ -32,7 +54,7 @@ def job_dir(job_id: str) -> Path:
 	by id constantly, including ones that never existed (a stale bookmark, a
 	typo); this must not litter the jobs directory with empty folders for
 	every miss. Only the `save_*` functions below create it, on write."""
-	return JOBS_DIR / job_id
+	return JOBS_DIR / validate_job_id(job_id)
 
 
 def _ensure_dir(job_id: str) -> Path:
