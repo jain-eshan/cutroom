@@ -45,3 +45,8 @@ test("bboxAtTime picks the nearest keyframe, no interpolation", () => {
 	assert.deepEqual(bboxAtTime(person, 3), person.keyframes[0].bbox);
 	assert.deepEqual(bboxAtTime(person, 8), person.keyframes[1].bbox);
 });
+
+test("a person with no keyframes raises a clear error rather than crashing on undefined", () => {
+	const person: Person = { id: 3, thumbnail: "", detectionCount: 0, keyframes: [] };
+	assert.throws(() => bboxAtTime(person, 5), /person 3 has no keyframes/);
+});

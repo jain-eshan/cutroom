@@ -3,6 +3,15 @@ import type { BBox, Person } from "@/lib/api";
 /** Nearest keyframe's bbox to a given time -- no interpolation, matching
  * server/pipeline/render.py's bbox_at_time. */
 export function bboxAtTime(person: Person, t: number): BBox {
+	if (person.keyframes.length === 0) {
+		// Not reachable today -- regions.ts only ever calls this for a person
+		// with at least one sighting -- but person.keyframes[0] on an empty
+		// array is undefined, and undefined.t is a crash with no indication
+		// which person or why. An explicit error here is a debugging aid if
+		// that invariant is ever broken by a future change, not a case this
+		// is expected to hit.
+		throw new Error(`bboxAtTime: person ${person.id} has no keyframes`);
+	}
 	let nearest = person.keyframes[0];
 	let bestDist = Math.abs(nearest.t - t);
 	for (const kf of person.keyframes) {

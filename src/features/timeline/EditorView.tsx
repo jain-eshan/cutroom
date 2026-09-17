@@ -199,10 +199,29 @@ function RegionInspector({
 	onSetTimes: (start: number, end: number) => void;
 	onSetCropNudge: (nudge: { x: number; y: number }) => void;
 }) {
-	function commitTimes(rawStart: string, rawEnd: string) {
+	// Rejecting a bad edit used to mean silently doing nothing: the field kept
+	// showing whatever was typed, with no sign the edit didn't take, and
+	// start >= end wasn't rejected at all -- just silently absorbed by
+	// resizeRegion's own clamps into something that could match neither typed
+	// value. `revert` resets the one field actually being edited back to its
+	// last real value; the other one is left alone; either way the reason
+	// shows underneath so this doesn't just look like the field ignored input.
+	const [invalidReason, setInvalidReason] = useState<string | null>(null);
+
+	function commitTimes(rawStart: string, rawEnd: string, revert: () => void) {
 		const start = parseTimecode(rawStart);
 		const end = parseTimecode(rawEnd);
-		if (start === undefined || end === undefined) return;
+		if (start === undefined || end === undefined) {
+			setInvalidReason("Times look like 1:23.4, not whatever that was.");
+			revert();
+			return;
+		}
+		if (start >= end) {
+			setInvalidReason("Start has to be before end.");
+			revert();
+			return;
+		}
+		setInvalidReason(null);
 		onSetTimes(Math.max(0, start), Math.min(duration, end));
 	}
 
@@ -221,9 +240,16 @@ function RegionInspector({
 				type="text"
 				defaultValue={formatTime(region.start, true)}
 				title="Start. Type a new time and press Enter."
-				onBlur={(e) => commitTimes(e.currentTarget.value, formatTime(region.end, true))}
+				onFocus={() => setInvalidReason(null)}
+				onBlur={(e) =>
+					commitTimes(e.currentTarget.value, formatTime(region.end, true), () => {
+						e.currentTarget.value = formatTime(region.start, true);
+					})
+				}
 				onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-				className="w-16 rounded-control border border-line bg-control px-1.5 py-1 text-center font-mono text-[11px] text-text2"
+				className={`w-16 rounded-control border bg-control px-1.5 py-1 text-center font-mono text-[11px] text-text2 ${
+					invalidReason ? "border-warn" : "border-line"
+				}`}
 			/>
 			<span className="text-text3">–</span>
 			<input
@@ -231,10 +257,18 @@ function RegionInspector({
 				type="text"
 				defaultValue={formatTime(region.end, true)}
 				title="End. Type a new time and press Enter."
-				onBlur={(e) => commitTimes(formatTime(region.start, true), e.currentTarget.value)}
+				onFocus={() => setInvalidReason(null)}
+				onBlur={(e) =>
+					commitTimes(formatTime(region.start, true), e.currentTarget.value, () => {
+						e.currentTarget.value = formatTime(region.end, true);
+					})
+				}
 				onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-				className="w-16 rounded-control border border-line bg-control px-1.5 py-1 text-center font-mono text-[11px] text-text2"
+				className={`w-16 rounded-control border bg-control px-1.5 py-1 text-center font-mono text-[11px] text-text2 ${
+					invalidReason ? "border-warn" : "border-line"
+				}`}
 			/>
+			{invalidReason && <span className="text-[10.5px] text-warn">{invalidReason}</span>}
 			<button
 				type="button"
 				onClick={onSplit}
@@ -1130,8 +1164,12 @@ export function EditorView({
 										: selectedRegion.personIds.map((id) => nameOf(id)).join(" + ")
 								}
 								canSplit={
-									currentTime - selectedRegion.start >= MIN_REGION_S &&
-									selectedRegion.end - currentTime >= MIN_REGION_S
+									// now(), not currentTime -- currentTime only updates on the
+									// video's own timeupdate event, which trails playback by up
+									// to a quarter second, so this could show enabled/disabled a
+									// beat behind the position splitHere() would actually use.
+									now() - selectedRegion.start >= MIN_REGION_S &&
+									selectedRegion.end - now() >= MIN_REGION_S
 								}
 								duration={duration}
 								onSplit={splitHere}
