@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
-import { exportVideo, type DetectFacesResponse, type Health, type Turn, type Word } from "@/lib/api";
+import { exportVideo, exportVideoToPath, type DetectFacesResponse, type Health, type Turn, type Word } from "@/lib/api";
+import { chooseExportPath, hasElectronBridge, showItemInFolder } from "@/lib/electron";
 import { formatDuration } from "@/lib/format";
 import type { FramingRegion } from "@/features/timeline/types";
 
 type RenderState =
 	| { status: "idle" }
 	| { status: "rendering" }
-	| { status: "done"; url: string; filename: string }
+	// The desktop app writes straight to `outputPath` and never holds the
+	// render in memory; a plain browser has nothing but the downloaded blob.
+	| { status: "done"; filename: string; save: { kind: "download"; url: string } | { kind: "path"; outputPath: string } }
 	| { status: "error"; message: string };
 
 function Tick() {
@@ -127,10 +130,12 @@ export function PublishScreen({
 	const changed = regions.filter((r) => r.source === "user").length;
 	const stem = fileName.replace(/\.[^.]+$/, "");
 
-	// The download link holds the whole rendered episode in memory.
+	// The download link holds the whole rendered episode in memory -- only
+	// true for the plain-browser path; the desktop app's render never
+	// touches an object URL at all.
 	useEffect(() => {
-		if (render.status !== "done") return;
-		const { url } = render;
+		if (render.status !== "done" || render.save.kind !== "download") return;
+		const { url } = render.save;
 		return () => URL.revokeObjectURL(url);
 	}, [render]);
 
@@ -149,25 +154,36 @@ export function PublishScreen({
 	}, [render.status]);
 
 	async function renderEpisode() {
+		const filename = `${stem}-edited.mp4`;
+
+		// Asked before rendering starts, not after: rendering is up to 15
+		// minutes of work, and only the desktop app has a real folder to
+		// offer -- a plain browser has nowhere to save to but its own
+		// downloads flow, via the returned blob below.
+		let outputPath: string | null = null;
+		if (hasElectronBridge()) {
+			outputPath = await chooseExportPath(filename);
+			if (outputPath === null) return; // the user cancelled the save dialog
+		}
+
 		setRender({ status: "rendering" });
 		try {
-			const blob = await exportVideo(
-				sessionId,
-				regions.map((r) => ({
-					start: r.start,
-					end: r.end,
-					layout: r.layout,
-					personIds: r.personIds,
-					source: r.source,
-					cropNudge: r.cropNudge,
-				})),
-				turns.map((t) => ({ start: t.start, end: t.end })),
-				faces,
-				words,
-				burnCaptions,
-				trimDeadAir,
-			);
-			setRender({ status: "done", url: URL.createObjectURL(blob), filename: `${stem}-edited.mp4` });
+			const regionArgs = regions.map((r) => ({
+				start: r.start,
+				end: r.end,
+				layout: r.layout,
+				personIds: r.personIds,
+				source: r.source,
+				cropNudge: r.cropNudge,
+			}));
+			const turnArgs = turns.map((t) => ({ start: t.start, end: t.end }));
+			if (outputPath) {
+				await exportVideoToPath(outputPath, sessionId, regionArgs, turnArgs, faces, words, burnCaptions, trimDeadAir);
+				setRender({ status: "done", filename, save: { kind: "path", outputPath } });
+			} else {
+				const blob = await exportVideo(sessionId, regionArgs, turnArgs, faces, words, burnCaptions, trimDeadAir);
+				setRender({ status: "done", filename, save: { kind: "download", url: URL.createObjectURL(blob) } });
+			}
 		} catch (err) {
 			setRender({
 				status: "error",
@@ -338,7 +354,9 @@ export function PublishScreen({
 									MP4{burnCaptions ? " with captions burned in" : ""}
 									{trimDeadAir ? ", dead air trimmed" : ""}.
 								</span>
-								<span className="truncate font-mono text-[10px] text-text2">{render.filename}</span>
+								<span className="truncate font-mono text-[10px] text-text2">
+									{render.save.kind === "path" ? render.save.outputPath : render.filename}
+								</span>
 							</div>
 							<div className="flex shrink-0 items-center gap-2">
 								<button
@@ -348,13 +366,23 @@ export function PublishScreen({
 								>
 									New
 								</button>
-								<a
-									href={render.url}
-									download={render.filename}
-									className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
-								>
-									Save the MP4
-								</a>
+								{render.save.kind === "path" ? (
+									<button
+										type="button"
+										onClick={() => showItemInFolder(render.save.outputPath)}
+										className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
+									>
+										Show me
+									</button>
+								) : (
+									<a
+										href={render.save.url}
+										download={render.filename}
+										className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
+									>
+										Save the MP4
+									</a>
+								)}
 							</div>
 						</div>
 					)}

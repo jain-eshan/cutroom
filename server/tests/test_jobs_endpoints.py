@@ -9,6 +9,7 @@ same way test_error_reporting.py avoids real ffmpeg calls."""
 
 import asyncio
 import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -242,3 +243,65 @@ class TestExportReadsTheSavedInput:
 		)
 		assert response.status_code == 404
 		assert "recording" in response.json()["detail"]
+
+
+class TestExportToPath:
+	"""The desktop app's path: no response body, a real file written where
+	the user chose -- see src/lib/electron.ts's chooseExportPath."""
+
+	FACES = b'{"frameWidth": 1, "frameHeight": 1, "people": []}'
+
+	def _prepare_job(self, job_id="j"):
+		input_path = jobs.save_input(job_id, "clip.mp4")
+		input_path.write_bytes(b"fake video")
+
+	def test_writes_to_the_chosen_path_and_returns_it_as_json_not_bytes(self, client, monkeypatch, tmp_path):
+		self._prepare_job()
+		monkeypatch.setattr(main, "get_video_duration", lambda *a, **k: 5.0)
+
+		def fake_render_export(input_path, output_path, segments, frame_w, frame_h, duration, ass_path=None):
+			Path(output_path).write_bytes(b"rendered mp4 bytes")
+
+		monkeypatch.setattr(main, "render_export", fake_render_export)
+
+		destination = tmp_path / "out" / "episode-edited.mp4"
+		destination.parent.mkdir()
+
+		response = client.post(
+			"/export",
+			headers={"Origin": ORIGIN},
+			files={"faces": ("faces.json", self.FACES, "application/json")},
+			data={"regions": "[]", "jobId": "j", "outputPath": str(destination)},
+		)
+		assert response.status_code == 200
+		assert response.json() == {"outputPath": str(destination)}
+		assert destination.read_bytes() == b"rendered mp4 bytes"
+
+	def test_refuses_before_rendering_when_the_folder_does_not_exist(self, client):
+		self._prepare_job()
+		response = client.post(
+			"/export",
+			headers={"Origin": ORIGIN},
+			files={"faces": ("faces.json", self.FACES, "application/json")},
+			data={"regions": "[]", "jobId": "j", "outputPath": "/nonexistent-dir-xyz/out.mp4"},
+		)
+		assert response.status_code == 400
+
+	def test_with_no_output_path_still_streams_a_response_as_before(self, client, monkeypatch):
+		self._prepare_job()
+		monkeypatch.setattr(main, "get_video_duration", lambda *a, **k: 5.0)
+
+		def fake_render_export(input_path, output_path, segments, frame_w, frame_h, duration, ass_path=None):
+			Path(output_path).write_bytes(b"rendered mp4 bytes")
+
+		monkeypatch.setattr(main, "render_export", fake_render_export)
+
+		response = client.post(
+			"/export",
+			headers={"Origin": ORIGIN},
+			files={"faces": ("faces.json", self.FACES, "application/json")},
+			data={"regions": "[]", "jobId": "j"},
+		)
+		assert response.status_code == 200
+		assert response.content == b"rendered mp4 bytes"
+		assert response.headers["content-type"] == "video/mp4"

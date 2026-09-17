@@ -336,11 +336,13 @@ the founder's call, to find testers and contributors early:
      app's credits/about, not just sitting in `node_modules`.
      - Not done, still open: the Apple Developer signing/notarisation this
        item calls for (today's build is unsigned -- Gatekeeper blocks it on
-       first open; the founder is setting up the account), rendering to a
-       folder instead of holding it in browser memory, native
-       notifications, and shipping the `pyannote` weights directly per the
-       licence check two lines down (which would
-       drop the Hugging Face step from the desktop app entirely).
+       first open; the founder is setting up the account), native
+       notifications specific to the packaged app (the web `Notification`
+       API from item 5 already works there unmodified -- Electron's
+       renderer supports it natively -- but that hasn't been confirmed
+       inside a packaged window), and shipping the `pyannote` weights
+       directly per the licence check two lines down (which would drop the
+       Hugging Face step from the desktop app entirely).
    - **Reads the recording where it is, done 2026-09-17.** `electron/
      preload.mjs` exposes `webUtils.getPathForFile` through
      `contextBridge` -- it only resolves for a file the user actually

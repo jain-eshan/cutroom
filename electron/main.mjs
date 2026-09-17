@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ffmpegPath from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
-import { app, BrowserWindow, dialog } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { ensureUv } from "../scripts/ensure-uv.mjs";
 import { createProcessingService } from "../scripts/processing-service.mjs";
 
@@ -104,6 +104,21 @@ function createWindow() {
 	});
 	win.loadURL(`http://127.0.0.1:${FRONTEND_PORT}/`);
 }
+
+// The two things `electron/preload.mjs` bridges out to the renderer that
+// only the main process can do: pick where a render goes (dialog), and
+// reveal it once it's there (shell). See src/lib/electron.ts.
+ipcMain.handle("choose-export-path", async (_event, defaultName) => {
+	const { canceled, filePath } = await dialog.showSaveDialog({
+		defaultPath: defaultName,
+		filters: [{ name: "MP4 video", extensions: ["mp4"] }],
+	});
+	return canceled ? null : filePath;
+});
+
+ipcMain.handle("show-item-in-folder", (_event, filePath) => {
+	shell.showItemInFolder(filePath);
+});
 
 app.whenReady().then(async () => {
 	startFrontendServer();

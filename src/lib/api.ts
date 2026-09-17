@@ -318,7 +318,7 @@ export interface ExportRegion {
 	cropNudge?: { x: number; y: number };
 }
 
-export async function exportVideo(
+function buildExportForm(
 	jobId: string,
 	regions: ExportRegion[],
 	turnRanges: { start: number; end: number }[],
@@ -326,7 +326,7 @@ export async function exportVideo(
 	words: Word[],
 	captions: boolean,
 	trimDeadAir: boolean,
-): Promise<Blob> {
+): FormData {
 	const form = new FormData();
 	// The recording itself is already on disk from /process (see
 	// pipeline/jobs.py server-side) -- re-uploading a multi-GB file a second
@@ -344,29 +344,64 @@ export async function exportVideo(
 	form.append("words", new Blob([JSON.stringify(words)], { type: "application/json" }), "words.json");
 	form.append("captions", String(captions));
 	form.append("trimDeadAir", String(trimDeadAir));
+	return form;
+}
 
-	const res = await fetch(new URL("/export", API_BASE), { method: "POST", body: form });
-	if (!res.ok) {
-		// FastAPI puts the actionable part in `detail`; showing the raw JSON
-		// envelope buries advice the user is meant to act on.
-		const body = await res.text();
-		let detail = body;
-		try {
-			const parsed = (JSON.parse(body) as { detail?: unknown }).detail;
-			if (typeof parsed === "string") {
-				detail = parsed;
-			} else if (Array.isArray(parsed)) {
-				// A 422 carries a list of validation errors, not a sentence --
-				// interpolated raw it reads "[object Object]", which is useless in
-				// the one place a technical string is supposed to be copyable.
-				detail = parsed
-					.map((e: { loc?: unknown[]; msg?: string }) => `${e.loc?.at(-1) ?? "request"}: ${e.msg ?? "invalid"}`)
-					.join("; ");
-			}
-		} catch {
-			// Not JSON (a proxy error page, say) -- show it as-is.
+/** FastAPI puts the actionable part of a failure response in `detail`;
+ * showing the raw JSON envelope buries advice the user is meant to act on. */
+async function exportErrorDetail(res: Response): Promise<string> {
+	const body = await res.text();
+	let detail = body;
+	try {
+		const parsed = (JSON.parse(body) as { detail?: unknown }).detail;
+		if (typeof parsed === "string") {
+			detail = parsed;
+		} else if (Array.isArray(parsed)) {
+			// A 422 carries a list of validation errors, not a sentence --
+			// interpolated raw it reads "[object Object]", which is useless in
+			// the one place a technical string is supposed to be copyable.
+			detail = parsed
+				.map((e: { loc?: unknown[]; msg?: string }) => `${e.loc?.at(-1) ?? "request"}: ${e.msg ?? "invalid"}`)
+				.join("; ");
 		}
-		throw new Error(`Export failed (${res.status}): ${detail}`);
+	} catch {
+		// Not JSON (a proxy error page, say) -- show it as-is.
 	}
+	return detail;
+}
+
+export async function exportVideo(
+	jobId: string,
+	regions: ExportRegion[],
+	turnRanges: { start: number; end: number }[],
+	faces: DetectFacesResponse,
+	words: Word[],
+	captions: boolean,
+	trimDeadAir: boolean,
+): Promise<Blob> {
+	const form = buildExportForm(jobId, regions, turnRanges, faces, words, captions, trimDeadAir);
+	const res = await fetch(new URL("/export", API_BASE), { method: "POST", body: form });
+	if (!res.ok) throw new Error(`Export failed (${res.status}): ${await exportErrorDetail(res)}`);
 	return res.blob();
+}
+
+/** Same as `exportVideo`, but for the desktop app: `outputPath` (from
+ * `chooseExportPath`, src/lib/electron.ts) is a real folder on this
+ * machine, so the service writes the render there directly instead of the
+ * whole MP4 passing through this request's response body and into browser
+ * memory. */
+export async function exportVideoToPath(
+	outputPath: string,
+	jobId: string,
+	regions: ExportRegion[],
+	turnRanges: { start: number; end: number }[],
+	faces: DetectFacesResponse,
+	words: Word[],
+	captions: boolean,
+	trimDeadAir: boolean,
+): Promise<void> {
+	const form = buildExportForm(jobId, regions, turnRanges, faces, words, captions, trimDeadAir);
+	form.append("outputPath", outputPath);
+	const res = await fetch(new URL("/export", API_BASE), { method: "POST", body: form });
+	if (!res.ok) throw new Error(`Export failed (${res.status}): ${await exportErrorDetail(res)}`);
 }

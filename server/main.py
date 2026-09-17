@@ -506,7 +506,14 @@ async def export_endpoint(
 	words: UploadFile | None = None,
 	captions: bool = Form(False),
 	trimDeadAir: bool = Form(False),
-) -> FileResponse:
+	# Only sent by the desktop app, where a folder to write into actually
+	# exists -- see src/lib/electron.ts's chooseExportPath. A plain browser
+	# has nowhere to write to but the request's own response body.
+	outputPath: str | None = Form(None),
+) -> Response:
+	if outputPath and not Path(outputPath).parent.is_dir():
+		raise HTTPException(400, f"That folder doesn't exist: {Path(outputPath).parent}")
+
 	try:
 		regions_data = json.loads(regions)
 		turns_data = json.loads(turns)
@@ -612,6 +619,15 @@ async def export_endpoint(
 		raise
 
 	_log_decision(jobId, regions_data)
+
+	if outputPath:
+		# Moved rather than streamed back: the point of this branch is that
+		# the render never has to pass through the renderer's memory at all.
+		# `shutil.move` copies-then-deletes instead of a fast rename when
+		# outputPath is on a different filesystem than the temp dir.
+		shutil.move(str(output_path), outputPath)
+		shutil.rmtree(tmp, ignore_errors=True)
+		return JSONResponse({"outputPath": outputPath})
 
 	original_name = jobs.original_filename(jobId) or input_path.name
 	output_name = f"{Path(original_name).stem}-edited.mp4"
