@@ -213,12 +213,20 @@ the founder's call, to find testers and contributors early:
      - Verified: a real upload through transcription and onto the Cast
        screen, on a synthetic clip (a real face photo + real synthesised
        speech, so transcription and face detection had something genuine to
-       find). A full click-through of the Editor's new controls (split,
-       nudge, review-stepping, the waveform and thumbnails actually
-       rendering) is not yet done -- the shared dev server this machine's
-       other sessions were using went down mid-attempt, and a shared browser
-       tab got navigated away by another session. Worth a follow-up pass
-       once the environment is free.
+       find). **Follow-up done 2026-09-17**, on an isolated dev server (port
+       3462, not the shared one) using the fixture mode above: selecting a
+       shot shows the inspector, the four crop-nudge arrows produce a
+       "Reset crop" button, `Split here` at the playhead divides the region
+       into two with the transcript's reason line updating to "You set this
+       to close on Bob", and the "1 to review" stepper jumps the playhead to
+       the fixture's one overlap-flagged turn, which renders the `TALKING
+       OVER` chip exactly per the design spec. Waveform bars and thumbnails
+       themselves weren't exercised -- the fixture's fake job id has no real
+       waveform/thumbnail data on the server, by design (see
+       `src/lib/fixture.ts`) -- but the fetch-and-degrade path for both was
+       already covered by `EditorView.tsx`'s existing catch-and-ignore
+       handling, confirmed by a clean console (no errors past the expected
+       CORS noise from testing off the app's normal port).
 3. **Processing that survives closing the window, and saved episodes.** Today
    a whole job lives inside one browser request, so closing or refreshing the
    tab loses up to an hour of work, and nothing about an edited episode is
