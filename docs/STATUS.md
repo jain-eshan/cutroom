@@ -622,6 +622,49 @@ the founder's call, to find testers and contributors early:
   all clean, and a real dev server at `/?fixture=1` rendered the transcript,
   named speakers, "1 to review" flag and computed framing regions exactly as
   built, with no console errors beyond the expected failed fetches.
+- **Bug sweep, 2026-09-17.** A full pass over a QA review's findings, each
+  verified with a real reproduction before and after, not just read and
+  fixed on faith:
+  - **Security:** job ids were never validated before use in a filesystem
+    path -- a plain request from any open browser tab could write a file
+    outside `server/jobs/` or delete `server/` outright via `DELETE
+    /jobs/..`. Restricted to a safe character set at the one place every
+    file operation routes through.
+  - **Correctness:** a job with no faces or no voices crashed instead of
+    completing (a type violation in `fuse.py`'s early return, breaking the
+    documented-working "audio only" case); `DELETE /jobs/{id}` didn't stop
+    a still-running pipeline, which could recreate the directory on its
+    next write; retrying `/process` under the same job id left the old
+    upload behind and could serve it instead of the new one; `has_audio()`
+    reported "no audio track" for any ffprobe failure, including a
+    genuinely corrupted file; concurrent first-run model downloads
+    (SFace, LR-ASD) could corrupt each other by sharing one fixed temp
+    filename; the three lazy-loaded model caches (Whisper, pyannote,
+    LR-ASD) had no lock, so two jobs starting close together could each
+    load the same multi-hundred-MB model at once.
+  - **Frontend:** no error boundary existed, so any render crash was a
+    blank white screen; no `<video>` had an `onError` handler, so a saved
+    episode's evicted media (`server/jobs/` has no eviction policy) was a
+    silent black box; region time fields failed silently on bad input with
+    no `start < end` check; the split button's enabled state could
+    disagree with the position splitting would actually use; `theme.ts`'s
+    `localStorage` calls were unguarded.
+  - **Build/release:** `ensure-uv.mjs` had no timeout and could hang first
+    launch forever; `curl | sh` masked a failed download as success; the
+    setup gate's "server ready" check missed a log line split across
+    stdio chunks; the landing page hardcoded the release version in its
+    download links (fixed at the root -- `package.json`'s build config now
+    names those artifacts without a version, so the site never needs
+    editing again); `ffmpeg-static`'s install arch wasn't pinned in
+    `release.yml`, leaving it to coincidence that the runners' default
+    matched the build targets.
+  - Each fix shipped with a new or updated test where the codebase's
+    testing conventions allowed it (monkeypatched `subprocess.run` for
+    anything ffmpeg/ffprobe-shaped, since CI has neither installed; real
+    multi-threaded races with a `threading.Barrier` for the concurrency
+    fixes, confirmed to fail against the pre-fix code, not just pass
+    against the post-fix one). 218 backend tests (was 177), 59 frontend
+    (was 41).
 
 ---
 
