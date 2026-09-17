@@ -531,6 +531,10 @@ export function EditorView({
 
 	/** Apply a framing change as one undo step. */
 	function edit(next: FramingRegion[]) {
+		// regions.ts signals a no-op (e.g. splitRegion/resizeRegion given an
+		// out-of-range point) by returning the same array reference -- skip it
+		// rather than pushing a dead entry onto the undo stack.
+		if (next === regions) return;
 		setHistory((h) => ({ past: [...h.past, regions].slice(-HISTORY_LIMIT), future: [] }));
 		onRegionsChange(next);
 	}
@@ -632,6 +636,9 @@ export function EditorView({
 				setSelectedRegionId(null);
 				break;
 			case "Tab":
+				// Let Tab move focus normally away from a button/link -- only treat
+				// it as the review-stepper shortcut when nothing focusable has it.
+				if (e.target instanceof Element && e.target.closest("button, a")) return;
 				jumpToFlaggedTurn(e.shiftKey ? -1 : 1);
 				break;
 			default:
