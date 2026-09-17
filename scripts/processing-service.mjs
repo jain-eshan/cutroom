@@ -10,6 +10,8 @@ import net from "node:net";
 // Must stay in sync with src/lib/api.ts's API_BASE and server/main.py's port.
 export const SERVICE_PORT = 8787;
 const LOG_LINES = 40;
+// uvicorn's own line announcing it's actually listening.
+const READY_MARKER = "Application startup complete";
 
 // Lines that would bury the one that matters: the access log of this app's
 // own polling (health every 1.5s, progress every 700ms), and a harmless macOS
@@ -33,6 +35,15 @@ function portInUse(port) {
  */
 export function createProcessingService(cwd) {
 	const service = { child: null, state: "starting", log: [], ranBefore: false };
+	// A separate accumulator from service.log: stdio delivers whatever the OS
+	// pipe buffer hands it per `data` event, not necessarily a whole line, so
+	// READY_MARKER can land split across two chunks. Checking each chunk in
+	// isolation missed that split -- the state never flipped to "running"
+	// even once uvicorn was actually up, which is not just slow, it's silent
+	// (nothing on screen says the service is stuck, since from its own
+	// perspective it isn't). Bounded so a long-running dev session doesn't
+	// grow this forever; only ever needs to hold one marker's worth of text.
+	let stderrTail = "";
 
 	function remember(chunk) {
 		for (const line of chunk.toString().split("\n")) {
@@ -52,6 +63,7 @@ export function createProcessingService(cwd) {
 		service.log.length = 0;
 		service.state = "starting";
 		service.ranBefore = false;
+		stderrTail = "";
 		const child = spawn(
 			"uv",
 			["run", "--directory", "server", "uvicorn", "main:app", "--port", String(SERVICE_PORT)],
@@ -61,7 +73,8 @@ export function createProcessingService(cwd) {
 		child.stdout?.on("data", remember);
 		child.stderr?.on("data", (chunk) => {
 			remember(chunk);
-			if (chunk.toString().includes("Application startup complete")) {
+			stderrTail = (stderrTail + chunk.toString()).slice(-READY_MARKER.length * 4);
+			if (stderrTail.includes(READY_MARKER)) {
 				service.state = "running";
 				service.ranBefore = true;
 			}

@@ -6,6 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from .audio import FFPROBE_TIMEOUT_S
 from .faces import BBox
 from .ffmpeg import FFMPEG, FFPROBE
 from .framing import CropRect, person_crop
@@ -328,10 +329,10 @@ def _source_audio_codec(input_path: Path) -> str | None:
 				"-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1",
 				str(input_path),
 			],
-			check=True, capture_output=True, text=True,
+			check=True, capture_output=True, text=True, timeout=FFPROBE_TIMEOUT_S,
 		)
 		return (out.stdout or "").strip() or None
-	except subprocess.CalledProcessError:
+	except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
 		return None
 
 
@@ -369,7 +370,6 @@ def _segments_are_contiguous(segments: list[RenderSegment], duration: float) -> 
 
 
 @lru_cache(maxsize=1)
-@lru_cache
 def has_ass_filter() -> bool:
 	"""Whether this ffmpeg can burn in subtitles at all.
 
@@ -387,9 +387,10 @@ def has_ass_filter() -> bool:
 	"""
 	try:
 		out = subprocess.run(
-			[FFMPEG, "-hide_banner", "-filters"], check=True, capture_output=True, text=True
+			[FFMPEG, "-hide_banner", "-filters"],
+			check=True, capture_output=True, text=True, timeout=FFPROBE_TIMEOUT_S,
 		)
-	except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+	except (subprocess.CalledProcessError, FileNotFoundError, OSError, subprocess.TimeoutExpired):
 		return False
 	# Lines are "  <flags> <name> <in>-><out>  <description>".
 	return any(parts[1] == "ass" for line in out.stdout.splitlines() if len(parts := line.split()) > 1)

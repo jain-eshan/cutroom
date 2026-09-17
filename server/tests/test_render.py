@@ -1,8 +1,15 @@
 """Tests for the render pipeline's pure logic: crop math and segment
-construction. No ffmpeg subprocess calls here -- that's exercised manually
-against a real file (see docs/TECHNICAL_ARCHITECTURE.md §8); these tests
-cover the parts that silently produce a wrong-but-not-crashing result if
-they're wrong, which is the real risk in this code."""
+construction. No *real* ffmpeg subprocess calls here -- that's exercised
+manually against a real file (see docs/TECHNICAL_ARCHITECTURE.md §8); these
+tests cover the parts that silently produce a wrong-but-not-crashing result
+if they're wrong, which is the real risk in this code.
+
+TestHasAssFilter and TestSourceAudioCodec are the exception: subprocess.run
+itself is monkeypatched (the same approach as test_audio.py), so nothing
+here invokes a real binary -- what's under test is entirely how this
+module reacts to what subprocess.run does, not ffmpeg's own behaviour."""
+
+import subprocess
 
 import pytest
 
@@ -15,7 +22,9 @@ from pipeline.render import (
 	Track,
 	_progress_fraction,
 	_segments_are_contiguous,
+	_source_audio_codec,
 	build_render_segments,
+	has_ass_filter,
 )
 
 FRAME_W, FRAME_H = 1280, 720
@@ -323,3 +332,52 @@ class TestProgressFraction:
 
 	def test_a_zero_duration_reports_nothing_rather_than_dividing_by_it(self):
 		assert _progress_fraction("out_time_us=0", duration=0.0) is None
+
+
+class TestHasAssFilter:
+	@pytest.fixture(autouse=True)
+	def clear_cache(self):
+		# lru_cache(maxsize=1) is the whole point in production (this is
+		# polled every 2s by the setup gate) -- a stale cache from a previous
+		# test would just silently reuse whatever the first test set it to.
+		has_ass_filter.cache_clear()
+		yield
+		has_ass_filter.cache_clear()
+
+	def test_a_hung_ffmpeg_reads_as_no_caption_support_rather_than_blocking_health_forever(self, monkeypatch):
+		def raise_timeout(*a, **k):
+			raise subprocess.TimeoutExpired(cmd=["ffmpeg"], timeout=k.get("timeout"))
+
+		monkeypatch.setattr(subprocess, "run", raise_timeout)
+		assert has_ass_filter() is False
+
+	def test_the_check_itself_is_given_a_timeout(self, monkeypatch):
+		seen = {}
+
+		def fake_run(*a, **k):
+			seen.update(k)
+			return subprocess.CompletedProcess(args=[], returncode=0, stdout=" V..... ass  ...\n", stderr="")
+
+		monkeypatch.setattr(subprocess, "run", fake_run)
+		assert has_ass_filter() is True
+		assert seen["timeout"] is not None
+
+
+class TestSourceAudioCodec:
+	def test_a_hung_ffprobe_reads_as_unknown_codec_rather_than_hanging_the_export(self, monkeypatch, tmp_path):
+		def raise_timeout(*a, **k):
+			raise subprocess.TimeoutExpired(cmd=["ffprobe"], timeout=k.get("timeout"))
+
+		monkeypatch.setattr(subprocess, "run", raise_timeout)
+		assert _source_audio_codec(tmp_path / "clip.mp4") is None
+
+	def test_the_probe_itself_is_given_a_timeout(self, monkeypatch, tmp_path):
+		seen = {}
+
+		def fake_run(*a, **k):
+			seen.update(k)
+			return subprocess.CompletedProcess(args=[], returncode=0, stdout="aac\n", stderr="")
+
+		monkeypatch.setattr(subprocess, "run", fake_run)
+		assert _source_audio_codec(tmp_path / "clip.mp4") == "aac"
+		assert seen["timeout"] is not None

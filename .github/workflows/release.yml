@@ -20,7 +20,20 @@ jobs:
       # check and created two separate draft releases instead of one.
       max-parallel: 1
       matrix:
-        os: [macos-latest, windows-latest]
+        include:
+          # Must match package.json's build.mac/build.win arch lists.
+          # ffmpeg-static ships one binary per host arch (unlike
+          # ffprobe-static, which bundles every arch and picks one at
+          # runtime) chosen by os.arch() at install time -- left to that
+          # default, this build would happily produce a working installer on
+          # a runner whose default arch doesn't match the app's declared
+          # target, and only fail for a real user, on their machine, with no
+          # CI signal at all. Pinning it here makes that mismatch a CI
+          # failure instead.
+          - os: macos-latest
+            arch: arm64
+          - os: windows-latest
+            arch: x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +42,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+        env:
+          npm_config_arch: ${{ matrix.arch }}
       - name: Build installer (macOS)
         if: runner.os == 'macOS'
         run: npm run dist:mac -- --publish always

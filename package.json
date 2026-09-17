@@ -108,6 +108,12 @@
         }
       ]
     },
+    "dmg": {
+      "artifactName": "${productName}-${arch}.${ext}"
+    },
+    "nsis": {
+      "artifactName": "${productName}-Setup.${ext}"
+    },
     "publish": {
       "provider": "github"
     }
