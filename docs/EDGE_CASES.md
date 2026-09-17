@@ -105,7 +105,12 @@ them needs a new model.
 - Should: stay as it is.
 
 **A2. A short line in someone else's pause** (A talks, C says "right", A carries on). P1. *This is the founder's case.*
-- Today: C gets a close-up, with a wide flash on either side (section 1).
+- ~~Today: C gets a close-up, with a wide flash on either side (section 1).~~
+  **Done, 2026-09-17.** `regions.ts`'s `earnsItsOwnShot`/`floorHeldAcross`:
+  a line sandwiched by the same other speaker, both gaps under 3s and
+  shorter than that speaker's resumption, holds on A. Measured on the exact
+  table in section 1: 6 shots / 9 cuts (including this one) down to 3
+  shots / 3 cuts. See STATUS.md's 2026-09-17 entry.
 - Should: hold on A (rules 1, 2 and 5).
 
 **A3. A third person's one-liner during a two-person exchange.** P1.
@@ -115,19 +120,28 @@ them needs a new model.
   if the line is long or they keep talking.
 
 **A4. An interruption.** A is talking and B cuts in. P1.
-- Today: an overlap of 1 s or more puts both on screen, ordered by speaker
-  number. Each word said during the overlap goes to whichever speaker segment
-  was found first (`_speaker_at` in `turns.py`), and Whisper mostly writes
-  only the louder voice.
+- **Partly done, 2026-09-17.** A keeps the shot if the interruption is short
+  (A2's floor-holding) or if it's genuine but doesn't earn its own shot --
+  the overlap still shows both, ordered by seating (rule 7, C1). Not done:
+  the large/small pane split -- 2-person layouts are symmetric today
+  (`DUO_SPLIT_MAX` in `EditorView.tsx`); only 3+ layouts have a large pane
+  (`SPEAKER_FOCUS_MAIN_FRACTION`), so "A in the large pane" for a 2-person
+  overlap has nowhere to go without a layout change.
 - Should: A keeps the shot if the interruption is short. If it goes on, show
   both, with A in the large pane (rule 3) and the panes in seating order
   (rule 7).
 
 **A5. A takeover.** B interrupts and A gives up. P1.
-- Today: both on screen for the overlap, then close on B. That's two cuts.
-- Should: one cut, to B (rule 4). *Decision needed:* cut where B starts, or
-  where A stops. Editors usually cut on the new speaker's first word, but that
-  shows B before A has finished.
+- ~~Today: both on screen for the overlap, then close on B. That's two cuts.~~
+  **Done, 2026-09-17.** `regions.ts`'s `takeoverAt`: a two-turn handoff where
+  the incoming turn earns a shot on its own is one cut, at the overlap
+  detector's own start time, not the composite. Decided: cuts on the new
+  speaker's first word (`window.start`), not where the old one stops.
+  Verified against a real case in the fixture data (a 0.4s overlap at a
+  genuine handoff), live in the browser, both classified correctly under
+  Dynamic (takeover) and Gentle (not, since the incoming turn doesn't clear
+  its higher cutoff).
+- Should: one cut, to B (rule 4). Decided: the new speaker's first word.
 
 **A6. Three or four people talking at once** (laughing, arguing). P2.
 - Today: everyone active goes on screen. With three or more, the layout has
@@ -137,7 +151,15 @@ them needs a new model.
   holder large. See C3.
 
 **A7. Rapid back-and-forth** (lines of 1–3 s alternating). P1.
-- Today: a cut on every line.
+- **Improved, 2026-09-17, not built as prescribed.** No more cut on every
+  line: each short line either fails the length cutoff outright or is
+  floor-held (A2's mechanism can trigger both directions in a strict
+  alternation), so a genuinely rapid exchange renders wide throughout --
+  confirmed directly: a 5-line alternating exchange, none of them singly
+  earning a shot, produces zero regions rather than five. That reaches the
+  same outcome A7 wants (no rapid-fire cutting) by a different path than
+  prescribed: staying wide rather than a synthesised both-on-screen shot for
+  the exchange. No code builds the latter.
 - Should: one shot of both people for the whole exchange, whenever cuts would
   come faster than rule 5 allows.
 
@@ -149,8 +171,10 @@ them needs a new model.
   (rule 3). A laugh can become a reaction shot later (A10).
 
 **A9. A long monologue** (several minutes from one person). P2.
-- Today: one close-up for the whole stretch, broken by a wide shot wherever
-  they pause for more than 2 s (`build_turns` starts a new line there).
+- **Improved, 2026-09-17, not fully.** `WIDE_AFTER_SILENCE_S` (rule 6) holds
+  through any pause under 3s, including the 2-3s band where `build_turns`
+  already split the monologue into two turns -- narrower than A9's literal
+  "no wide breaks for pauses", since a pause of 3s or more still goes wide.
 - Should: no wide breaks for pauses (rule 6). Adding variety, like a wide
   shot or a listener's reaction every 20–40 s, is the deferred "Vary shot
   length" item in [FEATURES.md](FEATURES.md).
@@ -161,13 +185,19 @@ them needs a new model.
   these moments. Not for the first version.
 
 **A11. Pauses between speakers.** P1.
-- Today: any gap between two lines renders wide, even a 0.1 s one
-  (section 1).
+- ~~Today: any gap between two lines renders wide, even a 0.1 s one
+  (section 1).~~ **Done, 2026-09-17.** `holdUntil` in `regions.ts`: a shot
+  holds until the next one starts, or a real silence (3s+), whichever comes
+  first. Measured on section 1's table: the 0.3s and 0.5s gaps that used to
+  flash wide no longer do.
 - Should: the outgoing shot holds until the next person starts (rule 6).
 
 **A12. Cuts landing slightly early or late.** P2.
 - Today: speaker boundaries come from the speaker detection and can be off by
-  a few tenths of a second, so a cut can land mid-word.
+  a few tenths of a second, so a cut can land mid-word. Not addressed in
+  general -- A5's takeover fix uses the overlap detector's own timestamp
+  instead of the transcribed turn boundary, but only for that specific
+  handoff shape, not automatic cuts generally.
 - Should: move automatic cuts onto word boundaries, just before the new
   speaker's first word. The editor's snapping already does this for manual
   drags.
@@ -252,9 +282,14 @@ them needs a new model.
 ### C. Layouts: what's on screen
 
 **C1. Pane order doesn't follow the seating.** P1.
-- Today: automatic side-by-side shots order people by speaker number, and
+- ~~Today: automatic side-by-side shots order people by speaker number, and
   "+ Both on screen" puts the selected line's speaker first. People can swap
-  sides from one shot to the next.
+  sides from one shot to the next.~~ **Done, 2026-09-17.** `orderBySeat` in
+  `regions.ts` sorts by each person's median keyframe centre-x, applied to
+  both the automatic overlap-derived splits and "+ Both on screen". A person
+  with no keyframes sorts last rather than jumping ahead of a known
+  position. Tested against a case built specifically to discriminate this
+  from the old id-based order, not one that happens to agree with it.
 - Should: order panes by where people sit in the frame (rule 7).
 
 **C2. Who gets the large pane with three people.** P2.
@@ -280,8 +315,12 @@ them needs a new model.
   [STATUS.md](STATUS.md).
 
 **C5. No automatic framing at all.** P1, and cheap.
-- Today: the only way is to delete every shot one at a time, and "Reset to
-  suggested" brings them all back.
+- **Mostly done, 2026-09-17.** A *Wide only* framing style exists
+  (`suggestRegions` in `regions.ts` returns nothing for it, not even a
+  both-on-screen composite for a genuine overlap). Not built: a distinct
+  "Clear all shots" action -- switching to Wide only only clears
+  `"suggested"` shots (`reconcileWithStyle`, by design, see D2); a shot the
+  editor made by hand still has to be deleted one at a time, same as before.
 - Should: a *Wide only* style (rule 8), plus a "Clear all shots" action.
 
 **C6. Automatic framing for only part of an episode** (wide for the intro, framed for the interview). P3.
@@ -310,6 +349,16 @@ them needs a new model.
   shots are suggested again and the editor's own shots are kept.
 
 **D2. Changing the framing style after editing.** P1, once styles exist.
+- **Done, 2026-09-17,** the same day styles were built. `reconcileWithStyle`
+  in `regions.ts`: folds every `"user"` region into a fresh suggestion under
+  the new style, the same subtract-then-insert `addRegion` already used for
+  one region at a time, generalised to every user region at once. Verified
+  live: manually framing one line, then switching styles, kept that exact
+  shot (confirmed via its own "You set this to..." label) while every other
+  line picked up a fresh suggestion under the new style. Deliberately
+  different from the pre-existing "Reset to suggested" button, which stays a
+  full reset that does discard user shots, on purpose, when the editor
+  explicitly asks for it.
 - Should: only shots marked "suggested" are replaced. Shots marked "yours"
   always survive.
 
@@ -376,36 +425,48 @@ them needs a new model.
 
 ## 4. Decisions needed
 
-1. **What counts as a short line:** under a length, under a word count, or
-   both. Recommendation: both, since "No." and "Absolutely not, that's wrong"
-   aren't the same kind of line.
-2. **Where a takeover cuts:** where the new speaker starts, or where the old
-   one stops (A5).
-3. **Off-camera voices:** hold the current shot or go wide (B3).
-   Recommendation: hold.
-4. **Four or more people:** a grid, one large pane, or wide (C3).
-5. **Default style for a new episode:** Gentle or Dynamic (rule 8).
+Five of six decided, 2026-09-17 -- see each item's own case for how it was
+built. Only C3 (four or more people) remains open.
+
+1. ~~**What counts as a short line**~~: **decided.** Both length and content:
+   under 4s (Dynamic) or 12s (Gentle), or made only of backchannel words
+   ("yeah", "right", "mhm") -- "no" and "yes" excluded, since those are real
+   answers. See A2.
+2. ~~**Where a takeover cuts**~~: **decided.** The new speaker's first word
+   (the overlap detector's own start time). See A5.
+3. **Off-camera voices:** hold the current shot or go wide (B3). Still open
+   -- not touched by this pass. Recommendation: hold.
+4. **Four or more people:** a grid, one large pane, or wide (C3). Still open,
+   and the one remaining decision blocking further work here.
+5. ~~**Default style for a new episode**~~: **decided.** Gentle. See rule 8.
 6. **Reaction shots and shot variety:** in the first version, or later (A9,
-   A10). Recommendation: later.
+   A10). Still open. Recommendation: later.
 
 ## 5. How to build it
 
 A suggested order. Where it sits on the roadmap is a separate decision.
 
-1. **Shot rules in `suggestRegions`**: rules 1–7, covering A2, A3, A4, A5,
-   A7, A8, A11, A12 and C1. Each case becomes a test made of invented lines,
-   like the table in section 1, run with `npm test`. One snag first:
-   `regions.ts` imports through the `@/` shortcut, which Node's test runner
-   can't follow. The check in section 1 worked from a copy of the file.
-2. **Framing style**, including Wide only (C5, D2).
+1. ~~**Shot rules in `suggestRegions`**~~: **done, 2026-09-17.** Rules 1, 2,
+   4, 5, 6 and 7 are built (A2, A5, A11, C1 fully; A4, A7, A9 improved but
+   not exactly as prescribed -- see each case). A3, A8, A12 untouched. The
+   `@/` import snag this item warned about was fixed the same day (see
+   STATUS.md's editing-precision entry) -- `regions.test.ts` imports
+   normally now.
+2. ~~**Framing style**, including Wide only (C5, D2).~~ **Done, 2026-09-17.**
+   Wide only, Gentle, Dynamic; D2's reconcile-not-replace behaviour built
+   alongside it, not deferred.
 3. **Choosing who's on screen**: the person picker (C4), in the shot
-   settings panel.
+   settings panel. Still open.
 4. **Knowing who's visible, and re-aiming crops** (B7, B8). This is the
-   existing item 6b.
-5. **Three or more people** (C2, C3, A6), once decision 4 is made.
-6. **Detecting cuts in already-edited videos** (E2).
+   existing item 6b. Still open.
+5. **Three or more people** (C2, C3, A6), once decision 4 is made. Still
+   blocked on C3.
+6. **Detecting cuts in already-edited videos** (E2). Still open.
 
 To tell whether the rules work, measure real episodes before and after:
 cuts per minute, shots under 2 s, and wide flashes under a second. Then
 compare against a professional edit of a similar show, the way `framing.py`'s
-numbers were measured.
+numbers were measured. **Not done yet** -- 2026-09-17's verification used the
+section 1 table and fixture data, not a real recording; the founder's own
+"We have to improve the video editing a lot" complaint hasn't had a
+real-footage retest since these fixes landed.
