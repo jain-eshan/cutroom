@@ -752,8 +752,70 @@ the founder's call, to find testers and contributors early:
     the existing fixture data is three people, and constructing a fourth
     speaker for a one-off browser check would have tested the fixture, not
     the rule.
-
----
+- **The who's-on-screen picker (EDGE_CASES.md C4), done 2026-09-18.** The
+  shot inspector now shows a toggle chip for everyone the pipeline found on
+  camera; clicking one adds or removes them from the selected shot, instead
+  of "+ Both on screen" being the only way to change who's in it and never
+  past two people. Layout follows the count -- one person is a close-up,
+  two or more is both-on-screen -- and people are ordered by seat (rule 7),
+  same as an automatic suggestion. Deselecting the last person does
+  nothing; "Go wide here" is the control for clearing a shot.
+  - Verified live (fixture mode): built a shot up from one person to three
+    (`Alice` -> `Alice + Bob` -> `Alice + Bob + Cara`, transcript reason
+    line updating each time) and back down to one (`Close on Cara`),
+    confirmed the last person can't be removed, and checked the console
+    for errors (none beyond the usual off-port CORS noise fixture-mode
+    testing always hits on this machine).
+- **Per-instant visibility, partly done (EDGE_CASES.md B7), 2026-09-18.** A
+  close-up used to crop to the *nearest* sighting of a face however far
+  away it was -- a person who left minutes ago could still get a shot of
+  their empty chair. `isVisibleAt`/`is_visible_at` (`faceCrop.ts`,
+  `render.py`) now require a sighting within 2s of the moment being
+  framed; `resolveFraming` and `build_render_segments` already had the
+  right fallback for "can't find this person" (drop them, close on whoever
+  else is there, wide if nobody is) -- they just weren't asking the
+  question this precisely before. Not done: catching someone leaving
+  *partway through* an already-showing shot, which needs a new segment
+  boundary at the moment visibility changes, not just a stricter check at
+  the one sampling point that already existed. That, and B8's smooth
+  re-aiming within a shot, stay deferred -- both are judgment calls about
+  how much extra cutting is worth it, which is exactly what "if framing
+  gets complaints" (this item's own entry, above) is waiting on real
+  footage to answer.
+  - Found in passing: the fixture data (`fixture.ts`) had precisely the
+    bug this closes -- one keyframe at t=0 for a 70-second episode, which
+    the old "nearest however far" behaviour happened to paper over. Fixed
+    to a keyframe every 1.5s across the episode, which is also just closer
+    to how real face detection samples.
+  - Verified: `tsc`, `oxlint`, 87 frontend tests (was 80), 222 backend
+    tests (was 218) -- new cases for `isVisibleAt`/`is_visible_at`
+    directly and for the fallback each language's framing function now
+    takes, plus three existing `test_render.py` cases whose tracks needed
+    a keyframe actually near what they sample (previously true by luck,
+    not by construction). Live in the browser (fixture mode): scrubbed to
+    1:04 of the 70s episode and confirmed "Close on Bob," the exact shot
+    that would have silently gone wide without the fixture fix landing
+    alongside the feature fix.
+- **A brief interjection no longer flashes a composite (EDGE_CASES.md A3),
+  2026-09-18.** Rule 3 always said the other person only joins the shot
+  once "the overlap lasts about 2s," but the code only checked
+  `MIN_REGION_S` (0.25s) -- so a genuine but brief interjection (a quick
+  "wait, really?" while someone else is mid-sentence) got its own
+  both-on-screen flash instead of the floor holder just keeping the shot,
+  exactly the "all three on screen if the line overlaps for 1s or more"
+  A3 already named as wrong. `MIN_OVERLAP_FOR_COMPOSITE_S` in `regions.ts`
+  is rule 3's own number, not a newly invented one. Not built: rule 3's
+  other clause ("saying words, not laughing or murmuring") -- the overlap
+  window has no attached word content to check that against without new
+  plumbing, and no real case has shown duration alone giving a wrong
+  answer yet.
+  - Two new `regions.test.ts` cases (89, was 87); one existing C2 test
+    needed its overlap window widened past the new threshold to keep
+    testing what it was written to test (floor-holder ordering) rather
+    than incidentally also testing this fix. `tsc`, `oxlint` clean. Not
+    re-verified live -- pure duration-threshold logic, already covered by
+    C3's precedent for why a live check would test the fixture rather
+    than the rule.
 
 ## Known limitations
 

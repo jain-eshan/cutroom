@@ -25,6 +25,7 @@ from pipeline.render import (
 	_source_audio_codec,
 	build_render_segments,
 	has_ass_filter,
+	is_visible_at,
 )
 
 FRAME_W, FRAME_H = 1280, 720
@@ -115,6 +116,25 @@ BBOX_B = BBox(x=900, y=50, width=100, height=100)
 BBOX_C = BBox(x=500, y=400, width=100, height=100)
 
 
+class TestIsVisibleAt:
+	"""EDGE_CASES.md B7: bbox_at_time finds the nearest keyframe however far
+	away it is, which used to mean a close-up could show an empty chair for
+	someone who left minutes ago. Mirrors faceCrop.ts's isVisibleAt tests --
+	both must agree, or the preview and the export disagree about who's on
+	screen."""
+
+	def test_true_at_and_within_the_window_of_a_keyframe(self):
+		track = _track(0, BBOX_A, t=10.0)
+		assert is_visible_at(track, 10.0)
+		assert is_visible_at(track, 8.0)
+		assert is_visible_at(track, 12.0)
+
+	def test_false_once_the_nearest_sighting_is_further_than_the_window(self):
+		track = _track(0, BBOX_A, t=10.0)
+		assert not is_visible_at(track, 7.0)
+		assert not is_visible_at(track, 13.0)
+
+
 class TestBuildRenderSegments:
 	"""Framing is a list of regions over the timeline, independent of turn
 	boundaries. Anything no region covers renders as the untouched wide shot,
@@ -131,7 +151,9 @@ class TestBuildRenderSegments:
 			assert a.end == b.start, "segments must be contiguous, no gaps"
 
 	def test_uncovered_time_renders_wide(self):
-		tracks = [_track(0, BBOX_A)]
+		# Visible at both region starts (0 and 5) -- this test is about the
+		# gap between covered regions, not about visibility (B7).
+		tracks = [Track(id=0, keyframes=[Keyframe(t=0.0, bbox=BBOX_A), Keyframe(t=5.0, bbox=BBOX_A)])]
 		regions = [Region(0.0, 2.0, "zoom", [0]), Region(5.0, 7.0, "zoom", [0])]
 		segments = build_render_segments(10.0, regions, tracks)
 		gap = next(s for s in segments if s.start == 2.0)
@@ -146,8 +168,28 @@ class TestBuildRenderSegments:
 		assert len(segments) == 1
 		assert segments[0].layout == "original"
 
+	def test_a_close_up_on_someone_who_left_minutes_ago_renders_wide(self):
+		# EDGE_CASES.md B7: a sighting exists, just nowhere near this region --
+		# a face we can locate *somewhere* isn't the same as one we can crop to
+		# *here*. Same fallback as the no-face-at-all case above -- merged with
+		# the uncovered lead-in into one wide segment, since both render the
+		# same way.
+		tracks = [_track(0, BBOX_A, t=0.0)]
+		regions = [Region(60.0, 65.0, "zoom", [0])]
+		segments = build_render_segments(65.0, regions, tracks)
+		assert len(segments) == 1
+		assert segments[0].layout == "original"
+
+	def test_a_both_on_screen_shot_falls_back_to_whoever_is_still_visible(self):
+		tracks = [_track(0, BBOX_A, t=0.0), _track(1, BBOX_B, t=60.0)]
+		regions = [Region(60.0, 65.0, "split", [0, 1])]
+		segments = build_render_segments(65.0, regions, tracks)
+		region_seg = next(s for s in segments if s.start == 60.0)
+		assert region_seg.layout == "zoom"
+		assert [p for p, _ in region_seg.speaker_bboxes] == [1]
+
 	def test_split_region_puts_everyone_named_on_screen(self):
-		tracks = [_track(0, BBOX_A), _track(1, BBOX_B)]
+		tracks = [_track(0, BBOX_A, t=3.0), _track(1, BBOX_B, t=3.0)]
 		regions = [Region(3.0, 5.0, "split", [0, 1])]
 		segments = build_render_segments(8.0, regions, tracks)
 
@@ -158,7 +200,11 @@ class TestBuildRenderSegments:
 	def test_regions_cut_exactly_where_they_say(self):
 		# A region deliberately spanning what used to be a turn boundary: the
 		# whole point of the model is that framing need not agree with turns.
-		tracks = [_track(0, BBOX_A), _track(1, BBOX_B)]
+		# Each person visible at both region starts their track is sampled at.
+		tracks = [
+			Track(id=0, keyframes=[Keyframe(t=0.0, bbox=BBOX_A), Keyframe(t=3.0, bbox=BBOX_A)]),
+			Track(id=1, keyframes=[Keyframe(t=3.0, bbox=BBOX_B), Keyframe(t=5.0, bbox=BBOX_B)]),
+		]
 		regions = [
 			Region(0.0, 3.0, "zoom", [0]),
 			Region(3.0, 5.0, "split", [0, 1]),

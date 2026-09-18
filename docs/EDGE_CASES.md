@@ -114,8 +114,19 @@ them needs a new model.
 - Should: hold on A (rules 1, 2 and 5).
 
 **A3. A third person's one-liner during a two-person exchange.** P1.
-- Today: a close-up flash of the third person, or all three on screen if
-  the line overlaps for 1 s or more.
+- **Done, 2026-09-18.** A non-overlapping one-liner was already handled by
+  rule 2 (`MIN_LINE_FOR_SHOT_S`) plus rule 6 holding the floor holder's shot
+  across it. The overlapping case wasn't: any genuine overlap past
+  `MIN_REGION_S` (0.25s) got a composite, which is exactly "all three on
+  screen if the line overlaps for 1s or more." Fixed with
+  `MIN_OVERLAP_FOR_COMPOSITE_S` (`regions.ts`) -- rule 3's own "about 2s"
+  number, not a new one -- below which the floor holder just keeps the
+  shot, the same as a non-overlapping short interjection.
+- **Not built:** rule 3's other clause, "saying words, not laughing or
+  murmuring." The overlap window's speaker list has no attached words to
+  check that against -- `suggestRegions` only sees `turns`, not
+  `words: Word[]` -- so this would need new plumbing, not just a threshold.
+  No case has surfaced yet where duration alone gives the wrong answer.
 - Should: stay on the two people talking (rule 2). Show the third person only
   if the line is long or they keep talking.
 
@@ -257,11 +268,38 @@ them needs a new model.
   reports one.
 
 **B7. Someone leaves the frame, stands up, or swaps seats.** P2.
-- Today: the crop uses the nearest sighting of the face, however old, so a
-  close-up can show an empty chair. This is item 6b in
+- **Partly done, 2026-09-18.** `isVisibleAt` (`faceCrop.ts`, mirrored as
+  `is_visible_at` in `render.py`) requires a sighting within 2s of the
+  moment being framed, not just a sighting *somewhere*; `resolveFraming`
+  and `build_render_segments` both treat "not visible" the same as "never
+  found," which already had the fallback this case asks for (drop them,
+  close on whoever's left, wide if nobody is). This is item 6b in
   [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
-- Should: know whether each person is visible right now. If they aren't,
-  fall back to wide or to the other people.
+- **Not done:** the check only runs where a crop is already sampled -- a
+  region's start. Someone who leaves partway through an already-showing
+  region isn't caught until the region ends, because nothing yet inserts a
+  new segment boundary where a person's visibility actually changes mid-
+  region. That half needs new segment boundaries, not just a stricter
+  check at the existing one, and is deferred with B8 (STATUS.md's
+  host-test-gated backlog: "if framing gets complaints") -- this pass
+  fixed the plainly-wrong case (a stale sighting from minutes away) without
+  taking on that larger, judgment-dependent piece.
+  - Caught in passing: the fixture data (`fixture.ts`) had exactly the bug
+    this fix targets -- one keyframe at t=0 for a 70-second episode, which
+    the old "nearest however far" behaviour papered over. Fixed to a
+    keyframe every 1.5s across the episode, closer to how real detection
+    samples anyway.
+  - Verified: `tsc`, `oxlint`, 87 frontend tests (was 80, +7 -- `isVisibleAt`
+    directly and `resolveFraming`'s new fallback), 222 backend tests (was
+    218, +4 -- `is_visible_at` directly and `build_render_segments`'s new
+    fallback, mirroring the frontend cases). Three existing
+    `test_render.py` cases also needed tracks with keyframes actually near
+    what they sample, which the fix now enforces where it previously
+    didn't matter. Live in the browser (fixture mode): scrubbed to 1:04 of
+    the 70s episode and confirmed "Close on Bob," not wide -- the exact
+    failure
+    this fix prevents, on the exact data it would have hit had the fixture
+    fix not landed alongside it.
 
 **B8. People move during a long shot** (leaning, swivelling). P2.
 - Today: each shot's crop is fixed at its start, in the preview and the
@@ -335,12 +373,24 @@ them needs a new model.
   *suggested*.
 
 **C4. The editor wants to choose who's on screen.** P1.
-- Today: "+ Both on screen" always picks the selected line's speaker plus
-  whoever spoke nearest in time. There's no way to pick the people, or more
-  than two, even though the export can show any number.
-- Should: a person picker on the selected shot. It belongs in the shot
-  settings panel planned under "Editing basics: precision" in
-  [STATUS.md](STATUS.md).
+- **Done, 2026-09-18.** The shot inspector (`RegionInspector` in
+  `EditorView.tsx`) shows a toggle chip for everyone the pipeline found on
+  camera; clicking one adds or removes them from the selected shot.
+  Deselecting the last person is a no-op -- "Go wide here" is the control
+  for clearing a shot entirely, so the picker never has to decide what an
+  empty region would mean. Layout follows the count the same way
+  `addBothOnScreen` already decided it: one person is a close-up, two or
+  more is both-on-screen. Ordered by seat (rule 7), not floor-holder order
+  (C2) -- a hand edit has no turn to read a "who was already talking"
+  answer from the way an automatic suggestion does. `"+ Both on screen"`'s
+  own two-person default (`otherSpeakerNear`) is unchanged and still the
+  fastest way to start a shot; the picker is for changing who's in one
+  already there.
+  - Verified live (fixture mode, `?fixture=1`): added Bob to a close-up on
+    Alice ("Alice + Bob", transcript reason updated to "You put Alice and
+    Bob on screen together here"), added Cara for a three-way shot, removed
+    two people back down to a single-person close-up ("Close on Cara"),
+    and confirmed clicking the last remaining person does nothing.
 
 **C5. No automatic framing at all.** P1, and cheap.
 - **Mostly done, 2026-09-17.** A *Wide only* framing style exists
@@ -476,19 +526,25 @@ All six decided; five of six built. See each item's own case for how.
 
 A suggested order. Where it sits on the roadmap is a separate decision.
 
-1. ~~**Shot rules in `suggestRegions`**~~: **done, 2026-09-17.** Rules 1, 2,
-   4, 5, 6 and 7 are built (A2, A5, A11, C1 fully; A4, A7, A9 improved but
-   not exactly as prescribed -- see each case). A3, A8, A12 untouched. The
+1. ~~**Shot rules in `suggestRegions`**~~: **done, 2026-09-17,** rule 3's
+   duration half added 2026-09-18 (A3). Rules 1, 2, 3 (duration only), 4,
+   5, 6 and 7 are built (A2, A3, A5, A11, C1 fully; A4, A7, A9 improved but
+   not exactly as prescribed -- see each case). A8, A12 untouched. The
    `@/` import snag this item warned about was fixed the same day (see
    STATUS.md's editing-precision entry) -- `regions.test.ts` imports
    normally now.
 2. ~~**Framing style**, including Wide only (C5, D2).~~ **Done, 2026-09-17.**
    Wide only, Gentle, Dynamic; D2's reconcile-not-replace behaviour built
    alongside it, not deferred.
-3. **Choosing who's on screen**: the person picker (C4), in the shot
-   settings panel. Still open.
+3. ~~**Choosing who's on screen**~~: **done, 2026-09-18.** The person picker
+   (C4), in the shot inspector.
 4. **Knowing who's visible, and re-aiming crops** (B7, B8). This is the
-   existing item 6b. Still open.
+   existing item 6b. **B7 partly done, 2026-09-18** -- a stale sighting is
+   now correctly treated as not visible (see its own case). **Still open:**
+   the harder half of B7 (a new segment boundary wherever visibility
+   changes mid-region) and all of B8 (smooth re-aiming within a shot) --
+   both deferred per STATUS.md's host-test gate, since they're judgment
+   calls about how much cutting is too much, not plain bugs.
 5. **Three or more people** (C2, C3, A6). **C3 and C2 done, 2026-09-18**
    (see each case). **A6 (usually wide for a 3-4 person moment, otherwise
    floor-holder-large) is still open** -- three people talking at once

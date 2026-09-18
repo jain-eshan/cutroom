@@ -6,6 +6,7 @@ import {
 	reconcileWithStyle,
 	regionAt,
 	resizeRegion,
+	resolveFraming,
 	splitRegion,
 	suggestRegions,
 	wideGaps,
@@ -245,6 +246,34 @@ test("a genuine, ongoing overlap still wins over a held shot -- when it isn't a 
 	assert.deepEqual([split.start, split.end], [19, 21]);
 });
 
+// --- Rule 3/A3: a brief interjection doesn't earn a composite ---
+
+test("a brief interjection during someone else's turn doesn't flash a composite (A3, rule 3)", () => {
+	// C interjects for 1.2s while B is mid-turn -- under rule 3's ~2s
+	// threshold, so B just keeps the shot. Before this, any overlap past
+	// MIN_REGION_S (0.25s) got a composite, which is exactly what A3
+	// describes as wrong ("all three on screen if the line overlaps for 1s
+	// or more").
+	const turns = [turn(0, 0, 10), turn(1, 10, 25), turn(2, 15, 16.2, "not backchannel at all")];
+	const overlaps = [{ start: 15, end: 16.2, speakers: [1, 2] }];
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
+	assert.ok(
+		regions.every((r) => r.layout !== "split"),
+		"no composite for a 1.2s interjection",
+	);
+	const holding = regions.find((r) => r.start <= 15.5 && 15.5 < r.end);
+	assert.deepEqual(holding?.personIds, [11], "B (11) keeps the shot straight through the brief interjection");
+});
+
+test("an overlap right at the two-second threshold still earns a composite", () => {
+	const turns = [turn(0, 0, 10), turn(1, 10, 25), turn(2, 15, 17, "still not backchannel words")];
+	const overlaps = [{ start: 15, end: 17, speakers: [1, 2] }];
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
+	const split = regions.find((r) => r.layout === "split");
+	assert.ok(split, "exactly 2s clears the threshold");
+	assert.deepEqual([split.start, split.end], [15, 17]);
+});
+
 // --- C3: four or more people at once suggests wide, not a composite ---
 
 const PERSON_13 = personAt(13, 300);
@@ -397,10 +426,10 @@ test("a both-on-screen shot orders its panes left to right by seat, regardless o
 
 test("with three people, the large pane goes to whoever was already holding the floor (C2)", () => {
 	// Person 12 sits rightmost but has been talking for 19s already when 10
-	// and 11 briefly jump in -- the large pane (personIds[0]) has to be 12,
-	// not 10 just because 10 sits leftmost.
-	const turns = [turn(2, 0, 20), turn(0, 19, 19.5, "brief"), turn(1, 19.2, 19.8, "brief")];
-	const overlaps = [{ start: 19, end: 20, speakers: [0, 1, 2] }];
+	// and 11 join in for a genuine two-second overlap -- the large pane
+	// (personIds[0]) has to be 12, not 10 just because 10 sits leftmost.
+	const turns = [turn(2, 0, 21), turn(0, 19, 20.5, "brief"), turn(1, 19.2, 20.8, "brief")];
+	const overlaps = [{ start: 19, end: 21, speakers: [0, 1, 2] }];
 	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
 	const split = regions.find((r) => r.layout === "split");
 	assert.ok(split);
@@ -489,4 +518,55 @@ test("reset to suggested (a full edit(suggested)) is deliberately different from
 	const withUserEdit = addRegion(dynamic, 5, 10, "zoom", [11]);
 	assert.ok(withUserEdit.some((r) => r.source === "user"));
 	assert.ok(suggestRegions(turns, [], CAST, PEOPLE, "dynamic").every((r) => r.source === "suggested"));
+});
+
+// --- resolveFraming: B7, per-instant visibility (EDGE_CASES.md) ---
+
+function personSeenAt(id: number, x: number, t: number): Person {
+	return { id, thumbnail: "", detectionCount: 1, keyframes: [{ t, bbox: { x, y: 0, width: 10, height: 10 } }] };
+}
+
+test("resolveFraming crops to the named person when they're visible at the region's start", () => {
+	const region: FramingRegion = { id: "r", start: 10, end: 20, layout: "zoom", personIds: [0], source: "suggested" };
+	const people = [personSeenAt(0, 0, 10)];
+	const framing = resolveFraming([region], people, 15);
+	assert.equal(framing.kind, "zoom");
+});
+
+test("a close-up on someone who left minutes ago goes wide, not a shot of an empty chair", () => {
+	// Same shape as the founder-facing bug this fixes: a sighting exists, but
+	// nowhere near this region -- bboxAtTime alone would have used it anyway.
+	const region: FramingRegion = { id: "r", start: 60, end: 70, layout: "zoom", personIds: [0], source: "suggested" };
+	const people = [personSeenAt(0, 0, 0)];
+	const framing = resolveFraming([region], people, 65);
+	assert.equal(framing.kind, "wide");
+});
+
+test("a both-on-screen shot falls back to a close-up on whoever is actually still visible", () => {
+	const region: FramingRegion = {
+		id: "r",
+		start: 60,
+		end: 70,
+		layout: "split",
+		personIds: [0, 1],
+		source: "suggested",
+	};
+	const people = [personSeenAt(0, 0, 0), personSeenAt(1, 100, 60)];
+	const framing = resolveFraming([region], people, 65);
+	assert.equal(framing.kind, "zoom");
+	assert.equal(framing.subjects[0]?.personId, 1);
+});
+
+test("a both-on-screen shot goes wide when nobody named is actually visible any more", () => {
+	const region: FramingRegion = {
+		id: "r",
+		start: 60,
+		end: 70,
+		layout: "split",
+		personIds: [0, 1],
+		source: "suggested",
+	};
+	const people = [personSeenAt(0, 0, 0), personSeenAt(1, 100, 5)];
+	const framing = resolveFraming([region], people, 65);
+	assert.equal(framing.kind, "wide");
 });

@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getProgress, getWaveform, timelineThumbnailUrl, type BBox, type DetectFacesResponse, type Health, type OverlapWindow, type Turn, type Word } from "@/lib/api";
+import { getProgress, getWaveform, timelineThumbnailUrl, type BBox, type DetectFacesResponse, type Health, type OverlapWindow, type Person, type Turn, type Word } from "@/lib/api";
 import type { CastResult } from "@/features/faces/CastScreen";
 import { personCrop } from "@/lib/faceCrop";
 import { TimelineTray } from "@/features/timeline/TimelineTray";
@@ -193,19 +193,28 @@ function RegionInspector({
 	label,
 	canSplit,
 	duration,
+	people,
+	nameOf,
 	onSplit,
 	onGoWide,
 	onSetTimes,
 	onSetCropNudge,
+	onSetPeople,
 }: {
 	region: FramingRegion;
 	label: string;
 	canSplit: boolean;
 	duration: number;
+	/** Everyone the pipeline found on camera, for the who's-on-screen picker
+	 * (EDGE_CASES.md C4) -- not everyone in the cast, since there's no crop
+	 * to show for a voice nobody ever saw. */
+	people: Person[];
+	nameOf: (personId: number) => string;
 	onSplit: () => void;
 	onGoWide: () => void;
 	onSetTimes: (start: number, end: number) => void;
 	onSetCropNudge: (nudge: { x: number; y: number }) => void;
+	onSetPeople: (personIds: number[]) => void;
 }) {
 	// Rejecting a bad edit used to mean silently doing nothing: the field kept
 	// showing whatever was typed, with no sign the edit didn't take, and
@@ -240,9 +249,43 @@ function RegionInspector({
 	}
 	const nudged = nudge.x !== 0 || nudge.y !== 0;
 
+	/** EDGE_CASES.md C4: toggling someone in or out of the shot, rather than
+	 * only ever "+ Close-up" (one person) or "+ Both on screen" (whoever's
+	 * nearest in time) picking for you. Deselecting the last person is a
+	 * no-op -- "Go wide here" is the control for clearing a shot entirely,
+	 * so this never has to decide what a zero-person region would mean. */
+	function togglePerson(id: number) {
+		const on = region.personIds.includes(id);
+		const next = on ? region.personIds.filter((p) => p !== id) : [...region.personIds, id];
+		if (next.length === 0) return;
+		onSetPeople(next);
+	}
+
 	return (
 		<>
 			<span className="text-[11px] font-medium text-text2">{label}</span>
+			<div className="flex items-center gap-1" title="Who's on screen in this shot.">
+				{orderBySeat(
+					people.map((p) => p.id),
+					people,
+				).map((id) => {
+					const on = region.personIds.includes(id);
+					return (
+						<button
+							key={id}
+							type="button"
+							onClick={() => togglePerson(id)}
+							aria-pressed={on}
+							className={`rounded-control border px-2 py-1 text-[11px] ${
+								on ? "border-accent bg-accent/15 text-text" : "border-line text-text3"
+							}`}
+						>
+							{nameOf(id)}
+						</button>
+					);
+				})}
+			</div>
+			<div className="mx-1 h-4 w-px bg-line" />
 			<input
 				key={`${region.id}-start-${region.start}`}
 				type="text"
@@ -762,6 +805,23 @@ export function EditorView({
 		edit(regions.map((r) => (r.id === id ? { ...r, cropNudge: nudge, source: "user" } : r)));
 	}
 
+	/** EDGE_CASES.md C4: the who's-on-screen picker changing a shot's people
+	 * directly, rather than only ever via "+ Close-up" or "+ Both on screen".
+	 * Layout follows the count -- one person is a close-up, two or more is
+	 * both-on-screen -- the same rule addBothOnScreen and suggestRegions
+	 * already use, just derived here instead of chosen up front. Seat order
+	 * (rule 7), not floor-holder order (rule 3/C2): that ordering is specific
+	 * to the automatic suggestion, not a hand edit with no turn to read a
+	 * "who was already talking" answer from. */
+	function setRegionPeople(id: string, personIds: number[]) {
+		const ordered = orderBySeat(personIds, faces.people);
+		edit(
+			regions.map((r) =>
+				r.id === id ? { ...r, personIds: ordered, layout: ordered.length === 1 ? "zoom" : "split", source: "user" } : r,
+			),
+		);
+	}
+
 	/** One clause saying what was done here and why, in the words the user
 	 * would use. Never announces that something was automatic -- it shows the
 	 * result and the reason, and the override does the reassuring. */
@@ -1195,10 +1255,13 @@ export function EditorView({
 									selectedRegion.end - now() >= MIN_REGION_S
 								}
 								duration={duration}
+								people={faces.people}
+								nameOf={nameOf}
 								onSplit={splitHere}
 								onGoWide={() => goWide(selectedRegion.id)}
 								onSetTimes={(start, end) => setRegionTimes(selectedRegion.id, start, end)}
 								onSetCropNudge={(nudge) => setCropNudge(selectedRegion.id, nudge)}
+								onSetPeople={(personIds) => setRegionPeople(selectedRegion.id, personIds)}
 							/>
 						) : (
 							<span className="text-[11px] text-text3">

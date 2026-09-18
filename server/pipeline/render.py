@@ -95,9 +95,26 @@ def bust_shot_crop(
 	)
 
 
+# Keep in sync with faceCrop.ts's VISIBLE_WITHIN_S -- both read the same
+# keyframes and must agree on who's on screen, or the preview and the export
+# disagree about it.
+VISIBLE_WITHIN_S = 2.0
+
+
+def is_visible_at(track: Track, t: float) -> bool:
+	"""EDGE_CASES.md B7: an actual sighting near `t`, not just a sighting
+	*somewhere* -- `bbox_at_time` finds the nearest keyframe however far
+	away it is, which used to mean a close-up could show an empty chair for
+	someone who left minutes ago. Only the region-start sampling point this
+	and `bbox_at_time` are both called at is covered; see faceCrop.ts's
+	`isVisibleAt` for what's still deferred."""
+	return any(abs(kf.t - t) <= VISIBLE_WITHIN_S for kf in track.keyframes)
+
+
 def bbox_at_time(track: Track, t: float) -> BBox:
 	"""Nearest keyframe's bbox to a given time -- no interpolation, same as
-	the frontend's bboxAtTime in faceCrop.ts."""
+	the frontend's bboxAtTime in faceCrop.ts. Call is_visible_at first; this
+	returns the nearest keyframe unconditionally, however far away it is."""
 	nearest = track.keyframes[0]
 	best_dist = abs(nearest.t - t)
 	for kf in track.keyframes:
@@ -170,7 +187,7 @@ def build_render_segments(
 		bboxes = [
 			(person_id, bbox_at_time(person, b0))
 			for person_id in region.person_ids
-			if (person := _person(person_id, people)) is not None
+			if (person := _person(person_id, people)) is not None and is_visible_at(person, b0)
 		]
 
 		if not bboxes:

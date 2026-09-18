@@ -4,12 +4,24 @@ import type { BBox, OverlapWindow, Person, Turn } from "@/lib/api";
 // follow the Vite-only alias. faceCrop.ts has no other runtime imports of
 // its own, so this is the one import in the module graph that has to be
 // resolvable without Vite.
-import { bboxAtTime } from "../../lib/faceCrop.ts";
+import { bboxAtTime, isVisibleAt } from "../../lib/faceCrop.ts";
 import type { FramingRegion, FramingStyle, RegionLayout } from "@/features/timeline/types";
 
 /** Shorter than this and a region is a flash rather than a shot, and the drag
  * handles have nothing left to grab. */
 export const MIN_REGION_S = 0.25;
+
+/** How long a genuine overlap has to run before the interjecting person
+ * joins the shot at all -- rule 3's own number ("the overlap lasts about 2s
+ * and they're saying words, not laughing or murmuring"). Below this, the
+ * floor holder simply keeps the shot, the same as any other interjection
+ * too short to earn its own (EDGE_CASES.md A3: a third person's brief
+ * one-liner during someone else's turn used to flash a composite for it,
+ * which is exactly the "or all three on screen if the line overlaps for 1s
+ * or more" A3 says is wrong). `MIN_REGION_S` alone let a 0.25s murmur create
+ * a composite; this is the real threshold rule 3 asks for, which happens to
+ * be four times bigger. */
+const MIN_OVERLAP_FOR_COMPOSITE_S = 2;
 
 /** Gap below which two same-subject regions are treated as touching. Turn
  * boundaries land on transcription timings, which are not exact to the frame. */
@@ -329,6 +341,11 @@ export function suggestRegions(
 			people,
 		);
 		if (personIds.length < 2 || window.end - window.start < MIN_REGION_S) continue;
+		// Rule 3/A3: too brief to earn a composite at all -- the floor holder
+		// just keeps the shot, same as it would for any other interjection
+		// that doesn't earn its own (no hole to punch, unlike the two checks
+		// below: this one isn't forcing wide, it's declining to interrupt).
+		if (window.end - window.start < MIN_OVERLAP_FOR_COMPOSITE_S) continue;
 		if (personIds.length > MAX_SUGGESTED_COMPOSITE) {
 			forcedWide.push({ start: window.start, end: window.end });
 			continue;
@@ -446,9 +463,10 @@ export function resolveFraming(regions: FramingRegion[], people: Person[], t: nu
 	const subjects = region.personIds
 		.map((personId) => {
 			const person = people.find((p) => p.id === personId);
-			// No keyframes means we never actually located them, which is the
-			// same situation as not knowing about them at all.
-			if (!person || person.keyframes.length === 0) return null;
+			// No keyframes means we never actually located them, and not being
+			// visible right now (B7) is the same situation for framing purposes
+			// -- either way there's no current sighting to crop to.
+			if (!person || person.keyframes.length === 0 || !isVisibleAt(person, region.start)) return null;
 			return { personId, bbox: bboxAtTime(person, region.start) };
 		})
 		.filter((s): s is Subject => s !== null);
