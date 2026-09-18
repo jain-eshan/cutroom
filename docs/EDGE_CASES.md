@@ -257,11 +257,38 @@ them needs a new model.
   reports one.
 
 **B7. Someone leaves the frame, stands up, or swaps seats.** P2.
-- Today: the crop uses the nearest sighting of the face, however old, so a
-  close-up can show an empty chair. This is item 6b in
+- **Partly done, 2026-09-18.** `isVisibleAt` (`faceCrop.ts`, mirrored as
+  `is_visible_at` in `render.py`) requires a sighting within 2s of the
+  moment being framed, not just a sighting *somewhere*; `resolveFraming`
+  and `build_render_segments` both treat "not visible" the same as "never
+  found," which already had the fallback this case asks for (drop them,
+  close on whoever's left, wide if nobody is). This is item 6b in
   [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
-- Should: know whether each person is visible right now. If they aren't,
-  fall back to wide or to the other people.
+- **Not done:** the check only runs where a crop is already sampled -- a
+  region's start. Someone who leaves partway through an already-showing
+  region isn't caught until the region ends, because nothing yet inserts a
+  new segment boundary where a person's visibility actually changes mid-
+  region. That half needs new segment boundaries, not just a stricter
+  check at the existing one, and is deferred with B8 (STATUS.md's
+  host-test-gated backlog: "if framing gets complaints") -- this pass
+  fixed the plainly-wrong case (a stale sighting from minutes away) without
+  taking on that larger, judgment-dependent piece.
+  - Caught in passing: the fixture data (`fixture.ts`) had exactly the bug
+    this fix targets -- one keyframe at t=0 for a 70-second episode, which
+    the old "nearest however far" behaviour papered over. Fixed to a
+    keyframe every 1.5s across the episode, closer to how real detection
+    samples anyway.
+  - Verified: `tsc`, `oxlint`, 87 frontend tests (was 80, +7 -- `isVisibleAt`
+    directly and `resolveFraming`'s new fallback), 222 backend tests (was
+    218, +4 -- `is_visible_at` directly and `build_render_segments`'s new
+    fallback, mirroring the frontend cases). Three existing
+    `test_render.py` cases also needed tracks with keyframes actually near
+    what they sample, which the fix now enforces where it previously
+    didn't matter. Live in the browser (fixture mode): scrubbed to 1:04 of
+    the 70s episode and confirmed "Close on Bob," not wide -- the exact
+    failure
+    this fix prevents, on the exact data it would have hit had the fixture
+    fix not landed alongside it.
 
 **B8. People move during a long shot** (leaning, swivelling). P2.
 - Today: each shot's crop is fixed at its start, in the preview and the
@@ -500,7 +527,12 @@ A suggested order. Where it sits on the roadmap is a separate decision.
 3. ~~**Choosing who's on screen**~~: **done, 2026-09-18.** The person picker
    (C4), in the shot inspector.
 4. **Knowing who's visible, and re-aiming crops** (B7, B8). This is the
-   existing item 6b. Still open.
+   existing item 6b. **B7 partly done, 2026-09-18** -- a stale sighting is
+   now correctly treated as not visible (see its own case). **Still open:**
+   the harder half of B7 (a new segment boundary wherever visibility
+   changes mid-region) and all of B8 (smooth re-aiming within a shot) --
+   both deferred per STATUS.md's host-test gate, since they're judgment
+   calls about how much cutting is too much, not plain bugs.
 5. **Three or more people** (C2, C3, A6). **C3 and C2 done, 2026-09-18**
    (see each case). **A6 (usually wide for a 3-4 person moment, otherwise
    floor-holder-large) is still open** -- three people talking at once

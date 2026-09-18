@@ -4,7 +4,7 @@ import type { BBox, OverlapWindow, Person, Turn } from "@/lib/api";
 // follow the Vite-only alias. faceCrop.ts has no other runtime imports of
 // its own, so this is the one import in the module graph that has to be
 // resolvable without Vite.
-import { bboxAtTime } from "../../lib/faceCrop.ts";
+import { bboxAtTime, isVisibleAt } from "../../lib/faceCrop.ts";
 import type { FramingRegion, FramingStyle, RegionLayout } from "@/features/timeline/types";
 
 /** Shorter than this and a region is a flash rather than a shot, and the drag
@@ -446,9 +446,10 @@ export function resolveFraming(regions: FramingRegion[], people: Person[], t: nu
 	const subjects = region.personIds
 		.map((personId) => {
 			const person = people.find((p) => p.id === personId);
-			// No keyframes means we never actually located them, which is the
-			// same situation as not knowing about them at all.
-			if (!person || person.keyframes.length === 0) return null;
+			// No keyframes means we never actually located them, and not being
+			// visible right now (B7) is the same situation for framing purposes
+			// -- either way there's no current sighting to crop to.
+			if (!person || person.keyframes.length === 0 || !isVisibleAt(person, region.start)) return null;
 			return { personId, bbox: bboxAtTime(person, region.start) };
 		})
 		.filter((s): s is Subject => s !== null);

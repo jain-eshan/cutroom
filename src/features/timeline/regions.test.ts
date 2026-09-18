@@ -6,6 +6,7 @@ import {
 	reconcileWithStyle,
 	regionAt,
 	resizeRegion,
+	resolveFraming,
 	splitRegion,
 	suggestRegions,
 	wideGaps,
@@ -489,4 +490,55 @@ test("reset to suggested (a full edit(suggested)) is deliberately different from
 	const withUserEdit = addRegion(dynamic, 5, 10, "zoom", [11]);
 	assert.ok(withUserEdit.some((r) => r.source === "user"));
 	assert.ok(suggestRegions(turns, [], CAST, PEOPLE, "dynamic").every((r) => r.source === "suggested"));
+});
+
+// --- resolveFraming: B7, per-instant visibility (EDGE_CASES.md) ---
+
+function personSeenAt(id: number, x: number, t: number): Person {
+	return { id, thumbnail: "", detectionCount: 1, keyframes: [{ t, bbox: { x, y: 0, width: 10, height: 10 } }] };
+}
+
+test("resolveFraming crops to the named person when they're visible at the region's start", () => {
+	const region: FramingRegion = { id: "r", start: 10, end: 20, layout: "zoom", personIds: [0], source: "suggested" };
+	const people = [personSeenAt(0, 0, 10)];
+	const framing = resolveFraming([region], people, 15);
+	assert.equal(framing.kind, "zoom");
+});
+
+test("a close-up on someone who left minutes ago goes wide, not a shot of an empty chair", () => {
+	// Same shape as the founder-facing bug this fixes: a sighting exists, but
+	// nowhere near this region -- bboxAtTime alone would have used it anyway.
+	const region: FramingRegion = { id: "r", start: 60, end: 70, layout: "zoom", personIds: [0], source: "suggested" };
+	const people = [personSeenAt(0, 0, 0)];
+	const framing = resolveFraming([region], people, 65);
+	assert.equal(framing.kind, "wide");
+});
+
+test("a both-on-screen shot falls back to a close-up on whoever is actually still visible", () => {
+	const region: FramingRegion = {
+		id: "r",
+		start: 60,
+		end: 70,
+		layout: "split",
+		personIds: [0, 1],
+		source: "suggested",
+	};
+	const people = [personSeenAt(0, 0, 0), personSeenAt(1, 100, 60)];
+	const framing = resolveFraming([region], people, 65);
+	assert.equal(framing.kind, "zoom");
+	assert.equal(framing.subjects[0]?.personId, 1);
+});
+
+test("a both-on-screen shot goes wide when nobody named is actually visible any more", () => {
+	const region: FramingRegion = {
+		id: "r",
+		start: 60,
+		end: 70,
+		layout: "split",
+		personIds: [0, 1],
+		source: "suggested",
+	};
+	const people = [personSeenAt(0, 0, 0), personSeenAt(1, 100, 5)];
+	const framing = resolveFraming([region], people, 65);
+	assert.equal(framing.kind, "wide");
 });

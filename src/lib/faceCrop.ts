@@ -1,7 +1,26 @@
 import type { BBox, Person } from "@/lib/api";
 
+// Keep in sync with server/pipeline/render.py's VISIBLE_WITHIN_S -- both read
+// the same keyframes and must agree on who's on screen, or the preview and
+// the export disagree about it.
+const VISIBLE_WITHIN_S = 2.0;
+
+/** EDGE_CASES.md B7: whether a person has an actual sighting near `t`, not
+ * just a sighting *somewhere* -- `bboxAtTime` finds the nearest keyframe
+ * however far away it is, which used to mean a close-up could show an empty
+ * chair for someone who left minutes ago. Only the region-start sampling
+ * point this and `bboxAtTime` are both called at is covered; a person who
+ * leaves partway through an already-showing region isn't caught until the
+ * region ends (DESIGN_SYSTEM.md item 6b's "segment boundaries where
+ * visibility changes" is the rest of that fix, deferred with the rest of the
+ * per-instant work -- see STATUS.md). */
+export function isVisibleAt(person: Person, t: number): boolean {
+	return person.keyframes.some((kf) => Math.abs(kf.t - t) <= VISIBLE_WITHIN_S);
+}
+
 /** Nearest keyframe's bbox to a given time -- no interpolation, matching
- * server/pipeline/render.py's bbox_at_time. */
+ * server/pipeline/render.py's bbox_at_time. Call `isVisibleAt` first; this
+ * returns the nearest keyframe unconditionally, however far away it is. */
 export function bboxAtTime(person: Person, t: number): BBox {
 	if (person.keyframes.length === 0) {
 		// Not reachable today -- regions.ts only ever calls this for a person

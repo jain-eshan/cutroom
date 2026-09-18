@@ -1,5 +1,5 @@
 import type { CastResult } from "@/features/faces/CastScreen";
-import type { DetectFacesResponse, MatchResult, OverlapWindow, Person, ProcessResponse, Turn, Word } from "@/lib/api";
+import type { BBox, DetectFacesResponse, FaceKeyframe, MatchResult, OverlapWindow, Person, ProcessResponse, Turn, Word } from "@/lib/api";
 
 /** Drops straight into the editor with a canned three-person conversation --
  * no upload, no processing wait, no backend even needed to be running (the
@@ -35,6 +35,23 @@ function thumbnail(initial: string, hue: number): string {
 	return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
+/** A keyframe every 1.5s across the episode, all at the same seat -- nobody
+ * moves in this fixture. A single keyframe at t=0 used to be enough, before
+ * `resolveFraming`/`build_render_segments` started checking whether a
+ * sighting is actually near the moment being framed (EDGE_CASES.md B7):
+ * once they did, every shot past the first two seconds of the 70s fixture
+ * episode would have found nobody "visible" and gone wide. Real face
+ * detection samples about once a second for the episode's whole length
+ * (EDGE_CASES.md B8's "Today" line), so this is closer to real input than
+ * the single keyframe was, not just a workaround for the new check. */
+function seatedThroughout(bbox: BBox, duration: number, step = 1.5): FaceKeyframe[] {
+	const keyframes: FaceKeyframe[] = [];
+	for (let t = 0; t <= duration; t += step) keyframes.push({ t, bbox });
+	return keyframes;
+}
+
+const EPISODE_DURATION_S = 70;
+
 const turns: Turn[] = [
 	{ speaker: 0, start: 0, end: 8.5, text: "Welcome back to the show, today we are talking about how podcasts get edited." },
 	{ speaker: 1, start: 8.5, end: 14, text: "Thanks for having me, I have been excited about this one all week." },
@@ -53,9 +70,24 @@ const overlapWindows: OverlapWindow[] = [{ start: 33.6, end: 34, speakers: [1, 2
 const words: Word[] = turns.flatMap(wordsFromTurn);
 
 const people: Person[] = [
-	{ id: 0, thumbnail: thumbnail("A", 210), keyframes: [{ t: 0, bbox: { x: 200, y: 180, width: 300, height: 300 } }], detectionCount: 1180 },
-	{ id: 1, thumbnail: thumbnail("B", 30), keyframes: [{ t: 0, bbox: { x: 800, y: 160, width: 300, height: 320 } }], detectionCount: 1150 },
-	{ id: 2, thumbnail: thumbnail("C", 130), keyframes: [{ t: 0, bbox: { x: 1400, y: 190, width: 300, height: 300 } }], detectionCount: 1120 },
+	{
+		id: 0,
+		thumbnail: thumbnail("A", 210),
+		keyframes: seatedThroughout({ x: 200, y: 180, width: 300, height: 300 }, EPISODE_DURATION_S),
+		detectionCount: 1180,
+	},
+	{
+		id: 1,
+		thumbnail: thumbnail("B", 30),
+		keyframes: seatedThroughout({ x: 800, y: 160, width: 300, height: 320 }, EPISODE_DURATION_S),
+		detectionCount: 1150,
+	},
+	{
+		id: 2,
+		thumbnail: thumbnail("C", 130),
+		keyframes: seatedThroughout({ x: 1400, y: 190, width: 300, height: 300 }, EPISODE_DURATION_S),
+		detectionCount: 1120,
+	},
 ];
 
 const faces: DetectFacesResponse = { frameWidth: 1920, frameHeight: 1080, people };

@@ -766,6 +766,36 @@ the founder's call, to find testers and contributors early:
     confirmed the last person can't be removed, and checked the console
     for errors (none beyond the usual off-port CORS noise fixture-mode
     testing always hits on this machine).
+- **Per-instant visibility, partly done (EDGE_CASES.md B7), 2026-09-18.** A
+  close-up used to crop to the *nearest* sighting of a face however far
+  away it was -- a person who left minutes ago could still get a shot of
+  their empty chair. `isVisibleAt`/`is_visible_at` (`faceCrop.ts`,
+  `render.py`) now require a sighting within 2s of the moment being
+  framed; `resolveFraming` and `build_render_segments` already had the
+  right fallback for "can't find this person" (drop them, close on whoever
+  else is there, wide if nobody is) -- they just weren't asking the
+  question this precisely before. Not done: catching someone leaving
+  *partway through* an already-showing shot, which needs a new segment
+  boundary at the moment visibility changes, not just a stricter check at
+  the one sampling point that already existed. That, and B8's smooth
+  re-aiming within a shot, stay deferred -- both are judgment calls about
+  how much extra cutting is worth it, which is exactly what "if framing
+  gets complaints" (this item's own entry, above) is waiting on real
+  footage to answer.
+  - Found in passing: the fixture data (`fixture.ts`) had precisely the
+    bug this closes -- one keyframe at t=0 for a 70-second episode, which
+    the old "nearest however far" behaviour happened to paper over. Fixed
+    to a keyframe every 1.5s across the episode, which is also just closer
+    to how real face detection samples.
+  - Verified: `tsc`, `oxlint`, 87 frontend tests (was 80), 222 backend
+    tests (was 218) -- new cases for `isVisibleAt`/`is_visible_at`
+    directly and for the fallback each language's framing function now
+    takes, plus three existing `test_render.py` cases whose tracks needed
+    a keyframe actually near what they sample (previously true by luck,
+    not by construction). Live in the browser (fixture mode): scrubbed to
+    1:04 of the 70s episode and confirmed "Close on Bob," the exact shot
+    that would have silently gone wide without the fixture fix landing
+    alongside the feature fix.
 
 ## Known limitations
 
