@@ -335,12 +335,24 @@ them needs a new model.
   *suggested*.
 
 **C4. The editor wants to choose who's on screen.** P1.
-- Today: "+ Both on screen" always picks the selected line's speaker plus
-  whoever spoke nearest in time. There's no way to pick the people, or more
-  than two, even though the export can show any number.
-- Should: a person picker on the selected shot. It belongs in the shot
-  settings panel planned under "Editing basics: precision" in
-  [STATUS.md](STATUS.md).
+- **Done, 2026-09-18.** The shot inspector (`RegionInspector` in
+  `EditorView.tsx`) shows a toggle chip for everyone the pipeline found on
+  camera; clicking one adds or removes them from the selected shot.
+  Deselecting the last person is a no-op -- "Go wide here" is the control
+  for clearing a shot entirely, so the picker never has to decide what an
+  empty region would mean. Layout follows the count the same way
+  `addBothOnScreen` already decided it: one person is a close-up, two or
+  more is both-on-screen. Ordered by seat (rule 7), not floor-holder order
+  (C2) -- a hand edit has no turn to read a "who was already talking"
+  answer from the way an automatic suggestion does. `"+ Both on screen"`'s
+  own two-person default (`otherSpeakerNear`) is unchanged and still the
+  fastest way to start a shot; the picker is for changing who's in one
+  already there.
+  - Verified live (fixture mode, `?fixture=1`): added Bob to a close-up on
+    Alice ("Alice + Bob", transcript reason updated to "You put Alice and
+    Bob on screen together here"), added Cara for a three-way shot, removed
+    two people back down to a single-person close-up ("Close on Cara"),
+    and confirmed clicking the last remaining person does nothing.
 
 **C5. No automatic framing at all.** P1, and cheap.
 - **Mostly done, 2026-09-17.** A *Wide only* framing style exists
@@ -485,8 +497,8 @@ A suggested order. Where it sits on the roadmap is a separate decision.
 2. ~~**Framing style**, including Wide only (C5, D2).~~ **Done, 2026-09-17.**
    Wide only, Gentle, Dynamic; D2's reconcile-not-replace behaviour built
    alongside it, not deferred.
-3. **Choosing who's on screen**: the person picker (C4), in the shot
-   settings panel. Still open.
+3. ~~**Choosing who's on screen**~~: **done, 2026-09-18.** The person picker
+   (C4), in the shot inspector.
 4. **Knowing who's visible, and re-aiming crops** (B7, B8). This is the
    existing item 6b. Still open.
 5. **Three or more people** (C2, C3, A6). **C3 and C2 done, 2026-09-18**

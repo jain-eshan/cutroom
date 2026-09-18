@@ -752,8 +752,20 @@ the founder's call, to find testers and contributors early:
     the existing fixture data is three people, and constructing a fourth
     speaker for a one-off browser check would have tested the fixture, not
     the rule.
-
----
+- **The who's-on-screen picker (EDGE_CASES.md C4), done 2026-09-18.** The
+  shot inspector now shows a toggle chip for everyone the pipeline found on
+  camera; clicking one adds or removes them from the selected shot, instead
+  of "+ Both on screen" being the only way to change who's in it and never
+  past two people. Layout follows the count -- one person is a close-up,
+  two or more is both-on-screen -- and people are ordered by seat (rule 7),
+  same as an automatic suggestion. Deselecting the last person does
+  nothing; "Go wide here" is the control for clearing a shot.
+  - Verified live (fixture mode): built a shot up from one person to three
+    (`Alice` -> `Alice + Bob` -> `Alice + Bob + Cara`, transcript reason
+    line updating each time) and back down to one (`Close on Cara`),
+    confirmed the last person can't be removed, and checked the console
+    for errors (none beyond the usual off-port CORS noise fixture-mode
+    testing always hits on this machine).
 
 ## Known limitations
 
