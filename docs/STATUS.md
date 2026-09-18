@@ -736,10 +736,18 @@ the founder's call, to find testers and contributors early:
     suggestions.
   - **Reaction shots (A9/A10), decided: later.** No code change; recorded
     so the question doesn't get re-asked.
-  - **Still open:** C2 (the large pane should go to the floor holder, not
-    whoever sits first) and A6 (usually wide for a 3-4 person moment) --
-    C3's fix only reaches four-or-more. See EDGE_CASES.md section 5, item 5.
-  - Verified: `tsc`, `oxlint`, all 78 frontend tests (was 52) pass. Pure
+  - **C2 (who gets the large pane), done.** `floorHolderPersonId`
+    (`regions.ts`) picks whoever's turn is already under way when a
+    three-or-more overlap starts -- rule 3's own "overlap favours whoever
+    started first" -- ahead of everyone else in seat order (rule 7,
+    otherwise unchanged). Two-person shots have no large pane to reassign,
+    so this only fires at three or more. Not built: the floor changing
+    hands *within* one composite (rule 5's territory) -- every measured
+    genuine overlap so far is 0.02-0.56s, too short for it to matter yet.
+  - **Still open:** A6 (usually wide for a 3-4 person moment, rather than
+    every one getting a composite). No evidence yet on how often that
+    matters. See EDGE_CASES.md section 5, item 5.
+  - Verified: `tsc`, `oxlint`, all 80 frontend tests (was 52) pass. Pure
     logic in `regions.ts`, so unit-tested rather than re-verified live --
     the existing fixture data is three people, and constructing a fourth
     speaker for a one-off browser check would have tested the fixture, not

@@ -300,10 +300,19 @@ them needs a new model.
 - Should: order panes by where people sit in the frame (rule 7).
 
 **C2. Who gets the large pane with three people.** P2.
-- Today: the first person in the shot's list, which is the lowest speaker
-  number.
-- Should: the floor holder. Moving someone into the large pane is a cut, so
-  rule 5 applies to it too.
+- **Mostly done, 2026-09-18.** `floorHolderPersonId` in `regions.ts` picks
+  whoever's turn is already under way when the overlap starts -- rule 3's
+  own description of this ("overlap favours whoever started first") --
+  and puts them in `personIds[0]`, `render.py`'s large pane, ahead of the
+  other people in seat order (rule 7's ordering, otherwise unchanged, for
+  everyone else). Two people has no large pane to reassign (a symmetric
+  side-by-side), so this only fires at three or more.
+- **Not built:** the floor changing hands *within* one composite region --
+  today's one holder covers the whole region, which is what rule 5
+  ("moving someone into the large pane is a cut... no shot shorter than
+  about 2s") would need to split into. No measured overlap has been long
+  or contested enough to need this yet -- the shortest genuine overlaps
+  measured so far are 0.02-0.56s (see STATUS.md), well under a cut's worth.
 
 **C3. Four or more people.** P2. *Already an open question in DESIGN_SYSTEM.md.*
 - **Decided and done (the suggestion half), 2026-09-18:** wide once everyone
@@ -483,12 +492,12 @@ A suggested order. Where it sits on the roadmap is a separate decision.
    settings panel. Still open.
 4. **Knowing who's visible, and re-aiming crops** (B7, B8). This is the
    existing item 6b. Still open.
-5. **Three or more people** (C2, C3, A6). **C3 done, 2026-09-18** (see its
-   own case). **C2 (who gets the large pane) and A6 (usually wide for a
-   3-4 person moment, otherwise floor-holder-large) are still open** --
-   C3's fix only covers four-or-more; a 3-person composite still puts
-   whoever's listed first (seat order, since rule 7/C1) in the large pane
-   rather than the floor holder.
+5. **Three or more people** (C2, C3, A6). **C3 and C2 done, 2026-09-18**
+   (see each case). **A6 (usually wide for a 3-4 person moment, otherwise
+   floor-holder-large) is still open** -- three people talking at once
+   still gets a composite every time (with the floor holder large, now
+   that C2 is built), rather than "usually" going wide the way A6
+   recommends. No evidence yet on how often that matters in practice.
 6. **Detecting cuts in already-edited videos** (E2). Still open.
 
 To tell whether the rules work, measure real episodes before and after:

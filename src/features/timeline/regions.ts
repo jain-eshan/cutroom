@@ -258,6 +258,29 @@ export function orderBySeat(personIds: number[], people: Person[]): number[] {
 	return [...personIds].sort((a, b) => seatPosition(a, people) - seatPosition(b, people));
 }
 
+/** Rule 3/C2: with three or more people on screen, the large pane goes to
+ * whoever was already holding the floor, not whoever happens to sit
+ * leftmost. Read as whichever of the window's speakers has a turn already
+ * under way when the overlap starts -- "overlap favours whoever started
+ * first" is rule 3's own description of this. A composite where the floor
+ * genuinely changes hands partway through (rule 5 would apply, since the
+ * new holder needs a moment worth its own shot) keeps one holder for the
+ * whole region rather than splitting it -- not built; overlaps this
+ * genuinely long and contested haven't shown up in a measured episode yet
+ * (see STATUS.md). Returns `undefined` when no turn from a window speaker
+ * actually covers its start (shouldn't happen for a real overlap window,
+ * but `orderBySeat`'s existing order is a safe fallback either way). */
+function floorHolderPersonId(
+	window: OverlapWindow,
+	turns: Turn[],
+	speakerToPerson: Record<number, number>,
+): number | undefined {
+	const holding = turns
+		.filter((t) => window.speakers.includes(t.speaker) && t.start < window.end && t.end > window.start)
+		.sort((a, b) => a.start - b.start)[0];
+	return holding ? speakerToPerson[holding.speaker] : undefined;
+}
+
 export function suggestRegions(
 	turns: Turn[],
 	overlapWindows: OverlapWindow[],
@@ -310,12 +333,18 @@ export function suggestRegions(
 			forcedWide.push({ start: window.start, end: window.end });
 			continue;
 		}
+		// C2: with three or more, the large pane (render.py's speaker_bboxes[0])
+		// goes to whoever was already holding the floor -- two-person splits
+		// have no large pane, just a symmetric side-by-side, so seat order alone
+		// (already rule 7/C1's territory) is left as-is for those.
+		const holder = personIds.length >= 3 ? floorHolderPersonId(window, turns, speakerToPerson) : undefined;
+		const ordered = holder !== undefined ? [holder, ...personIds.filter((id) => id !== holder)] : personIds;
 		splits.push({
 			id: makeId(),
 			start: window.start,
 			end: window.end,
 			layout: "split",
-			personIds,
+			personIds: ordered,
 			source: "suggested",
 		});
 	}

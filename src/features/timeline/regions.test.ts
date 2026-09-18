@@ -395,6 +395,31 @@ test("a both-on-screen shot orders its panes left to right by seat, regardless o
 	assert.deepEqual(split.personIds, [10, 11], "10 sits left of 11, so 10 leads despite being listed second");
 });
 
+test("with three people, the large pane goes to whoever was already holding the floor (C2)", () => {
+	// Person 12 sits rightmost but has been talking for 19s already when 10
+	// and 11 briefly jump in -- the large pane (personIds[0]) has to be 12,
+	// not 10 just because 10 sits leftmost.
+	const turns = [turn(2, 0, 20), turn(0, 19, 19.5, "brief"), turn(1, 19.2, 19.8, "brief")];
+	const overlaps = [{ start: 19, end: 20, speakers: [0, 1, 2] }];
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
+	const split = regions.find((r) => r.layout === "split");
+	assert.ok(split);
+	assert.deepEqual(split.personIds, [12, 10, 11], "12 holds the floor and leads; 10 and 11 keep seat order behind it");
+});
+
+test("with two people, there's no large pane to reassign -- seat order alone still governs", () => {
+	// C2 only applies once a shot has a distinguished large pane, which
+	// render.py only draws from three people up (DUO_SPLIT_MAX). This is the
+	// same case as the seat-order test above, just confirming C2's holder
+	// logic doesn't also fire here and disagree with it.
+	const turns = [turn(1, 0, 20), turn(0, 19, 21)];
+	const overlaps = [{ start: 19, end: 21, speakers: [1, 0] }];
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
+	const split = regions.find((r) => r.layout === "split");
+	assert.ok(split);
+	assert.deepEqual(split.personIds, [10, 11], "still seat order, even though 11 (speaker 1) is the one holding the floor");
+});
+
 test("the founder's case: four cuts around one word become none", () => {
 	// The table from EDGE_CASES.md section 1, end to end.
 	const turns = [
