@@ -35,6 +35,14 @@ const MIN_LINE_FOR_SHOT_S = 4;
  * same caveat as MIN_LINE_FOR_SHOT_S: a starting point, not a measurement. */
 const GENTLE_MIN_LINE_FOR_SHOT_S = 12;
 
+/** More people talking at once than this, and the suggestion is wide rather
+ * than a composite (EDGE_CASES.md C3, decided 2026-09-18) -- past three, a
+ * speaker-focus layout is one large pane next to a wall of narrow slivers,
+ * not a conversation. An editor who wants the composite anyway can still add
+ * one by hand; this only governs what's *suggested*, the same way rule 8's
+ * `wideOnly` style does. */
+const MAX_SUGGESTED_COMPOSITE = 3;
+
 /** Silence longer than this cuts to wide. Below it the shot simply holds until
  * whoever speaks next starts, instead of flashing wide in the hand-off gap
  * (EDGE_CASES.md A11, rule 6). */
@@ -168,8 +176,11 @@ export function regionAt(regions: FramingRegion[], t: number): FramingRegion | n
  *
  * The first surviving piece keeps the original id so that trimming a region
  * during a drag doesn't churn React keys (or invalidate a selection) sixty
- * times a second. */
-function subtract(region: FramingRegion, holes: FramingRegion[]): FramingRegion[] {
+ * times a second. Holes only need a time range -- a plain `{start, end}`
+ * covers both an actual `FramingRegion` (a composite carving a close-up in
+ * two) and a window that should force wide without becoming a region of its
+ * own (C3: four or more people at once). */
+function subtract(region: FramingRegion, holes: { start: number; end: number }[]): FramingRegion[] {
 	let pieces: FramingRegion[] = [region];
 	for (const hole of holes) {
 		const next: FramingRegion[] = [];
@@ -277,6 +288,12 @@ export function suggestRegions(
 	}
 
 	const splits: FramingRegion[] = [];
+	// C3: four or more people at once suggests wide, not a composite -- a
+	// speaker-focus layout past three is one large pane next to a wall of
+	// narrow slivers. Still has to punch a hole in whichever close-up would
+	// otherwise cover the moment, or the group talking over each other would
+	// silently read as whoever's shot the boundary happened to land on.
+	const forcedWide: { start: number; end: number }[] = [];
 	for (const window of genuineOverlaps) {
 		const personIds = orderBySeat(
 			[
@@ -289,6 +306,10 @@ export function suggestRegions(
 			people,
 		);
 		if (personIds.length < 2 || window.end - window.start < MIN_REGION_S) continue;
+		if (personIds.length > MAX_SUGGESTED_COMPOSITE) {
+			forcedWide.push({ start: window.start, end: window.end });
+			continue;
+		}
 		splits.push({
 			id: makeId(),
 			start: window.start,
@@ -298,6 +319,7 @@ export function suggestRegions(
 			source: "suggested",
 		});
 	}
+	const holes = [...splits, ...forcedWide];
 
 	// Only the lines that earn a shot. A line that doesn't isn't left to render
 	// wide -- it falls inside whichever shot is held across it below, which is
@@ -329,7 +351,7 @@ export function suggestRegions(
 			source: "suggested",
 		};
 		// Talking over each other wins over either person's close-up.
-		closeUps.push(...subtract(region, splits));
+		closeUps.push(...subtract(region, holes));
 	});
 
 	return mergeTouching([...splits, ...closeUps]);

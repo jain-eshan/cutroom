@@ -719,6 +719,31 @@ the founder's call, to find testers and contributors early:
       ISB-AAC -- auto-deploys from `main`) was confirmed serving the
       current build with a working Download for Mac link pointed at
       exactly that URL.
+- **Edge-case shot rules, part 3, 2026-09-18.** The founder resolved
+  EDGE_CASES.md's three remaining open decisions (section 4), unblocking
+  two more cases:
+  - **B3 (off-camera voices), decided: hold.** Needed no new code -- rule
+    6's existing `holdUntil` already carried the current shot across an
+    off-camera line unless a real silence intervened. The case's own
+    "Today" text was stale, describing pre-rule-6 behaviour; pinned with
+    three new tests instead.
+  - **C3 (four or more people), decided: wide by default, a grid only on
+    request** -- and built. `suggestRegions` no longer suggests a composite
+    for a genuine overlap past three people; the window still forces the
+    moment wide rather than silently reading as whichever close-up the
+    boundary happened to land on. Four new tests, including that a manual
+    four-person "+ Both on screen" is unaffected -- this only governs
+    suggestions.
+  - **Reaction shots (A9/A10), decided: later.** No code change; recorded
+    so the question doesn't get re-asked.
+  - **Still open:** C2 (the large pane should go to the floor holder, not
+    whoever sits first) and A6 (usually wide for a 3-4 person moment) --
+    C3's fix only reaches four-or-more. See EDGE_CASES.md section 5, item 5.
+  - Verified: `tsc`, `oxlint`, all 78 frontend tests (was 52) pass. Pure
+    logic in `regions.ts`, so unit-tested rather than re-verified live --
+    the existing fixture data is three people, and constructing a fourth
+    speaker for a one-off browser check would have tested the fixture, not
+    the rule.
 
 ---
 

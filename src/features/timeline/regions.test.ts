@@ -245,6 +245,45 @@ test("a genuine, ongoing overlap still wins over a held shot -- when it isn't a 
 	assert.deepEqual([split.start, split.end], [19, 21]);
 });
 
+// --- C3: four or more people at once suggests wide, not a composite ---
+
+const PERSON_13 = personAt(13, 300);
+const PEOPLE4 = [...PEOPLE, PERSON_13];
+const CAST4 = { ...CAST, 3: 13 };
+
+test("three people at once still gets the both-on-screen composite", () => {
+	const turns = [turn(0, 0, 20), turn(1, 19.5, 20.5, "short")];
+	const overlaps = [{ start: 19, end: 21, speakers: [0, 1, 2] }];
+	const regions = suggestRegions(turns, overlaps, CAST4, PEOPLE4, "dynamic");
+	const split = regions.find((r) => r.layout === "split");
+	assert.ok(split, "three people is still a composite, not wide");
+	assert.deepEqual(split.personIds, [10, 11, 12]);
+});
+
+test("four people at once suggests wide, not a wall of narrow panes", () => {
+	// EDGE_CASES.md C3, decided 2026-09-18. Same shape as the three-person
+	// case above, one more speaker in the overlap window.
+	const turns = [turn(0, 0, 20), turn(1, 19.5, 20.5, "short")];
+	const overlaps = [{ start: 19, end: 21, speakers: [0, 1, 2, 3] }];
+	const regions = suggestRegions(turns, overlaps, CAST4, PEOPLE4, "dynamic");
+	assert.ok(
+		regions.every((r) => r.layout !== "split"),
+		"no composite suggested for four people at once",
+	);
+	assert.deepEqual(
+		wideGaps(regions, 21).map((g) => [g.start, g.end]),
+		[[19, 21]],
+		"the overlap window is a genuine hole, not silently absorbed into an adjacent close-up",
+	);
+});
+
+test("an editor can still add a four-person composite by hand -- C3 only governs suggestions", () => {
+	const regions = addRegion([], 19, 21, "split", [10, 11, 12, 13]);
+	assert.equal(regions.length, 1);
+	assert.equal(regions[0].layout, "split");
+	assert.deepEqual(regions[0].personIds, [10, 11, 12, 13]);
+});
+
 // --- Rule 4: a takeover is one cut, not the composite (EDGE_CASES.md A5) --
 
 test("a takeover -- B interrupts and keeps going -- is one cut to B, not a flash through both-on-screen", () => {

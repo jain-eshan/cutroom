@@ -306,14 +306,24 @@ them needs a new model.
   rule 5 applies to it too.
 
 **C3. Four or more people.** P2. *Already an open question in DESIGN_SYSTEM.md.*
-- Today: there's no limit. With four people, one large pane sits beside
-  three small ones stacked on top of each other, and with five or more the
-  small panes get tiny. The design handoff limits a shot to three people.
-- **Decided, 2026-09-18:** wide once everyone active is involved -- a
-  both-on-screen composite past three people reads as a wall of small panes,
-  not a conversation. A 2x2 grid is available, but only when the editor
-  asks for it by hand, not suggested automatically. Not yet built -- see
-  "How to build it," item 5, still blocked on decision 4 above until now.
+- **Decided and done (the suggestion half), 2026-09-18:** wide once everyone
+  active is involved. `suggestRegions` (`regions.ts`) no longer proposes a
+  composite for a genuine overlap past `MAX_SUGGESTED_COMPOSITE` (3) people
+  -- the window still punches a hole in whichever close-up would otherwise
+  cover it (so the moment genuinely goes wide, rather than silently reading
+  as whoever's shot the boundary happened to land on), it just isn't
+  suggested as a composite of its own. An editor can still add a
+  four-or-more "+ Both on screen" by hand -- C4's picker doesn't exist yet,
+  so today that means editing a region's `personIds` directly, or a future
+  C4 picker -- and `render.py`'s existing speaker-focus layout (one large
+  pane, everyone else stacked down the side) still renders it; **the 2x2
+  grid mentioned as an alternative when the founder made this decision is
+  not built**, and isn't needed unless a real four-person show actually asks
+  an editor to hand-compose a four-way shot. Pinned with four tests
+  (`regions.test.ts`): three people still gets the composite, four goes
+  genuinely wide (not silently absorbed into a neighbour), and a manual
+  four-person addition still works, unaffected -- this only governs what's
+  *suggested*.
 
 **C4. The editor wants to choose who's on screen.** P1.
 - Today: "+ Both on screen" always picks the selected line's speaker plus
@@ -473,8 +483,12 @@ A suggested order. Where it sits on the roadmap is a separate decision.
    settings panel. Still open.
 4. **Knowing who's visible, and re-aiming crops** (B7, B8). This is the
    existing item 6b. Still open.
-5. **Three or more people** (C2, C3, A6), once decision 4 is made. Still
-   blocked on C3.
+5. **Three or more people** (C2, C3, A6). **C3 done, 2026-09-18** (see its
+   own case). **C2 (who gets the large pane) and A6 (usually wide for a
+   3-4 person moment, otherwise floor-holder-large) are still open** --
+   C3's fix only covers four-or-more; a 3-person composite still puts
+   whoever's listed first (seat order, since rule 7/C1) in the large pane
+   rather than the floor holder.
 6. **Detecting cuts in already-edited videos** (E2). Still open.
 
 To tell whether the rules work, measure real episodes before and after:
