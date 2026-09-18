@@ -453,11 +453,7 @@ them needs a new model.
 
 ## 4. Decisions needed
 
-Five of six decided as of 2026-09-17; the founder decided the remaining two
-on 2026-09-18 (off-camera voices, and reaction shots for later) -- see each
-item's own case for how it was built. Only C3 (four or more people, also
-decided 2026-09-18: wide by default, a grid only on request) remains
-unbuilt, tracked in "How to build it" below.
+All six decided; five of six built. See each item's own case for how.
 
 1. ~~**What counts as a short line**~~: **decided.** Both length and content:
    under 4s (Dynamic) or 12s (Gentle), or made only of backchannel words
@@ -467,9 +463,10 @@ unbuilt, tracked in "How to build it" below.
    (the overlap detector's own start time). See A5.
 3. ~~**Off-camera voices**~~: **decided and done, 2026-09-18.** Hold the
    current shot. See B3.
-4. **Four or more people: decided, 2026-09-18.** Wide by default; a 2x2 grid
-   only if the editor asks for it. Not yet built -- see C3 and "How to build
-   it" below.
+4. ~~**Four or more people**~~: **decided and done (the suggestion half),
+   2026-09-18.** Wide by default; a 2x2 grid only if the editor asks for
+   it -- the grid itself isn't built, since nothing has asked for it yet.
+   See C3.
 5. ~~**Default style for a new episode**~~: **decided.** Gentle. See rule 8.
 6. ~~**Reaction shots and shot variety**~~: **decided, 2026-09-18: later.**
    No evidence yet that editors want this, and it adds real complexity to
