@@ -95,8 +95,11 @@ face positions:
   podcast edit frames a seated subject (measured from real reference edits;
   see [STATUS.md](STATUS.md#measured-not-asserted)).
 - **Both on screen**: a real multi-person composite. Two people sit side by
-  side; three or more get one large pane with the others stacked beside it.
-  There's no cap on how many.
+  side; three get one large pane -- the person actually holding the floor --
+  with the others stacked beside it, in seat order. Automatic suggestions
+  stop there: four or more people talking at once suggests the wide shot
+  instead of a wall of narrow panes, though a composite of any size can
+  still be added by hand.
 
 The suggested shots are simple today: a close-up of whoever says each line,
 everyone involved wherever people talk over each other for a second or more,
@@ -143,11 +146,12 @@ The timeline works like a video editor's, cut down to what a podcast needs:
 
 Shipped: split at the playhead (`S`), waveforms on the speaker lanes and
 timeline thumbnails, stepping through the review flags (Tab/Shift+Tab), a
-shot inspector with exact start/end times and a crop nudge, and a per-episode
+shot inspector with exact start/end times and a crop nudge, a per-episode
 framing style (Wide only / Gentle / Dynamic) that governs how much automatic
-framing gets suggested -- switching it never touches a shot made by hand. Not
-built yet: choosing exactly who's on screen beyond the automatic pairing. See
-[STATUS.md](STATUS.md).
+framing gets suggested -- switching it never touches a shot made by hand --
+and a who's-on-screen picker in the inspector: toggle chips for everyone the
+pipeline found on camera, so a shot isn't limited to the automatic pairing.
+See [STATUS.md](STATUS.md).
 
 *Implementation:* `src/features/timeline/EditorView.tsx`, `TimelineTray.tsx`,
 `regions.ts` (shot suggestions and edits, mirrors `render.py`) and

@@ -208,16 +208,23 @@ In the handoff's implementation order:
 4. ~~Processing evidence~~ — **done**.
 5. ~~Cast, one voice at a time~~ — **done**.
 6. ~~Region-based editor~~ — **done**, except:
-   - **6b. Per-instant visibility.** `bbox_at_time` returns the nearest
-     keyframe however far away it is, so the renderer can't tell whether a
-     person is on screen right now. The `7d` case "forced split, one person
-     — takes effect the moment the other reappears" needs that (a keyframe
-     within about 2s, plus segment boundaries where visibility changes, in
-     both `render.py` and `faceCrop.ts`). Today a both-on-screen region with
-     one findable person closes on them for the whole region.
+   - **6b. Per-instant visibility, partly done 2026-09-18** (EDGE_CASES.md
+     B7). `bbox_at_time`/`bboxAtTime` still find the nearest keyframe
+     however far away it is, but `is_visible_at`/`isVisibleAt` (`render.py`,
+     `faceCrop.ts`) now gate on a sighting within 2s before that bbox is
+     used at all -- a both-on-screen region with one findable person now
+     falls back to a close-up on them correctly, instead of closing on a
+     stale sighting. **Still open:** the check only runs at the one point a
+     region's crop is already sampled (its start), so the `7d` case "forced
+     split, one person -- takes effect the moment the other reappears"
+     isn't there yet -- that needs a new segment boundary wherever
+     visibility changes *mid-region*, not just a stricter check at the
+     existing sampling point. Deferred with smooth re-aiming
+     (STATUS.md's host-test gate).
 7. ~~Publish screen and render states~~ — **done**.
 8. ~~Edge-case sweep~~ — **done**, except two that wait on other things:
-   - **Forced split, one person** needs per-instant visibility (6b above).
+   - **Forced split, one person** still needs the harder, mid-region half
+     of per-instant visibility (6b above).
    - **Four people at once** — the handoff's 3-pane cap conflicts with a
      deliberate, tested no-cap decision in `render.py`. See "Open questions".
 9. ~~Landing page (`4b`)~~ — **done** (2026-09-15), in `site/`. Changes from

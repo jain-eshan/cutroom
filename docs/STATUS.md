@@ -816,6 +816,12 @@ the founder's call, to find testers and contributors early:
     re-verified live -- pure duration-threshold logic, already covered by
     C3's precedent for why a live check would test the fixture rather
     than the rule.
+- **v0.2.1, 2026-09-18.** Patch bump for the three items above (the
+  who's-on-screen picker, per-instant visibility, and the overlap-duration
+  fix) -- editor refinements and bug fixes, not new capability on the scale
+  of v0.2.0's bundle. `package.json` and `package-lock.json` only; no tag
+  cut and no release published (see v0.2.0's entry above for what that
+  involves) -- these three shipped as a normal merged PR, not a release.
 
 ## Known limitations
 
