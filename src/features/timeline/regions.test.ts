@@ -156,6 +156,37 @@ test("a real silence still goes wide", () => {
 	);
 });
 
+test("an off-camera voice holds the current shot rather than cutting to wide", () => {
+	// EDGE_CASES.md B3, decided 2026-09-18: hold, not wide -- cutting wide for
+	// an off-camera question reads as a mistake. Speaker 9 has no entry in
+	// CAST, the same as a producer or phone-in guest nobody ever saw on camera.
+	const turns = [turn(0, 0, 5), turn(9, 5, 9, "an off camera question here"), turn(0, 9, 14)];
+	const regions = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
+	assert.equal(regions.length, 1, "one held shot straight through the off-camera line, not three with a wide gap");
+	assert.deepEqual(regions[0].personIds, [10]);
+	assert.deepEqual([regions[0].start, regions[0].end], [0, 14]);
+});
+
+test("an off-camera voice still cedes to a real silence around it", () => {
+	// Holding through a hand-off (B3) is rule 6's existing behaviour, not a
+	// special case for off-camera speakers -- a genuine gap still goes wide.
+	const turns = [turn(0, 0, 5), turn(9, 9, 13, "an off camera question here"), turn(0, 17, 22)];
+	const regions = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
+	assert.equal(regions.length, 2);
+	assert.deepEqual(
+		wideGaps(regions, 22).map((g) => [g.start, g.end]),
+		[[5, 17]],
+	);
+});
+
+test("an off-camera voice at the very start of the episode is wide, with nothing to hold", () => {
+	const turns = [turn(9, 0, 5, "an off camera question opens the show"), turn(0, 5, 12)];
+	const regions = suggestRegions(turns, [], CAST, PEOPLE, "dynamic");
+	assert.equal(regions.length, 1);
+	assert.deepEqual([regions[0].start, regions[0].end], [5, 12]);
+	assert.deepEqual(wideGaps(regions, 12), [{ start: 0, end: 5 }]);
+});
+
 test("a short line in a clean gap doesn't earn a shot", () => {
 	// Nobody holds the floor across it, so length decides: under the cutoff.
 	const turns = [turn(0, 0, 20), turn(1, 21, 22.5, "I agree with that"), turn(2, 30, 50)];

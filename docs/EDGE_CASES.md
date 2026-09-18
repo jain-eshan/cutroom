@@ -224,10 +224,17 @@ them needs a new model.
 - Should: stay as it is.
 
 **B3. A voice with no face** (a producer behind the camera, a phone-in guest). P2.
-- Today: their lines go wide. The editor can name the voice.
-- Should: *Decision needed:* hold the current shot while they talk, or go
-  wide. Holding usually reads better, because cutting to wide for an
-  off-camera question looks like a mistake.
+- **Decided and done, 2026-09-18: hold.** Cutting wide for an off-camera
+  question looks like a mistake. Turned out to need no new code: a speaker
+  with no `personId` was already excluded from `shots` in `suggestRegions`
+  (`regions.ts`), and rule 6's existing `holdUntil` already carries the
+  current shot across any turn that doesn't earn its own -- off-camera or
+  not -- unless a real silence (rule 6's own threshold) intervenes. This
+  "Today" line was stale: it described the pre-rule-6 behaviour. Pinned with
+  three tests (`regions.test.ts`): holds through an off-camera line with no
+  gap, still cedes to a genuine silence around one, and stays wide when an
+  off-camera voice opens the episode with nothing yet to hold. The editor
+  can still name the voice, unchanged.
 
 **B4. A face with no voice** (a silent guest, crew, a face on a poster or TV). P2.
 - Today: faces seen only briefly are filtered out (`MIN_PRESENCE`). A poster
@@ -302,9 +309,11 @@ them needs a new model.
 - Today: there's no limit. With four people, one large pane sits beside
   three small ones stacked on top of each other, and with five or more the
   small panes get tiny. The design handoff limits a shot to three people.
-- Should: *Decision needed:* a 2×2 grid, one large pane, or wide once
-  everyone is involved. Recommendation: wide when everyone talks at once, and
-  a 2×2 grid only when the editor asks for it.
+- **Decided, 2026-09-18:** wide once everyone active is involved -- a
+  both-on-screen composite past three people reads as a wall of small panes,
+  not a conversation. A 2x2 grid is available, but only when the editor
+  asks for it by hand, not suggested automatically. Not yet built -- see
+  "How to build it," item 5, still blocked on decision 4 above until now.
 
 **C4. The editor wants to choose who's on screen.** P1.
 - Today: "+ Both on screen" always picks the selected line's speaker plus
@@ -425,8 +434,11 @@ them needs a new model.
 
 ## 4. Decisions needed
 
-Five of six decided, 2026-09-17 -- see each item's own case for how it was
-built. Only C3 (four or more people) remains open.
+Five of six decided as of 2026-09-17; the founder decided the remaining two
+on 2026-09-18 (off-camera voices, and reaction shots for later) -- see each
+item's own case for how it was built. Only C3 (four or more people, also
+decided 2026-09-18: wide by default, a grid only on request) remains
+unbuilt, tracked in "How to build it" below.
 
 1. ~~**What counts as a short line**~~: **decided.** Both length and content:
    under 4s (Dynamic) or 12s (Gentle), or made only of backchannel words
@@ -434,13 +446,15 @@ built. Only C3 (four or more people) remains open.
    answers. See A2.
 2. ~~**Where a takeover cuts**~~: **decided.** The new speaker's first word
    (the overlap detector's own start time). See A5.
-3. **Off-camera voices:** hold the current shot or go wide (B3). Still open
-   -- not touched by this pass. Recommendation: hold.
-4. **Four or more people:** a grid, one large pane, or wide (C3). Still open,
-   and the one remaining decision blocking further work here.
+3. ~~**Off-camera voices**~~: **decided and done, 2026-09-18.** Hold the
+   current shot. See B3.
+4. **Four or more people: decided, 2026-09-18.** Wide by default; a 2x2 grid
+   only if the editor asks for it. Not yet built -- see C3 and "How to build
+   it" below.
 5. ~~**Default style for a new episode**~~: **decided.** Gentle. See rule 8.
-6. **Reaction shots and shot variety:** in the first version, or later (A9,
-   A10). Still open. Recommendation: later.
+6. ~~**Reaction shots and shot variety**~~: **decided, 2026-09-18: later.**
+   No evidence yet that editors want this, and it adds real complexity to
+   the framing rules. See A9/A10.
 
 ## 5. How to build it
 
