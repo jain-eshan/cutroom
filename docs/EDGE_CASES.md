@@ -114,8 +114,19 @@ them needs a new model.
 - Should: hold on A (rules 1, 2 and 5).
 
 **A3. A third person's one-liner during a two-person exchange.** P1.
-- Today: a close-up flash of the third person, or all three on screen if
-  the line overlaps for 1 s or more.
+- **Done, 2026-09-18.** A non-overlapping one-liner was already handled by
+  rule 2 (`MIN_LINE_FOR_SHOT_S`) plus rule 6 holding the floor holder's shot
+  across it. The overlapping case wasn't: any genuine overlap past
+  `MIN_REGION_S` (0.25s) got a composite, which is exactly "all three on
+  screen if the line overlaps for 1s or more." Fixed with
+  `MIN_OVERLAP_FOR_COMPOSITE_S` (`regions.ts`) -- rule 3's own "about 2s"
+  number, not a new one -- below which the floor holder just keeps the
+  shot, the same as a non-overlapping short interjection.
+- **Not built:** rule 3's other clause, "saying words, not laughing or
+  murmuring." The overlap window's speaker list has no attached words to
+  check that against -- `suggestRegions` only sees `turns`, not
+  `words: Word[]` -- so this would need new plumbing, not just a threshold.
+  No case has surfaced yet where duration alone gives the wrong answer.
 - Should: stay on the two people talking (rule 2). Show the third person only
   if the line is long or they keep talking.
 
@@ -515,9 +526,10 @@ All six decided; five of six built. See each item's own case for how.
 
 A suggested order. Where it sits on the roadmap is a separate decision.
 
-1. ~~**Shot rules in `suggestRegions`**~~: **done, 2026-09-17.** Rules 1, 2,
-   4, 5, 6 and 7 are built (A2, A5, A11, C1 fully; A4, A7, A9 improved but
-   not exactly as prescribed -- see each case). A3, A8, A12 untouched. The
+1. ~~**Shot rules in `suggestRegions`**~~: **done, 2026-09-17,** rule 3's
+   duration half added 2026-09-18 (A3). Rules 1, 2, 3 (duration only), 4,
+   5, 6 and 7 are built (A2, A3, A5, A11, C1 fully; A4, A7, A9 improved but
+   not exactly as prescribed -- see each case). A8, A12 untouched. The
    `@/` import snag this item warned about was fixed the same day (see
    STATUS.md's editing-precision entry) -- `regions.test.ts` imports
    normally now.

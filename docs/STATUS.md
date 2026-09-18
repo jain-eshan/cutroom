@@ -796,6 +796,26 @@ the founder's call, to find testers and contributors early:
     1:04 of the 70s episode and confirmed "Close on Bob," the exact shot
     that would have silently gone wide without the fixture fix landing
     alongside the feature fix.
+- **A brief interjection no longer flashes a composite (EDGE_CASES.md A3),
+  2026-09-18.** Rule 3 always said the other person only joins the shot
+  once "the overlap lasts about 2s," but the code only checked
+  `MIN_REGION_S` (0.25s) -- so a genuine but brief interjection (a quick
+  "wait, really?" while someone else is mid-sentence) got its own
+  both-on-screen flash instead of the floor holder just keeping the shot,
+  exactly the "all three on screen if the line overlaps for 1s or more"
+  A3 already named as wrong. `MIN_OVERLAP_FOR_COMPOSITE_S` in `regions.ts`
+  is rule 3's own number, not a newly invented one. Not built: rule 3's
+  other clause ("saying words, not laughing or murmuring") -- the overlap
+  window has no attached word content to check that against without new
+  plumbing, and no real case has shown duration alone giving a wrong
+  answer yet.
+  - Two new `regions.test.ts` cases (89, was 87); one existing C2 test
+    needed its overlap window widened past the new threshold to keep
+    testing what it was written to test (floor-holder ordering) rather
+    than incidentally also testing this fix. `tsc`, `oxlint` clean. Not
+    re-verified live -- pure duration-threshold logic, already covered by
+    C3's precedent for why a live check would test the fixture rather
+    than the rule.
 
 ## Known limitations
 

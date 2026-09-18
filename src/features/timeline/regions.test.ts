@@ -246,6 +246,34 @@ test("a genuine, ongoing overlap still wins over a held shot -- when it isn't a 
 	assert.deepEqual([split.start, split.end], [19, 21]);
 });
 
+// --- Rule 3/A3: a brief interjection doesn't earn a composite ---
+
+test("a brief interjection during someone else's turn doesn't flash a composite (A3, rule 3)", () => {
+	// C interjects for 1.2s while B is mid-turn -- under rule 3's ~2s
+	// threshold, so B just keeps the shot. Before this, any overlap past
+	// MIN_REGION_S (0.25s) got a composite, which is exactly what A3
+	// describes as wrong ("all three on screen if the line overlaps for 1s
+	// or more").
+	const turns = [turn(0, 0, 10), turn(1, 10, 25), turn(2, 15, 16.2, "not backchannel at all")];
+	const overlaps = [{ start: 15, end: 16.2, speakers: [1, 2] }];
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
+	assert.ok(
+		regions.every((r) => r.layout !== "split"),
+		"no composite for a 1.2s interjection",
+	);
+	const holding = regions.find((r) => r.start <= 15.5 && 15.5 < r.end);
+	assert.deepEqual(holding?.personIds, [11], "B (11) keeps the shot straight through the brief interjection");
+});
+
+test("an overlap right at the two-second threshold still earns a composite", () => {
+	const turns = [turn(0, 0, 10), turn(1, 10, 25), turn(2, 15, 17, "still not backchannel words")];
+	const overlaps = [{ start: 15, end: 17, speakers: [1, 2] }];
+	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
+	const split = regions.find((r) => r.layout === "split");
+	assert.ok(split, "exactly 2s clears the threshold");
+	assert.deepEqual([split.start, split.end], [15, 17]);
+});
+
 // --- C3: four or more people at once suggests wide, not a composite ---
 
 const PERSON_13 = personAt(13, 300);
@@ -398,10 +426,10 @@ test("a both-on-screen shot orders its panes left to right by seat, regardless o
 
 test("with three people, the large pane goes to whoever was already holding the floor (C2)", () => {
 	// Person 12 sits rightmost but has been talking for 19s already when 10
-	// and 11 briefly jump in -- the large pane (personIds[0]) has to be 12,
-	// not 10 just because 10 sits leftmost.
-	const turns = [turn(2, 0, 20), turn(0, 19, 19.5, "brief"), turn(1, 19.2, 19.8, "brief")];
-	const overlaps = [{ start: 19, end: 20, speakers: [0, 1, 2] }];
+	// and 11 join in for a genuine two-second overlap -- the large pane
+	// (personIds[0]) has to be 12, not 10 just because 10 sits leftmost.
+	const turns = [turn(2, 0, 21), turn(0, 19, 20.5, "brief"), turn(1, 19.2, 20.8, "brief")];
+	const overlaps = [{ start: 19, end: 21, speakers: [0, 1, 2] }];
 	const regions = suggestRegions(turns, overlaps, CAST, PEOPLE, "dynamic");
 	const split = regions.find((r) => r.layout === "split");
 	assert.ok(split);

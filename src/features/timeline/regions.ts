@@ -11,6 +11,18 @@ import type { FramingRegion, FramingStyle, RegionLayout } from "@/features/timel
  * handles have nothing left to grab. */
 export const MIN_REGION_S = 0.25;
 
+/** How long a genuine overlap has to run before the interjecting person
+ * joins the shot at all -- rule 3's own number ("the overlap lasts about 2s
+ * and they're saying words, not laughing or murmuring"). Below this, the
+ * floor holder simply keeps the shot, the same as any other interjection
+ * too short to earn its own (EDGE_CASES.md A3: a third person's brief
+ * one-liner during someone else's turn used to flash a composite for it,
+ * which is exactly the "or all three on screen if the line overlaps for 1s
+ * or more" A3 says is wrong). `MIN_REGION_S` alone let a 0.25s murmur create
+ * a composite; this is the real threshold rule 3 asks for, which happens to
+ * be four times bigger. */
+const MIN_OVERLAP_FOR_COMPOSITE_S = 2;
+
 /** Gap below which two same-subject regions are treated as touching. Turn
  * boundaries land on transcription timings, which are not exact to the frame. */
 const JOIN_EPSILON_S = 0.05;
@@ -329,6 +341,11 @@ export function suggestRegions(
 			people,
 		);
 		if (personIds.length < 2 || window.end - window.start < MIN_REGION_S) continue;
+		// Rule 3/A3: too brief to earn a composite at all -- the floor holder
+		// just keeps the shot, same as it would for any other interjection
+		// that doesn't earn its own (no hole to punch, unlike the two checks
+		// below: this one isn't forcing wide, it's declining to interrupt).
+		if (window.end - window.start < MIN_OVERLAP_FOR_COMPOSITE_S) continue;
 		if (personIds.length > MAX_SUGGESTED_COMPOSITE) {
 			forcedWide.push({ start: window.start, end: window.end });
 			continue;
