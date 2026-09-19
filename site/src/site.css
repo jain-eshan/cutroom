@@ -3,6 +3,13 @@
  * light and the app free to follow the OS. */
 @import "../../src/index.css";
 
+/* Marketing-only values from the design system's tokens (layout.css,
+ * colors.css). The app has no use for them, so they live here. */
+@theme {
+	--radius-marketing: 10px;
+	--shadow-hero: 0 8px 30px rgba(0, 0, 0, 0.09);
+}
+
 html {
 	scroll-behavior: smooth;
 	scroll-padding-top: 72px;

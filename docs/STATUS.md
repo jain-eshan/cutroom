@@ -150,7 +150,10 @@ with the decisions they need. They aren't placed on this list yet.
 **Developer preview launch, 2026-09-15.** Done ahead of the list below, at
 the founder's call, to find testers and contributors early:
 - A landing page in `site/` (see [site/README.md](../site/README.md)), hosted
-  on Vercel, with a waitlist through an embedded Tally form.
+  on Vercel, with a waitlist through an embedded Tally form. On 2026-09-19
+  the page was moved onto the design system's site kit: amber accent on the
+  one waitlist button, the illustrated hero replaced by a striped placeholder
+  until a real demo clip is recorded, and no icons, blur or dark bands.
 - Contributor docs: a rewritten README with setup and troubleshooting,
   [CONTRIBUTING.md](../CONTRIBUTING.md), [SECURITY.md](../SECURITY.md), a
   [docs index](README.md), issue forms and a pull request template.

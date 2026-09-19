@@ -27,15 +27,15 @@ export function Waitlist() {
 
 	if (!TALLY_FORM_ID) {
 		return (
-			<div className="rounded-[14px] border border-line bg-raised p-6 sm:p-8">
-				<p className="text-[18px] font-semibold tracking-[-0.01em]">The waitlist opens very soon.</p>
-				<p className="mt-2 text-[15px] leading-relaxed text-text2">
+			<div className="rounded-marketing border border-line bg-panel p-5 sm:p-6">
+				<p className="text-[16px] leading-[1.3] font-semibold tracking-[-0.01em]">The waitlist opens very soon.</p>
+				<p className="mt-2 text-[13.5px] leading-[1.6] text-text2">
 					Until then,{" "}
 					<a
 						href="https://github.com/jain-eshan/cutroom"
 						target="_blank"
 						rel="noopener noreferrer"
-						className="font-medium text-accent-text underline decoration-accent/40 underline-offset-4 hover:decoration-accent"
+						className="font-medium text-accent-text hover:opacity-80"
 					>
 						star the project on GitHub
 						<span className="sr-only"> (opens in a new tab)</span>
@@ -47,7 +47,7 @@ export function Waitlist() {
 	}
 
 	return (
-		<div className="rounded-[14px] border border-line bg-raised p-4 sm:p-6">
+		<div className="rounded-marketing border border-line bg-panel p-4 sm:p-6">
 			<iframe
 				data-tally-src={`https://tally.so/embed/${TALLY_FORM_ID}?alignLeft=1&hideTitle=1&transparentBackground=1&dynamicHeight=1`}
 				loading="lazy"
@@ -59,12 +59,12 @@ export function Waitlist() {
 			<noscript>
 				<a href={`https://tally.so/r/${TALLY_FORM_ID}`}>Open the waitlist form</a>
 			</noscript>
-			<p className="mt-4 px-2 text-[13px] leading-relaxed text-text3">
+			<p className="mt-4 px-2 text-[12.5px] leading-[1.6] text-text3">
 				Sign-ups are collected with Tally. We only use your email to invite you to try Cutroom, and this site runs no
 				analytics of its own. Reply to any email from us and we'll remove you.{" "}
 				<a
 					href={`https://tally.so/r/${TALLY_FORM_ID}`}
-					className="underline decoration-line underline-offset-2 hover:text-text2"
+					className="text-accent-text hover:opacity-80"
 				>
 					Form not showing? Open it here.
 				</a>
