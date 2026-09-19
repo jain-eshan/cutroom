@@ -1,45 +1,16 @@
 import { useEffect, useRef, useState } from "react";
+import { Screen, SectionLabel, StageRow } from "@/components/ui";
 import { faceThumbnailUrl, jobMediaUrl, type JobProgress } from "@/lib/api";
 import { formatClock } from "@/lib/format";
 import { overallProgress, remainingLabel } from "@/features/upload/processingProgress";
 
 const SPEAKER_RING = ["border-s1", "border-s2", "border-s3"];
 
-function Bar({ fraction, indeterminate, done }: { fraction: number; indeterminate?: boolean; done: boolean }) {
-	return (
-		<div className="h-[6px] w-full overflow-hidden rounded-[3px] bg-track">
-			<div
-				className={`h-full rounded-[3px] transition-[width] duration-300 ${done ? "bg-ok" : "bg-accent"} ${
-					indeterminate ? "animate-pulse" : ""
-				}`}
-				style={{ width: `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%` }}
-			/>
-		</div>
-	);
-}
+type Stage = { done?: boolean; fraction?: number } | undefined;
 
-function Row({
-	title,
-	fraction,
-	done,
-	pending,
-}: {
-	title: string;
-	fraction: number;
-	done: boolean;
-	pending: boolean;
-}) {
-	return (
-		<div
-			className={`grid grid-cols-[150px_1fr_46px] items-center gap-3 transition-opacity ${pending ? "opacity-50" : ""}`}
-		>
-			<span className="text-[13px] font-medium text-text">{title}</span>
-			<Bar fraction={done ? 1 : fraction} indeterminate={!done && fraction === 0 && !pending} done={done} />
-			<span className="justify-self-end font-mono text-[11px] text-text3">
-				{done ? "done" : pending ? "—" : `${Math.round(fraction * 100)}%`}
-			</span>
-		</div>
-	);
+function stageState(stage: Stage, waiting: boolean): "done" | "active" | "pending" {
+	if (stage?.done) return "done";
+	return waiting ? "pending" : "active";
 }
 
 export function ProcessingScreen({
@@ -71,8 +42,8 @@ export function ProcessingScreen({
 	const people = progress?.people ?? [];
 
 	// The upload is already saved server-side by the time this screen shows
-	// anything (see pipeline/jobs.py) -- a live preview of the actual
-	// recording, not just text, gives the wait something to look at.
+	// anything (see pipeline/jobs.py) -- a live frame of the actual recording,
+	// not just text, gives the wait something to look at.
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const position = progress?.position ?? 0;
 	useEffect(() => {
@@ -80,17 +51,20 @@ export function ProcessingScreen({
 		if (!video) return;
 		if (Math.abs(video.currentTime - position) > 1) video.currentTime = position;
 	}, [position]);
-	// A decorative thumbnail, not something to explain a failure over in this
-	// little a space -- if the preview can't load, showing nothing is better
-	// than a broken-image glyph next to the file name.
+	// A decorative frame, not something to explain a failure over in this
+	// little a space -- if it can't load, the plate stays empty.
 	const [previewFailed, setPreviewFailed] = useState(false);
 
 	return (
-		<div className="flex min-h-screen items-center justify-center bg-bg px-6 py-10">
-			<div className="flex w-full max-w-[640px] flex-col gap-6 rounded-panel border border-line bg-panel p-[26px]">
-				<div className="flex items-start justify-between gap-4">
-					<div className="flex items-center gap-3">
-						{!uploading && !previewFailed && (
+		<Screen width={780}>
+			<div className="flex gap-[26px]">
+				<div className="flex w-[300px] shrink-0 flex-col gap-[18px]">
+					<div className="flex flex-col gap-[5px]">
+						<span className="font-mono text-clock text-accent">{formatClock(elapsedSeconds)}</span>
+						<span className="text-meta text-text3">{remaining ?? "working out how long"}</span>
+					</div>
+					<div className="plate-stripes relative flex aspect-video items-center justify-center overflow-hidden rounded-card-lg">
+						{!uploading && !previewFailed ? (
 							<video
 								ref={videoRef}
 								src={jobMediaUrl(jobId)}
@@ -98,117 +72,108 @@ export function ProcessingScreen({
 								playsInline
 								preload="auto"
 								onError={() => setPreviewFailed(true)}
-								title="Follows along with the transcript below -- not a live playback, just the frame at that position."
-								className="h-[46px] w-[72px] shrink-0 rounded-control bg-black object-cover"
+								title="Follows along with the transcript -- not playback, just the frame at that position."
+								className="absolute inset-0 h-full w-full object-cover"
 							/>
+						) : (
+							<span className="font-mono text-fine leading-[1.6] text-plate-ink">
+								{uploading ? "waiting for the file" : "no preview"}
+							</span>
 						)}
-						<div className="flex flex-col gap-1">
-							<h2 className="text-[18px] font-semibold tracking-[-0.01em] text-text">{fileName}</h2>
-							<p className="text-[12.5px] text-text3">
-								{megabytes >= 1 ? `${megabytes.toFixed(0)} MB` : `${fileSizeBytes} bytes`} · this machine
-								is doing the work, not the cloud
-							</p>
-						</div>
+						<span className="absolute right-[14px] bottom-[14px] rounded-control bg-black/55 px-2 py-[5px] font-mono text-mono-xs leading-none text-[oklch(0.92_0.005_80)]">
+							{formatClock(position)}
+						</span>
 					</div>
-					<div className="flex shrink-0 flex-col items-end">
-						<span className="font-mono text-[22px] text-accent">{formatClock(elapsedSeconds)}</span>
-						{remaining && <span className="text-[10.5px] text-text3">{remaining}</span>}
-					</div>
+					<p className="font-mono text-mono-sm text-text3">
+						{fileName} · {megabytes >= 1 ? `${megabytes.toFixed(0)} MB` : `${fileSizeBytes} bytes`}
+					</p>
+					<p className="text-meta text-pretty text-text3">
+						You can close this window. The work carries on
+						{typeof Notification !== "undefined" && Notification.permission === "granted"
+							? ", and you'll get a notification when it's ready."
+							: ", and this page picks up where it left off when you come back."}
+					</p>
 				</div>
 
-				<div className="flex flex-col gap-4">
-					<Row title="Sending the file" fraction={uploadFraction} done={!uploading} pending={false} />
-					<Row
-						title="Writing the transcript"
-						fraction={transcribe?.fraction ?? 0}
-						done={transcribe?.done ?? false}
-						pending={uploading}
-					/>
-					<Row
-						title="Finding who's on camera"
-						fraction={faces?.fraction ?? 0}
-						done={faces?.done ?? false}
-						pending={uploading}
-					/>
-					<Row
-						title="Matching voices to faces"
-						fraction={match?.fraction ?? 0}
-						done={match?.done ?? false}
-						pending={!(transcribe?.done ?? false) || !(faces?.done ?? false)}
-					/>
-				</div>
+				<div className="flex min-w-0 flex-1 flex-col gap-[22px]">
+					<div className="flex flex-col gap-[13px]">
+						<StageRow label="Sending the file" state={uploading ? "active" : "done"} fraction={uploadFraction} />
+						<StageRow
+							label="Writing the transcript"
+							state={stageState(transcribe, uploading)}
+							fraction={transcribe?.fraction}
+						/>
+						<StageRow label="Finding who's on camera" state={stageState(faces, uploading)} fraction={faces?.fraction} />
+						<StageRow
+							label="Matching voices to faces"
+							state={stageState(match, !(transcribe?.done ?? false) || !(faces?.done ?? false))}
+							fraction={match?.fraction}
+						/>
+					</div>
 
-				<div className="grid grid-cols-[1fr_208px] gap-5 border-t border-line pt-5">
-					<div className="flex min-w-0 flex-col gap-2">
-						<div className="flex items-baseline justify-between gap-3">
-							<span className="font-mono text-[9.5px] tracking-[0.08em] text-text3">TRANSCRIPT</span>
-							{progress && progress.duration > 0 && (
-								<span className="font-mono text-[10px] text-text3">
-									{formatClock(progress.position)} / {formatClock(progress.duration)}
-								</span>
+					<div className="flex flex-col gap-[11px]">
+						<SectionLabel>People found · {people.length}</SectionLabel>
+						<div className="grid grid-cols-3 gap-[11px]">
+							{people.map((personId, i) => (
+								<div key={personId} className="flex flex-col items-center gap-[7px]">
+									<img
+										src={faceThumbnailUrl(jobId, personId)}
+										alt=""
+										className={`h-[46px] w-[46px] rounded-control-lg border-2 object-cover ${
+											SPEAKER_RING[i % SPEAKER_RING.length]
+										}`}
+									/>
+									<span className="font-mono text-mono-xs leading-none text-text3">Person {i + 1}</span>
+								</div>
+							))}
+							{!(faces?.done ?? false) && (
+								<div className="flex flex-col items-center gap-[7px] opacity-35">
+									<span className="h-[46px] w-[46px] rounded-control-lg border border-dashed border-text3" />
+									<span className="font-mono text-mono-xs leading-none text-text3">still looking</span>
+								</div>
 							)}
 						</div>
+						<p className="text-meta text-text3">
+							{people.length > 0
+								? "You'll name them on the next screen."
+								: "Recognising people takes the whole pass, so they appear together."}
+						</p>
+					</div>
+
+					<div className="flex flex-col gap-[9px]">
+						<SectionLabel>Transcript so far</SectionLabel>
 						{lines.length === 0 ? (
-							<p className="text-[12.5px] leading-[1.6] text-text3">
-								The first lines will appear here as they're written.
-							</p>
+							<p className="text-meta text-text3">The first lines will appear here as they're written.</p>
 						) : (
-							<div className="flex flex-col gap-1">
+							<div className="flex flex-col gap-[7px]">
 								{lines.map((line, i) => {
 									// Oldest fade back, newest reads at full strength -- the eye
 									// should land on what just arrived.
 									const age = lines.length - 1 - i;
-									const opacity = Math.max(0.55, 1 - age * 0.09);
-									const newest = i === lines.length - 1;
+									const newest = age === 0;
 									return (
 										<p
 											key={`${i}-${line}`}
-											style={{ opacity }}
-											className={`text-[12.5px] leading-[1.6] ${newest ? "text-text" : "text-text2"}`}
+											style={{ opacity: Math.max(0.55, 1 - age * 0.09) }}
+											className={`text-meta ${newest ? "text-text" : "text-text2"}`}
 										>
 											{line}
-											{newest && (
-												<span className="ml-1 inline-block h-[13px] w-[2px] translate-y-[2px] animate-pulse bg-accent" />
-											)}
 										</p>
 									);
 								})}
+								{progress && progress.duration > 0 && (
+									<div className="flex items-center gap-[7px]">
+										<span className="h-[13px] w-0.5 bg-accent" />
+										<span className="font-mono text-fine leading-none text-text3">
+											{formatClock(progress.position)} / {formatClock(progress.duration)}
+										</span>
+									</div>
+								)}
 							</div>
 						)}
 					</div>
-
-					<div className="flex flex-col gap-2">
-						<span className="font-mono text-[9.5px] tracking-[0.08em] text-text3">FACES FOUND</span>
-						<div className="flex flex-wrap gap-2">
-							{people.map((personId, i) => (
-								<img
-									key={personId}
-									src={faceThumbnailUrl(jobId, personId)}
-									alt=""
-									className={`h-[46px] w-[46px] rounded-control border-2 object-cover ${
-										SPEAKER_RING[i % SPEAKER_RING.length]
-									}`}
-								/>
-							))}
-							{!(faces?.done ?? false) && (
-								<span className="h-[46px] w-[46px] rounded-control border-2 border-dashed border-line" />
-							)}
-						</div>
-						<p className="text-[11px] leading-[1.5] text-text3">
-							{people.length > 0
-								? "You'll name them on the next screen."
-								: "Recognising people takes the whole pass — they appear together."}
-						</p>
-					</div>
 				</div>
-
-				<p className="text-[11px] leading-[1.7] text-text3">
-					Roughly a fifth of the recording's length on a laptop. Closing this tab won't stop it
-					{typeof Notification !== "undefined" && Notification.permission === "granted"
-						? " — you'll get a notification when it's ready."
-						: " — come back and this page will pick up where it left off."}
-				</p>
 			</div>
-		</div>
+		</Screen>
 	);
 }

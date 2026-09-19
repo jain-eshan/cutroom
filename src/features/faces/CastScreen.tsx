@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { MatchNote, MatchResult, Person, Turn, Word } from "@/lib/api";
-import { formatDuration } from "@/lib/format";
+import { formatClock, formatDuration } from "@/lib/format";
+import { Button, PlayButton, Screen } from "@/components/ui";
 
 /** Below this, the automatic match is shown as a guess to check rather than an
  * answer. Matches pipeline/fuse.py's DOMINANT_SHARE. */
 const CONFIDENT = 0.6;
 
 const SPEAKER_BORDER = ["border-s1", "border-s2", "border-s3"];
+const SPEAKER_TEXT = ["text-s1", "text-s2", "text-s3"];
 const WAVEFORM_BARS = 15;
 
 export interface CastResult {
@@ -81,13 +83,15 @@ function speechDensity(words: Word[], start: number, end: number): number[] {
 	return slices.map((v) => 0.25 + 0.75 * (v / peak));
 }
 
-function Waveform({ heights }: { heights: number[] }) {
+/** Played bars in accent, the rest on the control token -- both flip with
+ * the theme, unlike the literal grey this used to be. */
+function Waveform({ heights, played }: { heights: number[]; played: number }) {
 	return (
-		<div className="flex h-6 items-center gap-[3px]" aria-hidden="true">
+		<div className="flex h-[26px] flex-1 items-center gap-0.5" aria-hidden="true">
 			{heights.map((h, i) => (
 				<span
 					key={i}
-					className="w-[3px] rounded-full bg-[oklch(0.38_0.01_80)]"
+					className={`flex-1 rounded-[1px] ${i < Math.round(played * heights.length) ? "bg-accent" : "bg-control"}`}
 					style={{ height: `${Math.round(h * 100)}%` }}
 				/>
 			))}
@@ -124,9 +128,13 @@ export function CastScreen({
 	const [index, setIndex] = useState(0);
 	const [voiceNames, setVoiceNames] = useState<Record<number, string>>({});
 	const [playing, setPlaying] = useState(false);
+	// How far through the sample playback is, for the waveform.
+	const [played, setPlayed] = useState(0);
 
 	const audioRef = useRef<HTMLVideoElement>(null);
 	const stopAt = useRef<number | null>(null);
+	// The sample being played, so the waveform can show how far through it is.
+	const clip = useRef<[number, number] | null>(null);
 	// Same eviction risk as the editor's own video (server/jobs/ isn't kept
 	// forever) -- without this, clicking play just silently does nothing.
 	// Tracks *which* url errored, the same reason EditorView.tsx's mediaError
@@ -142,6 +150,10 @@ export function CastScreen({
 		const el = audioRef.current;
 		if (!el) return;
 		const onTime = () => {
+			if (clip.current) {
+				const [from, to] = clip.current;
+				setPlayed(Math.max(0, Math.min(1, (el.currentTime - from) / Math.max(0.001, to - from))));
+			}
 			if (stopAt.current !== null && el.currentTime >= stopAt.current) {
 				el.pause();
 				setPlaying(false);
@@ -195,12 +207,14 @@ export function CastScreen({
 		}
 		el.currentTime = sample.start;
 		stopAt.current = Math.min(sample.end, sample.start + 12);
+		clip.current = [sample.start, stopAt.current];
 		void el.play();
 		setPlaying(true);
 	}
 
 	function confirm() {
 		stop();
+		setPlayed(0);
 		if (index + 1 < speakers.length) {
 			setIndex(index + 1);
 			return;
@@ -218,177 +232,163 @@ export function CastScreen({
 		onComplete({ names, speakerToPerson, voiceNames: namedVoices });
 	}
 
-	// The no-face card below already says what a voice_unmatched note would.
+	// The "someone we didn't see" cell already says what a voice_unmatched note would.
 	const notes = match.notes.filter(
 		(n) => n.speakers.includes(speaker) && !(noFace && n.kind === "voice_unmatched"),
 	);
-	const confirmLabel =
-		selected !== null
-			? `Yes, that's ${nameOf(selected)}`
-			: voiceName
-				? `Yes, that's ${voiceName}`
-				: "Nobody we saw";
+	const last = index + 1 >= speakers.length;
+	const chosen = selected !== null ? nameOf(selected) : voiceName || null;
+	const confirmLabel = chosen
+		? `That's ${chosen}${last ? "" : " — next voice"}`
+		: `They weren't on camera${last ? "" : " — next voice"}`;
 	const guessedName =
 		guess?.personId != null && selected === guess.personId ? nameOf(guess.personId) : null;
+	const coinFlip = guess && guess.personId != null && guess.confidence < CONFIDENT;
 
 	return (
-		<div className="flex min-h-screen items-center justify-center bg-bg px-6 py-10">
-			<div className="flex w-full max-w-[540px] flex-col gap-5 rounded-panel border border-line bg-panel p-[26px]">
-				<video ref={audioRef} src={videoUrl} className="hidden" preload="auto" />
+		<Screen width={620}>
+			<video ref={audioRef} src={videoUrl} className="hidden" preload="auto" />
 
-				<div className="flex items-baseline justify-between gap-4">
-					<h2 className="text-[18px] font-semibold tracking-[-0.01em] text-text">
-						Who is this?
-					</h2>
-					<span className="font-mono text-[10px] tracking-[0.08em] text-text3">
-						VOICE {index + 1} OF {speakers.length}
-					</span>
+			<div className="flex items-baseline gap-[11px]">
+				<h1 className="text-title font-semibold tracking-[-0.01em] text-text">Who's speaking here?</h1>
+				<span className="font-mono text-mono-sm leading-none text-text3">
+					voice {index + 1} of {speakers.length}
+				</span>
+			</div>
+
+			{sample && (
+				<div className="flex flex-col gap-[14px] rounded-card-lg border border-line bg-chrome p-[18px]">
+					<div className="flex items-center gap-[13px]">
+						<PlayButton
+							playing={playing}
+							onClick={togglePlay}
+							disabled={audioError}
+							label={playing ? "Stop the clip" : "Play the clip"}
+						/>
+						{audioError ? (
+							<span className="text-meta text-warn">Couldn't load the recording to play this clip.</span>
+						) : (
+							<>
+								<Waveform heights={speechDensity(words, sample.start, sample.end)} played={played} />
+								<span className="shrink-0 font-mono text-mono-sm leading-none text-text3">
+									{formatClock(sample.start)} – {formatClock(sample.end)}
+								</span>
+							</>
+						)}
+					</div>
+					<p className="text-evidence text-pretty text-text">
+						&ldquo;{sample.text.slice(0, 240)}
+						{sample.text.length > 240 ? "…" : ""}&rdquo;
+					</p>
 				</div>
+			)}
 
-				{sample && (
-					<div className="flex flex-col gap-3 rounded-card bg-raised p-4">
-						<p className="text-[16px] leading-[1.55] text-text">
-							&ldquo;{sample.text.slice(0, 240)}
-							{sample.text.length > 240 ? "…" : ""}&rdquo;
-						</p>
-						<div className="flex items-center gap-3">
-							<button
-								type="button"
-								onClick={togglePlay}
-								disabled={audioError}
-								className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent disabled:opacity-40"
-								aria-label={playing ? "Stop the clip" : "Play the clip"}
-							>
-								{playing ? "❚❚" : "▶"}
-							</button>
-							{audioError ? (
-								<span className="text-[12px] text-warn">Couldn't load the recording to play this clip.</span>
-							) : (
-								<>
-									<Waveform heights={speechDensity(words, sample.start, sample.end)} />
-									<span className="font-mono text-[10px] text-text3">
-										{formatDuration(sample.end - sample.start)}
-									</span>
-								</>
-							)}
-						</div>
-					</div>
-				)}
-
-				{noFace && (
-					<div className="flex flex-col gap-2 rounded-card border border-line bg-raised p-4">
-						<span className="font-mono text-[9.5px] tracking-[0.08em] text-text3">VOICE WITH NO FACE</span>
-						<span className="text-[15px] font-semibold text-text">Someone we never saw</span>
-						<p className="text-[12.5px] leading-[1.6] text-text3">
-							This voice never lines up with a face on screen — an off-camera guest, or someone
-							behind the camera. Their turns stay wide, which is the honest choice.
-						</p>
-						<span className="font-mono text-[10px] text-text3">
-							{voiceTurns.length} {voiceTurns.length === 1 ? "turn" : "turns"} ·{" "}
-							{formatDuration(voiceSeconds)} total
-						</span>
-						<label className="mt-1 flex flex-col gap-1">
-							<span className="text-[11px] text-text3">Give them a name anyway</span>
-							<input
-								value={voiceNames[speaker] ?? ""}
-								onChange={(e) => setVoiceNames({ ...voiceNames, [speaker]: e.target.value })}
-								placeholder={voiceLabel(speaker)}
-								className="rounded-control border border-line bg-panel px-2 py-1.5 text-[13px] font-semibold text-text"
+			<div className="flex flex-wrap gap-[11px]">
+				{people.map((person, i) => {
+					const isSelected = selected === person.id;
+					const isGuess = guess?.personId === person.id;
+					const ring = SPEAKER_BORDER[i % SPEAKER_BORDER.length];
+					return (
+						<button
+							key={person.id}
+							type="button"
+							onClick={() => setChoices({ ...choices, [speaker]: person.id })}
+							aria-pressed={isSelected}
+							className={`flex min-w-[130px] flex-1 flex-col gap-[9px] rounded-card-lg p-[13px] text-left ${
+								isSelected ? `border-2 bg-sel ${ring}` : "border border-line bg-chrome"
+							}`}
+						>
+							<img
+								src={person.thumbnail}
+								alt=""
+								className={`w-full rounded-control-lg object-cover ${isSelected ? "" : "opacity-75"}`}
+								style={{ aspectRatio: "1.2" }}
 							/>
-						</label>
-					</div>
-				)}
-
-				{notes.length > 0 && (
-					<ul className="flex flex-col gap-1 rounded-card border border-warn/45 bg-warn-bg p-3 text-[11px] leading-[1.6] text-warn">
-						{notes.map((note, i) => (
-							<li key={i}>{noteText(note, nameOf, voiceLabel)}</li>
-						))}
-					</ul>
-				)}
-
-				<div className="grid grid-cols-3 gap-3">
-					{people.map((person, i) => {
-						const isSelected = selected === person.id;
-						const isGuess = guess?.personId === person.id;
-						return (
-							<button
-								key={person.id}
-								type="button"
-								onClick={() => setChoices({ ...choices, [speaker]: person.id })}
-								className={`flex h-full flex-col gap-1.5 rounded-card border-2 p-1.5 text-left ${
-									isSelected ? SPEAKER_BORDER[i % SPEAKER_BORDER.length] : "border-line"
-								}`}
-							>
-								<img
-									src={person.thumbnail}
-									alt=""
-									className="w-full rounded-chip object-cover"
-									style={{ aspectRatio: "1 / 1.2" }}
-								/>
+							<span className="flex flex-col gap-[3px]">
 								<input
 									value={names[person.id] ?? ""}
 									onClick={(e) => e.stopPropagation()}
 									onChange={(e) => setNames({ ...names, [person.id]: e.target.value })}
 									placeholder={defaultName(i)}
 									aria-label={`Name for ${defaultName(i)}`}
-									className="w-full rounded-chip bg-transparent px-1 py-0.5 text-[13px] font-semibold text-text"
+									className={`w-full rounded-chip bg-transparent text-ui leading-[1.3] font-semibold outline-none focus:bg-well ${
+										isSelected ? "text-text" : "text-text2"
+									}`}
 								/>
-								<span className="px-1 pb-0.5 text-[11px] leading-[1.35] text-text3">
-									{isGuess && guess
-										? `Lips match ${Math.round(guess.confidence * 100)}% of this clip`
-										: " "}
+								<span className={`text-mono-sm ${isSelected ? SPEAKER_TEXT[i % SPEAKER_TEXT.length] : "text-text3"}`}>
+									{isGuess && guess ? `Lips match ${Math.round(guess.confidence * 100)}% of this clip` : "\u00a0"}
 								</span>
-							</button>
-						);
-					})}
-
-					<button
-						type="button"
-						onClick={() => setChoices({ ...choices, [speaker]: null })}
-						className={`flex h-full flex-col items-center justify-center gap-1 rounded-card border-2 border-dashed p-3 text-center ${
-							selected === null ? "border-accent" : "border-line"
-						}`}
-					>
-						<span className="text-[12.5px] font-medium text-text2">Someone we didn't see</span>
-						<span className="text-[11px] leading-[1.35] text-text3">They stay wide</span>
-					</button>
-				</div>
-
-				<div className="flex items-center justify-between gap-4">
-					<div className="flex items-center gap-3">
-						<button
-							type="button"
-							onClick={confirm}
-							className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
-						>
-							{confirmLabel}
-						</button>
-						{guessedName && (
-							<span className="max-w-[200px] text-[11px] leading-[1.4] text-text3">
-								We guessed {guessedName}. Play the clip if you're not sure.
 							</span>
-						)}
-						{guess && guess.personId != null && guess.confidence < CONFIDENT && (
-							<span className="max-w-[200px] text-[11px] leading-[1.4] text-warn">
-								This one is a coin flip — worth listening to.
-							</span>
-						)}
-					</div>
-					{index > 0 && (
-						<button
-							type="button"
-							onClick={() => {
-								stop();
-								setIndex(index - 1);
-							}}
-							className="text-[11px] text-text3 underline"
-						>
-							Previous voice
 						</button>
+					);
+				})}
+
+				<div
+					role="button"
+					tabIndex={0}
+					onClick={() => setChoices({ ...choices, [speaker]: null })}
+					onKeyDown={(e) => e.key === "Enter" && setChoices({ ...choices, [speaker]: null })}
+					aria-pressed={selected === null}
+					className={`flex w-[116px] shrink-0 cursor-pointer flex-col justify-center gap-[7px] rounded-card-lg border border-dashed p-[13px] text-center text-mono-sm text-text3 ${
+						selected === null ? "border-accent bg-sel" : "border-text3/45"
+					}`}
+				>
+					<span>Someone we didn't see — they stay wide</span>
+					{noFace && (
+						<span className="font-mono text-mono-xs text-text3">
+							{voiceTurns.length} {voiceTurns.length === 1 ? "turn" : "turns"} · {formatDuration(voiceSeconds)}
+						</span>
+					)}
+					{selected === null && (
+						<input
+							value={voiceNames[speaker] ?? ""}
+							onClick={(e) => e.stopPropagation()}
+							onChange={(e) => setVoiceNames({ ...voiceNames, [speaker]: e.target.value })}
+							placeholder="Name them"
+							aria-label="Give this voice a name anyway"
+							className="w-full rounded-control border border-line bg-well px-1.5 py-1 text-center text-meta text-text outline-none focus:border-accent-edge"
+						/>
 					)}
 				</div>
 			</div>
-		</div>
+
+			{notes.length > 0 && (
+				<ul className="flex flex-col gap-1">
+					{notes.map((note, i) => (
+						<li key={i} className="flex gap-[7px] text-fine text-warn">
+							<span className="mt-[6px] h-[5px] w-[5px] shrink-0 rounded-full bg-warn" />
+							{noteText(note, nameOf, voiceLabel)}
+						</li>
+					))}
+				</ul>
+			)}
+
+			<div className="flex items-center gap-[14px] pt-0.5">
+				<Button variant="primary" onClick={confirm}>
+					{confirmLabel}
+				</Button>
+				{index > 0 && (
+					<Button
+						variant="ghost"
+						onClick={() => {
+							stop();
+							setPlayed(0);
+							setIndex(index - 1);
+						}}
+					>
+						Previous voice
+					</Button>
+				)}
+				<span className={`ml-auto max-w-[240px] text-right text-fine ${coinFlip ? "text-warn" : "text-text3"}`}>
+					{coinFlip
+						? "This one is a coin flip — worth listening to."
+						: noFace
+							? "This voice never lines up with a face on screen, so their turns stay wide."
+							: guessedName
+								? `We guessed ${guessedName}. Play the clip if you're not sure.`
+								: null}
+				</span>
+			</div>
+		</Screen>
 	);
 }

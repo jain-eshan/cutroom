@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button, EdgeCaseCard, Screen } from "@/components/ui";
 import { formatDuration } from "@/lib/format";
 
 /**
@@ -40,42 +41,31 @@ export function ProcessingFailed({
 	}
 
 	return (
-		<div className="flex min-h-screen items-center justify-center bg-bg px-6 py-10">
-			<div className="flex w-full max-w-[520px] flex-col gap-4 rounded-panel border border-warn/45 bg-panel p-[26px]">
-				<span className="font-mono text-[9.5px] tracking-[0.08em] text-warn">STOPPED WHILE READING</span>
-				<h2 className="text-[18px] font-semibold tracking-[-0.01em] text-text">It stopped partway through</h2>
-				<code className="block rounded-control bg-terminal px-2.5 py-2 font-mono text-[11px] leading-[1.5] break-words text-plate-ink">
-					{message}
-				</code>
-				<p className="text-[12.5px] leading-[1.6] text-text3">
-					{reached > 0
+		<Screen width={440}>
+			<EdgeCaseCard
+				tone="error"
+				label="Stopped while reading"
+				title="It stopped partway through"
+				raw={message}
+				why={`${
+					reached > 0
 						? `The transcript got as far as ${formatDuration(reached)}.`
-						: "It stopped before the transcript got started."}{" "}
-					Nothing was lost — it starts from the top on a retry.
-				</p>
-				<div className="flex items-center gap-2">
-					<button
-						type="button"
-						onClick={onRetry}
-						className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
-					>
-						Try again
-					</button>
-					<button
-						type="button"
-						onClick={copyDetails}
-						className="rounded-control border border-line px-3 py-2 text-[13px] text-text2"
-					>
-						{copied ? "Copied" : "Copy the details"}
-					</button>
-					<div className="flex-1" />
-					{/* Not on the design's card, but without it a file that fails every
-					    time is a dead end short of reloading the page. */}
-					<button type="button" onClick={onPickAnother} className="text-[11px] text-text3 underline">
-						Pick a different file
-					</button>
-				</div>
-			</div>
-		</div>
+						: "It stopped before the transcript got started."
+				} Nothing was lost — it starts from the top on a retry.`}
+				actions={
+					<>
+						<Button variant="primary" onClick={onRetry}>
+							Try again
+						</Button>
+						<Button onClick={copyDetails}>{copied ? "Copied" : "Copy the details"}</Button>
+						{/* Not on the design's card, but without it a file that fails every
+						    time is a dead end short of reloading the page. */}
+						<Button variant="ghost" onClick={onPickAnother} className="ml-auto">
+							Pick a different file
+						</Button>
+					</>
+				}
+			/>
+		</Screen>
 	);
 }

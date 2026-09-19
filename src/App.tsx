@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CastScreen, type CastResult } from "@/features/faces/CastScreen";
 import { NoFacesScreen } from "@/features/faces/NoFacesScreen";
+import { AppWindow } from "@/components/ui";
 import { PublishScreen } from "@/features/publish/PublishScreen";
 import { SetupGate } from "@/features/setup/SetupGate";
 import { EditorView } from "@/features/timeline/EditorView";
@@ -368,12 +369,11 @@ function App() {
 		setStatus({ state: "idle" });
 	}
 
+	let screen: React.ReactNode;
 	if (status.state === "checking") {
-		return <SetupGate onReady={handleReady} />;
-	}
-
-	if (status.state === "failed") {
-		return (
+		screen = <SetupGate onReady={handleReady} />;
+	} else if (status.state === "failed") {
+		screen = (
 			<ProcessingFailed
 				fileName={status.fileName}
 				message={status.message}
@@ -382,10 +382,8 @@ function App() {
 				onPickAnother={startOver}
 			/>
 		);
-	}
-
-	if (status.state === "noFaces") {
-		return (
+	} else if (status.state === "noFaces") {
+		screen = (
 			<NoFacesScreen
 				onKeepGoing={() => {
 					// Nobody to frame, so no regions: the whole episode stays wide.
@@ -407,10 +405,8 @@ function App() {
 				onPickAnother={startOver}
 			/>
 		);
-	}
-
-	if (status.state === "processing") {
-		return (
+	} else if (status.state === "processing") {
+		screen = (
 			<ProcessingScreen
 				jobId={status.jobId}
 				uploadFraction={uploadFraction}
@@ -420,10 +416,8 @@ function App() {
 				fileSizeBytes={status.fileSizeBytes}
 			/>
 		);
-	}
-
-	if (status.state === "cast") {
-		return (
+	} else if (status.state === "cast") {
+		screen = (
 			<CastScreen
 				videoUrl={status.videoUrl}
 				people={status.faces.people}
@@ -457,13 +451,10 @@ function App() {
 				}}
 			/>
 		);
-	}
-
-	if (status.state === "editing") {
-		return (
+	} else if (status.state === "editing") {
+		screen = (
 			<EditorView
 				videoUrl={status.videoUrl}
-				fileName={status.fileName}
 				jobId={status.sessionId}
 				turns={status.turns}
 				words={status.words}
@@ -479,14 +470,10 @@ function App() {
 				framingStyle={framingStyle}
 				onFramingStyleChange={setFramingStyle}
 				onPublish={(duration) => setStatus({ ...status, state: "publishing", duration })}
-				themeMode={themeMode}
-				onThemeModeChange={setThemeMode}
 			/>
 		);
-	}
-
-	if (status.state === "publishing") {
-		return (
+	} else if (status.state === "publishing") {
+		screen = (
 			<PublishScreen
 				fileName={status.fileName}
 				sessionId={status.sessionId}
@@ -503,15 +490,26 @@ function App() {
 				onNew={startOver}
 			/>
 		);
+	} else {
+		screen = (
+			<UploadScreen
+				onFileSelected={handleFile}
+				savedEpisodes={savedEpisodes}
+				onReopen={handleReopen}
+				onDelete={handleDelete}
+			/>
+		);
 	}
 
 	return (
-		<UploadScreen
-			onFileSelected={handleFile}
-			savedEpisodes={savedEpisodes}
-			onReopen={handleReopen}
-			onDelete={handleDelete}
-		/>
+		<AppWindow
+			fileName={"fileName" in status ? status.fileName : undefined}
+			serviceOk={status.state === "checking" ? undefined : health !== null}
+			themeMode={themeMode}
+			onThemeModeChange={setThemeMode}
+		>
+			{screen}
+		</AppWindow>
 	);
 }
 

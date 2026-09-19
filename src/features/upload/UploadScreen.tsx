@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Logo } from "@/components/Logo";
+import { Button, Screen, ScreenHeading, SectionLabel } from "@/components/ui";
 import type { SavedEpisode } from "@/lib/api";
 
 export function UploadScreen({
@@ -16,6 +16,8 @@ export function UploadScreen({
 	onDelete: (jobId: string) => void;
 }) {
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
+	// Delete asks once, in place: it sat one pixel from Reopen with no confirm.
+	const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
 	function handleDrop(e: React.DragEvent<HTMLLabelElement>) {
 		e.preventDefault();
@@ -25,104 +27,121 @@ export function UploadScreen({
 	}
 
 	return (
-		<div className="flex min-h-screen flex-col items-center justify-center bg-bg px-6 py-10">
-			<div
-				className={`flex w-full max-w-[412px] flex-col gap-5 rounded-panel border p-[26px] transition-colors ${
-					isDraggingOver ? "border-2 border-accent shadow-[0_0_0_6px_oklch(0.74_0.16_52/0.12)]" : "border-line"
+		<Screen width={560}>
+			<div className={isDraggingOver ? "opacity-40" : ""}>
+				<ScreenHeading title="Start a new episode">
+					One video of everyone in one frame, with one audio track. That's all it needs.
+				</ScreenHeading>
+			</div>
+
+			<label
+				onDragOver={(e) => {
+					e.preventDefault();
+					setIsDraggingOver(true);
+				}}
+				onDragLeave={() => setIsDraggingOver(false)}
+				onDrop={handleDrop}
+				className={`flex cursor-pointer flex-col items-center justify-center gap-[11px] rounded-panel text-center ${
+					isDraggingOver
+						? "border-2 border-accent bg-accent-wash px-5 py-[44px] shadow-[0_0_0_6px_var(--color-accent-ring)]"
+						: "border-[1.5px] border-dashed border-text3/45 bg-panel px-5 py-[30px]"
 				}`}
 			>
-				<div
-					className={`flex flex-col items-center gap-2 text-center transition-opacity ${isDraggingOver ? "opacity-40" : ""}`}
-				>
-					<Logo size={40} className="text-text" />
-					<h1 className="text-[18px] font-semibold tracking-[-0.01em] text-text">Cutroom</h1>
-					<p className="max-w-sm text-[12.5px] leading-[1.6] text-text3">
-						Drop in a single-camera recording. It transcribes it, works out who's on camera and
-						when, and suggests framing you can change before publishing.
-					</p>
-				</div>
-
-				<label
-					onDragOver={(e) => {
-						e.preventDefault();
-						setIsDraggingOver(true);
-					}}
-					onDragLeave={() => setIsDraggingOver(false)}
-					onDrop={handleDrop}
-					className={`flex cursor-pointer flex-col items-center gap-3 rounded-[9px] border-[1.5px] border-dashed py-[30px] text-center transition-colors ${
-						isDraggingOver ? "border-2 border-accent bg-accent/9" : "border-line bg-panel"
+				<span
+					className={`flex items-center justify-center ${
+						isDraggingOver ? "h-11 w-11 rounded-[10px] bg-accent" : "h-[38px] w-[38px] rounded-panel bg-control"
 					}`}
 				>
-					<span className="flex h-[38px] w-[38px] items-center justify-center rounded-card bg-control text-text3">
-						↓
-					</span>
-					{isDraggingOver ? (
-						<span className="text-[13px] font-medium text-text">Let go to start</span>
-					) : (
-						<span className="text-[13px] font-medium text-text">
-							Drag a recording here
-							<br />
-							<span className="font-normal text-text3">
-								or <span className="text-accent-text">choose a file</span>
-							</span>
-						</span>
-					)}
-					<input
-						type="file"
-						accept="video/*,audio/*"
-						className="hidden"
-						onChange={(e) => {
-							const file = e.target.files?.[0];
-							if (file) onFileSelected(file);
-						}}
+					{/* The upload glyph is a bar drawn in CSS, not an arrow character. */}
+					<span
+						className={`block rounded-[2px] ${isDraggingOver ? "h-[3px] w-[18px] bg-on-accent" : "h-[2.5px] w-[14px] bg-text2"}`}
 					/>
-				</label>
-				{isDraggingOver && (
-					<p className="-mt-2 text-center text-[11px] text-text3">
-						A second file would replace this one — only one recording per episode.
-					</p>
+				</span>
+				{isDraggingOver ? (
+					<span className="text-section font-semibold text-text">Let go to start</span>
+				) : (
+					<>
+						<span className="text-ui font-medium text-text">Drag a recording here</span>
+						<span className="text-meta leading-none text-text3">
+							or <span className="text-accent-text">choose a file</span>
+						</span>
+					</>
 				)}
+				<input
+					type="file"
+					accept="video/*,audio/*"
+					className="hidden"
+					onChange={(e) => {
+						const file = e.target.files?.[0];
+						if (file) onFileSelected(file);
+					}}
+				/>
+			</label>
 
-				<div className="flex items-start gap-2 rounded-card border border-line bg-raised p-3">
-					<span className="mt-1 h-[7px] w-[7px] shrink-0 rounded-full bg-ok" />
-					<p className="text-[11px] leading-[1.6] text-text3">
-						Everything happens on this machine. Nothing is uploaded, and a 4 GB file doesn't cost
-						you 4 GB of bandwidth.
+			{isDraggingOver ? (
+				<p className="text-center text-meta text-pretty text-text3">
+					A second file would replace this one — only one recording per episode.
+				</p>
+			) : (
+				<div className="flex items-center gap-[9px] rounded-card bg-chrome px-[13px] py-[11px]">
+					<span className="h-[7px] w-[7px] shrink-0 rounded-full bg-ok" />
+					<p className="text-meta text-pretty text-text3">
+						Everything happens on this machine. Nothing is uploaded, and a 4 GB file doesn't cost you 4 GB
+						of bandwidth.
 					</p>
 				</div>
+			)}
 
-				{savedEpisodes && savedEpisodes.length > 0 && (
-					<div className="flex flex-col gap-1.5 border-t border-line pt-4">
-						<span className="font-mono text-[9.5px] tracking-[0.08em] text-text3">RECENT EPISODES</span>
-						{savedEpisodes.map((ep) => (
-							<div
-								key={ep.jobId}
-								className="flex items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-2"
-							>
-								<button
-									type="button"
-									onClick={() => onReopen(ep.jobId)}
-									className="min-w-0 flex-1 truncate text-left text-[12px] text-text2"
-									title={`Reopen ${ep.filename} -- picks up from the cast screen, no reprocessing.`}
-								>
-									{ep.filename}
-								</button>
-								<span className="shrink-0 font-mono text-[10px] text-text3">
-									{new Date(ep.createdAt * 1000).toLocaleDateString()}
+			{savedEpisodes && savedEpisodes.length > 0 && !isDraggingOver && (
+				<div className="mt-auto flex flex-col gap-[11px]">
+					<SectionLabel>Pick up where you left off</SectionLabel>
+					{savedEpisodes.map((ep) => (
+						<div
+							key={ep.jobId}
+							className="flex items-center gap-[13px] rounded-card border border-line bg-chrome px-3 py-[10px]"
+						>
+							<span className="plate-stripes h-7 w-[46px] shrink-0 rounded-[4px]" />
+							<span className="flex min-w-0 flex-1 flex-col gap-[3px]">
+								<span className="truncate text-ui leading-[1.3] font-semibold text-text">{ep.filename}</span>
+								<span className="font-mono text-mono-sm leading-[1.3] text-text3">
+									{new Date(ep.createdAt * 1000).toLocaleDateString()} · processed
 								</span>
-								<button
-									type="button"
-									onClick={() => onDelete(ep.jobId)}
-									title="Remove this episode"
-									className="shrink-0 text-[11px] text-text3 hover:text-warn"
-								>
-									✕
-								</button>
-							</div>
-						))}
-					</div>
-				)}
-			</div>
-		</div>
+							</span>
+							{confirmingDelete === ep.jobId ? (
+								<>
+									<Button size="sm" variant="quiet" onClick={() => setConfirmingDelete(null)}>
+										Keep it
+									</Button>
+									<Button
+										size="sm"
+										variant="destructive"
+										onClick={() => {
+											setConfirmingDelete(null);
+											onDelete(ep.jobId);
+										}}
+									>
+										Delete for good
+									</Button>
+								</>
+							) : (
+								<>
+									<Button
+										size="sm"
+										variant="quiet"
+										onClick={() => onReopen(ep.jobId)}
+										title="Picks up from naming the people. Nothing is processed again."
+									>
+										Reopen
+									</Button>
+									<Button size="sm" variant="destructive" onClick={() => setConfirmingDelete(ep.jobId)}>
+										Delete
+									</Button>
+								</>
+							)}
+						</div>
+					))}
+				</div>
+			)}
+		</Screen>
 	);
 }

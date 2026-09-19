@@ -6,18 +6,18 @@ const OPTIONS: { value: ThemeMode; label: string }[] = [
 	{ value: "dark", label: "Dark" },
 ];
 
-/** Three-button segmented control, per the handoff's Editor title bar spec:
- * a 3px-padded `raised` group. */
+/** Three-button segmented control, the design system's ThemeSwitch: a
+ * 3px-padded `raised` group, the current mode on `control`. */
 export function ThemeSwitcher({ mode, onChange }: { mode: ThemeMode; onChange: (mode: ThemeMode) => void }) {
 	return (
-		<div className="flex gap-0.5 rounded-control bg-raised p-[3px]">
+		<div className="flex gap-0.5 rounded-card bg-raised p-[3px]">
 			{OPTIONS.map((option) => (
 				<button
 					key={option.value}
 					type="button"
 					onClick={() => onChange(option.value)}
 					aria-pressed={mode === option.value}
-					className={`rounded-[4px] px-2 py-1 text-[11px] font-medium transition-colors ${
+					className={`rounded-control px-[9px] py-1.5 text-mono-xs leading-none font-medium transition-colors duration-[90ms] ease-linear ${
 						mode === option.value ? "bg-control text-text" : "text-text3 hover:text-text2"
 					}`}
 				>

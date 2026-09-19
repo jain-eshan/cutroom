@@ -87,7 +87,7 @@ export interface DetectFacesResponse {
 	people: Person[];
 }
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8787";
+export const API_BASE = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8787";
 
 /** Upload progress needs XMLHttpRequest -- fetch() has no way to report how
  * many bytes of the request body have gone out, and a multi-GB upload with no
