@@ -31,6 +31,10 @@ jobs:
       # (dmg/dmg.blockmap, mac zip/zip.blockmap, exe/exe.blockmap,
       # latest.yml, latest-mac.yml) before publishing (undrafting) it --
       # don't assume the workflow going green means the release is whole.
+      # Recurred on v0.3.0 (2026-09-19): fixed by hand, uploading the
+      # smaller draft's assets onto the other via the GitHub API, checking
+      # each latest*.yml's sha512 against its installer, then deleting the
+      # empty duplicate. See docs/STATUS.md's v0.3.0 entry.
       max-parallel: 1
       matrix:
         include:
