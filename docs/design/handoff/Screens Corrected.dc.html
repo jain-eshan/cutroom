@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; -webkit-font-smoothing: antialiased; background: oklch(0.12 0.008 70); }
+a { color: oklch(0.80 0.13 60); text-decoration: none; }
+a:hover { color: oklch(0.74 0.16 52); }
+/* element reset, not component styling: every control keeps its label on one line */
+[data-cr] button { white-space: nowrap; flex: none; font-family: inherit; }
+[data-cr] input { font-family: inherit; }
+
+/* The token file, verbatim from tokens/*.css. :root is DARK — the product's
+   primary surface. This is finding S1: the app currently has these inverted. */
+[data-cr] {
+  --bg: oklch(0.15 0.008 70); --panel: oklch(0.17 0.008 70); --chrome: oklch(0.20 0.008 70);
+  --raised: oklch(0.22 0.008 70); --control: oklch(0.26 0.008 70); --line: oklch(0.25 0.008 70);
+  --well: oklch(0.11 0.008 70); --sel: oklch(0.21 0.008 70);
+  --text: oklch(0.95 0.005 80); --text-2: oklch(0.80 0.01 80); --text-3: oklch(0.66 0.01 80);
+  --accent: oklch(0.74 0.16 52); --on-accent: oklch(0.20 0.02 60); --accent-text: oklch(0.80 0.13 60);
+  --accent-edge: oklch(0.74 0.16 52 / 0.45); --accent-wash: oklch(0.74 0.16 52 / 0.09);
+  --accent-ring: oklch(0.74 0.16 52 / 0.12);
+  --track: oklch(0.215 0.008 70); --region-wide: oklch(0.30 0.01 70); --region-close: oklch(0.44 0.09 52);
+  --region-mine: oklch(0.62 0.13 52); --region-both: oklch(0.47 0.10 30); --region-ink: oklch(0.97 0.01 70);
+  --region-mine-ink: oklch(0.20 0.02 60); --handle: oklch(0.97 0.005 80);
+  --speaker-1: oklch(0.74 0.16 52); --speaker-2: oklch(0.72 0.13 175); --speaker-3: oklch(0.70 0.14 285);
+  --plate-a: oklch(0.27 0.008 70); --plate-b: oklch(0.23 0.008 70); --plate-ink: oklch(0.72 0.01 80);
+  --ok: oklch(0.72 0.13 155); --ok-done: oklch(0.50 0.10 155); --ok-edge: oklch(0.72 0.13 155 / 0.40);
+  --warn: oklch(0.80 0.13 40); --warn-bg: oklch(0.62 0.15 30 / 0.20); --warn-edge: oklch(0.62 0.15 30 / 0.50);
+  --beta: oklch(0.84 0.13 88); --beta-bg: oklch(0.76 0.14 85 / 0.18);
+  --tl-red: oklch(0.64 0.16 25); --tl-amber: oklch(0.78 0.14 85); --tl-green: oklch(0.72 0.14 145);
+  --shadow: 0 2px 16px rgba(0,0,0,0.24); --shadow-hero: 0 8px 30px rgba(0,0,0,0.30);
+  --font-sans: "Instrument Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+}
+[data-cr][data-theme="light"] {
+  --bg: oklch(0.955 0.005 85); --panel: oklch(0.985 0.004 85); --chrome: oklch(0.93 0.006 85);
+  --raised: oklch(1 0 0); --control: oklch(0.905 0.006 85); --line: oklch(0.875 0.006 85);
+  --well: oklch(0.90 0.006 85); --sel: oklch(0.955 0.012 70);
+  --text: oklch(0.20 0.008 70); --text-2: oklch(0.38 0.008 70); --text-3: oklch(0.47 0.008 70);
+  --accent-text: oklch(0.47 0.14 45);
+  --track: oklch(0.915 0.006 85); --region-wide: oklch(0.845 0.008 85); --region-close: oklch(0.83 0.08 62);
+  --region-mine: oklch(0.74 0.16 52); --region-both: oklch(0.81 0.10 35); --region-ink: oklch(0.24 0.03 60);
+  --handle: oklch(0.22 0.01 70);
+  --speaker-1: oklch(0.56 0.16 45); --speaker-2: oklch(0.48 0.12 190); --speaker-3: oklch(0.50 0.13 290);
+  --plate-a: oklch(0.33 0.006 85); --plate-b: oklch(0.285 0.006 85); --plate-ink: oklch(0.78 0.01 80);
+  --ok: oklch(0.52 0.13 155); --ok-done: oklch(0.52 0.13 155);
+  --warn: oklch(0.48 0.15 35); --warn-bg: oklch(0.62 0.15 30 / 0.14);
+  --beta: oklch(0.45 0.12 70); --beta-bg: oklch(0.76 0.14 85 / 0.22);
+  --shadow: 0 2px 16px rgba(0,0,0,0.10); --shadow-hero: 0 8px 30px rgba(0,0,0,0.09);
+}
+</style>
+</helmet>
+
+<div data-cr="" data-theme="{{ theme }}" style="min-width: 1300px; padding: 40px 30px 80px; font-family: var(--font-sans); background: var(--bg); min-height: 100vh; display: flex; flex-direction: column; align-items: center; gap: 22px">
+
+  <div style="width: 1240px; display: flex; align-items: flex-end; justify-content: space-between; gap: 26px">
+    <div style="display: flex; flex-direction: column; gap: 9px">
+      <div style="font: 600 9.5px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3)">Corrected screens · reference build</div>
+      <div style="font: 600 19px/25px var(--font-sans); letter-spacing: -0.01em; color: var(--text)">Every stage, rebuilt on the design system</div>
+      <div style="font: 400 12.5px/19px var(--font-sans); color: var(--text-3); max-width: 74ch; text-wrap: pretty">Exact token values, the six primitives applied, and the two layouts redrawn. This is the spec Claude Code should match — read it beside <a href="Screen Audit.dc.html">Screen Audit</a>, where every S-number below is explained.</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 9px; flex: none">
+      <span style="font: 400 10px/1 var(--font-mono); color: var(--text-3)">theme</span>
+      <div style="display: flex; padding: 3px; gap: 2px; border-radius: 6px; background: var(--control)">
+        <sc-for list="{{ themeTabs }}" as="tab" hint-placeholder-count="2">
+          <button type="button" onClick="{{ tab.onClick }}" style="font: 500 10px/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; padding: 6px 10px; border-radius: 4px; border: none; cursor: pointer; background: {{ tab.bg }}; color: {{ tab.fg }}">{{ tab.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="width: 1240px; display: flex; align-items: center; gap: 0; padding: 11px 14px; border-radius: 9px; background: var(--panel); border: 1px solid var(--line)">
+    <sc-for list="{{ stages }}" as="st" hint-placeholder-count="6">
+      <button type="button" onClick="{{ st.onClick }}" style="flex: 1; display: flex; align-items: center; gap: 9px; padding: 8px 11px; border-radius: 6px; border: 1px solid {{ st.border }}; background: {{ st.bg }}; cursor: pointer; text-align: left">
+        <span style="width: 9px; height: 9px; border-radius: 50%; flex: none; background: {{ st.dot }}"></span>
+        <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+          <span style="font: 600 12px/1.3 var(--font-sans); color: {{ st.fg }}">{{ st.label }}</span>
+          <span style="font: 400 9.5px/1.3 var(--font-mono); color: var(--text-3)">{{ st.file }}</span>
+        </span>
+      </button>
+    </sc-for>
+  </div>
+
+  <div style="width: 1240px; height: 784px; border-radius: 11px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column">
+
+    <div style="height: 44px; flex: none; background: var(--chrome); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 14px; padding: 0 14px">
+      <div style="display: flex; gap: 7px">
+        <span style="width: 11px; height: 11px; border-radius: 50%; background: var(--tl-red)"></span>
+        <span style="width: 11px; height: 11px; border-radius: 50%; background: var(--tl-amber)"></span>
+        <span style="width: 11px; height: 11px; border-radius: 50%; background: var(--tl-green)"></span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 9px; margin-left: 6px">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" role="img" aria-label="Cutroom" style="flex: none; display: block; color: var(--text)">
+          <defs><clipPath id="crFrameTinyScreens"><rect x="1.5" y="1.5" width="13" height="13" rx="2.5"></rect></clipPath></defs>
+          <g clip-path="url(#crFrameTinyScreens)">
+            <rect x="3.5" y="3" width="3" height="5.5" rx="1.5" fill="var(--accent)" transform="rotate(22 5 5.75)"></rect>
+            <rect x="10" y="6" width="2.5" height="4" rx="1.25" fill="var(--accent)" transform="rotate(-14 11.25 8)"></rect>
+            <rect x="1.5" y="11" width="13" height="3.5" fill="currentColor"></rect>
+          </g>
+          <rect x="0.75" y="0.75" width="14.5" height="14.5" rx="3.25" stroke="currentColor" stroke-width="1.5"></rect>
+        </svg>
+        <div style="font: 400 11.5px/1 var(--font-mono); color: var(--text-2)">{{ filename }}<span style="color: var(--text-3)">.cutroom</span></div>
+      </div>
+      <div style="margin-left: auto; display: flex; align-items: center; gap: 6px; font: 400 10px/1 var(--font-mono); color: var(--text-3)">
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--ok)"></span>service ok
+      </div>
+    </div>
+
+    <sc-if value="{{ isSetup }}" hint-placeholder-val="{{ true }}">
+      <div style="flex: 1; min-height: 0; overflow: auto; padding: 34px; display: flex; justify-content: center">
+        <div style="width: 560px; display: flex; flex-direction: column; gap: 18px">
+          <div style="display: flex; flex-direction: column; gap: 7px">
+            <div style="font: 600 19px/25px var(--font-sans); letter-spacing: -0.01em; color: var(--text)">Two things need to be running</div>
+            <div style="font: 400 12.5px/19px var(--font-sans); color: var(--text-3); text-wrap: pretty">Cutroom does the work on this machine. Nothing uploads, so both pieces have to be here.</div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 11px">
+            <div style="display: flex; flex-direction: column; gap: 11px; padding: 12px 14px; border-radius: 7px; background: var(--chrome); border: 1px solid var(--line)">
+              <div style="display: flex; align-items: center; gap: 11px">
+                <span style="width: 19px; height: 19px; border-radius: 50%; flex: none; background: var(--ok); display: flex; align-items: center; justify-content: center; font: 700 11px/1 var(--font-sans); color: oklch(0.20 0.02 155)">&#10003;</span>
+                <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <span style="font: 600 12.5px/1.3 var(--font-sans); color: var(--text)">This window</span>
+                  <span style="font: 400 10.5px/1.4 var(--font-mono); color: var(--text-3)">cutroom 0.4.2 · ready</span>
+                </span>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 11px; padding: 12px 14px; border-radius: 7px; background: var(--chrome); border: 1px solid var(--line)">
+              <div style="display: flex; align-items: center; gap: 11px">
+                <span style="width: 19px; height: 19px; border-radius: 50%; flex: none; background: var(--ok); display: flex; align-items: center; justify-content: center; font: 700 11px/1 var(--font-sans); color: oklch(0.20 0.02 155)">&#10003;</span>
+                <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <span style="font: 600 12.5px/1.3 var(--font-sans); color: var(--text)">The processing service</span>
+                  <span style="font: 400 10.5px/1.4 var(--font-mono); color: var(--text-3)">127.0.0.1:8765 · responding</span>
+                </span>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 11px; padding: 13px 14px 14px; border-radius: 7px; background: var(--chrome); border: 1px solid var(--accent-edge)">
+              <div style="display: flex; align-items: center; gap: 11px">
+                <span style="width: 19px; height: 19px; border-radius: 50%; flex: none; border: 2px solid var(--accent)"></span>
+                <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <span style="font: 600 12.5px/1.3 var(--font-sans); color: var(--text)">Speaker models</span>
+                  <span style="font: 400 10.5px/1.4 var(--font-mono); color: var(--text-3)">pyannote · needs a one-time access token</span>
+                </span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 11px; padding-left: 30px">
+                <div style="display: flex; align-items: flex-start; gap: 11px">
+                  <span style="width: 22px; height: 22px; border-radius: 50%; flex: none; background: var(--control); display: flex; align-items: center; justify-content: center; font: 400 10.5px/1 var(--font-mono); color: var(--text-2)">1</span>
+                  <span style="font: 400 12.5px/19px var(--font-sans); color: var(--text-2); padding-top: 2px">Accept the model terms on <a href="#">huggingface.co</a> — two checkboxes, no cost.</span>
+                </div>
+                <div style="display: flex; align-items: flex-start; gap: 11px">
+                  <span style="width: 22px; height: 22px; border-radius: 50%; flex: none; background: var(--control); display: flex; align-items: center; justify-content: center; font: 400 10.5px/1 var(--font-mono); color: var(--text-2)">2</span>
+                  <span style="font: 400 12.5px/19px var(--font-sans); color: var(--text-2); padding-top: 2px">Create a read token and paste it here. It is stored on this machine only.</span>
+                </div>
+                <div style="display: flex; gap: 9px">
+                  <input type="text" placeholder="hf_…" style="flex: 1; min-width: 0; padding: 10px 12px; border-radius: 6px; background: var(--well); border: 1px solid var(--line); color: var(--text); font: 400 11.5px/1 var(--font-mono); outline: none" />
+                  <button type="button" style="font: 600 11.5px/1 var(--font-sans); padding: 11px 15px; border-radius: 6px; border: 1px solid transparent; background: var(--accent); color: var(--on-accent); cursor: pointer; white-space: nowrap">Save token</button>
+                </div>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 11px; padding: 12px 14px; border-radius: 7px; background: var(--chrome); border: 1px solid var(--line); opacity: 0.6">
+              <div style="display: flex; align-items: center; gap: 11px">
+                <span style="width: 19px; height: 19px; border-radius: 50%; flex: none; border: 2px solid oklch(0.40 0.01 80)"></span>
+                <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <span style="font: 600 12.5px/1.3 var(--font-sans); color: var(--text)">Captions</span>
+                  <span style="font: 400 10.5px/1.4 var(--font-mono); color: var(--text-3)">whisper not installed · optional — captions will be skipped</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 14px; padding-top: 4px">
+            <button type="button" style="font: 500 11.5px/1 var(--font-sans); padding: 11px 15px; border-radius: 6px; border: 1px solid transparent; background: var(--control); color: var(--text-3); cursor: default">Waiting for the token…</button>
+            <button type="button" style="font: 500 11.5px/1 var(--font-sans); padding: 0; border: 1px solid transparent; background: transparent; color: var(--accent-text); cursor: pointer">Skip — one speaker only</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isDrop }}" hint-placeholder-val="{{ false }}">
+      <div style="flex: 1; min-height: 0; overflow: auto; padding: 34px; display: flex; justify-content: center">
+        <div style="width: 560px; display: flex; flex-direction: column; gap: 18px">
+          <div style="display: flex; flex-direction: column; gap: 7px">
+            <div style="font: 600 19px/25px var(--font-sans); letter-spacing: -0.01em; color: var(--text)">Start a new episode</div>
+            <div style="font: 400 12.5px/19px var(--font-sans); color: var(--text-3); text-wrap: pretty">One video of everyone in one frame, with one audio track. That's all it needs.</div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 11px; padding: 30px 20px; border-radius: 9px; border: 1.5px dashed oklch(0.34 0.01 80); background: var(--panel)">
+            <span style="width: 38px; height: 38px; border-radius: 9px; background: var(--control); display: flex; align-items: center; justify-content: center">
+              <span style="width: 14px; height: 2.5px; border-radius: 2px; background: var(--text-2)"></span>
+            </span>
+            <span style="font: 500 12.5px/1.3 var(--font-sans); color: var(--text)">Drag a recording here</span>
+            <span style="font: 400 11.5px/1 var(--font-sans); color: var(--text-3)">or <a href="#">choose a file</a></span>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 9px; padding: 11px 13px; border-radius: 7px; background: var(--chrome)">
+            <span style="width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ok)"></span>
+            <span style="font: 400 11.5px/17px var(--font-sans); color: var(--text-3); text-wrap: pretty">Nothing leaves this machine. The file stays where you put it — Cutroom reads it in place.</span>
+          </div>
+
+          <div style="margin-top: auto; display: flex; flex-direction: column; gap: 11px">
+            <div style="font: 600 9.5px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3)">Pick up where you left off</div>
+            <sc-for list="{{ episodes }}" as="ep" hint-placeholder-count="2">
+              <div style="display: flex; align-items: center; gap: 13px; padding: 10px 12px; border-radius: 7px; background: var(--chrome); border: 1px solid var(--line)">
+                <span style="width: 46px; height: 28px; border-radius: 4px; flex: none; background: repeating-linear-gradient(135deg, var(--plate-a) 0 6px, var(--plate-b) 6px 12px)"></span>
+                <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+                  <span style="font: 600 12.5px/1.3 var(--font-sans); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ ep.name }}</span>
+                  <span style="font: 400 10.5px/1.3 var(--font-mono); color: var(--text-3)">{{ ep.meta }}</span>
+                </span>
+                <button type="button" style="font: 500 10.5px/1 var(--font-sans); padding: 7px 11px; border-radius: 5px; border: 1px solid var(--line); background: var(--raised); color: var(--text-2); cursor: pointer; flex: none">Reopen</button>
+                <button type="button" style="font: 500 10.5px/1 var(--font-sans); padding: 7px 11px; border-radius: 5px; border: 1px solid var(--warn-edge); background: transparent; color: var(--warn); cursor: pointer; flex: none">Delete</button>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isRead }}" hint-placeholder-val="{{ false }}">
+      <div style="flex: 1; min-height: 0; overflow: auto; padding: 34px; display: flex; justify-content: center">
+        <div style="width: 780px; display: flex; gap: 26px">
+          <div style="width: 300px; flex: none; display: flex; flex-direction: column; gap: 18px">
+            <div style="display: flex; flex-direction: column; gap: 5px">
+              <div style="font: 400 22px/1 var(--font-mono); color: var(--accent)">04:12</div>
+              <div style="font: 400 11.5px/17px var(--font-sans); color: var(--text-3)">about 1:20 left</div>
+            </div>
+            <div style="aspect-ratio: 16/9; border-radius: 8px; position: relative; background: repeating-linear-gradient(135deg, var(--plate-a) 0 9px, var(--plate-b) 9px 18px); display: flex; align-items: center; justify-content: center">
+              <span style="font: 400 11px/1.6 var(--font-mono); color: var(--plate-ink); text-align: center">frame at 04:12</span>
+              <span style="position: absolute; right: 14px; bottom: 14px; font: 400 10px/1 var(--font-mono); padding: 5px 8px; border-radius: 5px; background: rgba(0,0,0,.55); color: oklch(0.92 0.005 80)">04:12</span>
+            </div>
+            <div style="font: 400 11.5px/17px var(--font-sans); color: var(--text-3); text-wrap: pretty">You can close this window. The work carries on, and Cutroom will notify you when it's done.</div>
+          </div>
+
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 22px">
+            <div style="display: flex; flex-direction: column; gap: 13px">
+              <sc-for list="{{ pipeline }}" as="pl" hint-placeholder-count="4">
+                <div style="display: grid; grid-template-columns: 9px minmax(0,1fr) 46px; gap: 11px; align-items: center; opacity: {{ pl.opacity }}">
+                  <span style="width: 9px; height: 9px; border-radius: 50%; background: {{ pl.dotBg }}; border: 1px solid {{ pl.dotBorder }}"></span>
+                  <span style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+                    <span style="font: 500 12.5px/19px var(--font-sans); color: {{ pl.fg }}">{{ pl.label }}</span>
+                    <sc-if value="{{ pl.active }}" hint-placeholder-val="{{ false }}">
+                      <span style="display: block; height: 6px; border-radius: 3px; background: var(--track); overflow: hidden">
+                        <span style="display: block; height: 100%; width: 64%; border-radius: 3px; background: var(--accent); transition: width 240ms linear"></span>
+                      </span>
+                    </sc-if>
+                  </span>
+                  <span style="justify-self: end; font: 400 10.5px/1 var(--font-mono); color: {{ pl.metaFg }}">{{ pl.value }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 11px">
+              <div style="font: 600 9.5px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3)">People found · 2</div>
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px">
+                <div style="display: flex; flex-direction: column; gap: 7px; align-items: center">
+                  <span style="width: 46px; height: 46px; border-radius: 6px; border: 2px solid var(--speaker-1); background: repeating-linear-gradient(135deg, oklch(0.29 0.008 70) 0 8px, oklch(0.24 0.008 70) 8px 16px)"></span>
+                  <span style="font: 400 10px/1 var(--font-mono); color: var(--text-3)">seen 61%</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 7px; align-items: center">
+                  <span style="width: 46px; height: 46px; border-radius: 6px; border: 2px solid var(--speaker-2); background: repeating-linear-gradient(135deg, oklch(0.29 0.008 70) 0 8px, oklch(0.24 0.008 70) 8px 16px)"></span>
+                  <span style="font: 400 10px/1 var(--font-mono); color: var(--text-3)">seen 37%</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 7px; align-items: center; opacity: 0.35">
+                  <span style="width: 46px; height: 46px; border-radius: 6px; border: 1px dashed oklch(0.40 0.01 80)"></span>
+                  <span style="font: 400 10px/1 var(--font-mono); color: var(--text-3)">still looking</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isCast }}" hint-placeholder-val="{{ false }}">
+      <div style="flex: 1; min-height: 0; overflow: auto; padding: 34px; display: flex; justify-content: center">
+        <div style="width: 620px; display: flex; flex-direction: column; gap: 20px">
+          <div style="display: flex; align-items: baseline; gap: 11px">
+            <div style="font: 600 19px/25px var(--font-sans); letter-spacing: -0.01em; color: var(--text)">Who's speaking here?</div>
+            <div style="font: 400 10.5px/1 var(--font-mono); color: var(--text-3)">voice 1 of 2</div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 8px; background: var(--chrome); border: 1px solid var(--line)">
+            <div style="display: flex; align-items: center; gap: 13px">
+              <button type="button" style="width: 32px; height: 32px; border-radius: 50%; border: none; background: var(--accent); flex: none; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center">
+                <span style="width: 0; height: 0; margin-left: 3px; border-left: 9px solid var(--on-accent); border-top: 5.5px solid transparent; border-bottom: 5.5px solid transparent"></span>
+              </button>
+              <span style="flex: 1; display: flex; align-items: center; gap: 2px; height: 26px">
+                <sc-for list="{{ wave }}" as="w" hint-placeholder-count="15">
+                  <span style="flex: 1; height: {{ w.h }}; background: {{ w.color }}; border-radius: 1px"></span>
+                </sc-for>
+              </span>
+              <span style="font: 400 10.5px/1 var(--font-mono); color: var(--text-3); flex: none">05:41 – 05:58</span>
+            </div>
+            <div style="font: 400 16px/25px var(--font-sans); color: var(--text); text-wrap: pretty">“…so the whole point was never the gear. You can shoot a good episode on a phone if the room is quiet.”</div>
+          </div>
+
+          <div style="display: flex; gap: 11px">
+            <sc-for list="{{ faces }}" as="f" hint-placeholder-count="3">
+              <div style="flex: 1; min-width: 0; padding: 13px; border-radius: 8px; background: {{ f.bg }}; border: {{ f.border }}; display: flex; flex-direction: column; gap: 9px; cursor: pointer">
+                <span style="display: block; aspect-ratio: 1.2; border-radius: 6px; background: repeating-linear-gradient(135deg, oklch(0.29 0.008 70) 0 8px, oklch(0.24 0.008 70) 8px 16px); opacity: {{ f.thumbOpacity }}"></span>
+                <span style="display: flex; flex-direction: column; gap: 3px">
+                  <span style="font: 600 12.5px/1.3 var(--font-sans); color: {{ f.nameFg }}">{{ f.name }}</span>
+                  <span style="font: 400 10.5px/1.4 var(--font-sans); color: {{ f.metaFg }}">{{ f.meta }}</span>
+                </span>
+              </div>
+            </sc-for>
+            <div style="width: 116px; flex: none; padding: 13px; border-radius: 8px; border: 1px dashed oklch(0.32 0.01 80); display: flex; align-items: center; justify-content: center; text-align: center; cursor: pointer; font: 400 10.5px/1.45 var(--font-sans); color: var(--text-3)">Someone we didn't see — they stay wide</div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 14px; padding-top: 2px">
+            <button type="button" style="font: 600 11.5px/1 var(--font-sans); padding: 11px 15px; border-radius: 6px; border: 1px solid transparent; background: var(--accent); color: var(--on-accent); cursor: pointer">That's Maya — next voice</button>
+            <button type="button" style="font: 500 11.5px/1 var(--font-sans); padding: 0; border: 1px solid transparent; background: transparent; color: var(--accent-text); cursor: pointer">Previous voice</button>
+            <span style="margin-left: auto; font: 400 10.5px/1 var(--font-mono); color: var(--text-3)">match confidence 0.86</span>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isEdit }}" hint-placeholder-val="{{ false }}">
+      <div style="flex: 1; min-height: 0; display: flex; flex-direction: column">
+        <div style="flex: 1; min-height: 0; display: flex">
+          <div style="flex: 1; min-width: 0; padding: 18px; display: flex; flex-direction: column; gap: 13px; background: var(--bg)">
+            <div style="flex: 1; min-height: 0; border-radius: 8px; position: relative; background: repeating-linear-gradient(135deg, var(--plate-a) 0 9px, var(--plate-b) 9px 18px); display: flex; align-items: center; justify-content: center">
+              <span style="position: absolute; left: 14px; top: 14px; display: flex; gap: 6px">
+                <span style="display: inline-flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 3px; background: var(--accent); color: var(--on-accent); font: 500 9.5px/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase">Close · Maya</span>
+                <span style="display: inline-flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 3px; background: oklch(0.62 0.15 30 / 0.34); color: oklch(0.88 0.12 48); font: 500 9.5px/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase">Your crop</span>
+              </span>
+              <span style="font: 400 11px/1.6 var(--font-mono); color: var(--plate-ink); text-align: center">1920×1080 source · cropped to 1080×1080</span>
+              <span style="position: absolute; right: 14px; bottom: 14px; font: 400 10px/1 var(--font-mono); padding: 5px 8px; border-radius: 5px; background: rgba(0,0,0,.55); color: oklch(0.92 0.005 80)">05:47.12</span>
+            </div>
+            <div style="flex: none; display: flex; flex-direction: column; gap: 9px">
+              <div style="display: grid; grid-template-columns: 62px minmax(0,1fr); gap: 10px; align-items: center">
+                <span style="font: 400 9.5px/1 var(--font-mono); color: var(--text-3); text-align: right">Framing</span>
+                <span style="display: block; position: relative; height: 38px; border-radius: 5px; background: var(--track); border: 1px solid var(--line); overflow: hidden">
+                  <span style="position: absolute; left: 0%; top: 0; bottom: 0; width: 22%; background: var(--region-wide); color: var(--region-ink); display: flex; align-items: center; padding-left: 8px; font: 400 9px/1 var(--font-mono); letter-spacing: 0.04em">WIDE</span>
+                  <span style="position: absolute; left: 22%; top: 0; bottom: 0; width: 26%; background: var(--region-close); color: var(--region-ink); display: flex; align-items: center; padding-left: 8px; font: 400 9px/1 var(--font-mono); letter-spacing: 0.04em">MAYA</span>
+                  <span style="position: absolute; left: 48%; top: 0; bottom: 0; width: 17%; background: var(--region-both); color: var(--region-ink); display: flex; align-items: center; padding-left: 8px; font: 400 9px/1 var(--font-mono); letter-spacing: 0.04em">BOTH</span>
+                  <span style="position: absolute; left: 65%; top: 0; bottom: 0; width: 20%; background: var(--region-mine); color: var(--region-mine-ink); border: 1px solid var(--handle); border-radius: 3px; display: flex; align-items: center; padding-left: 9px; font: 500 9px/1 var(--font-mono); letter-spacing: 0.04em">DEV · YOURS</span>
+                  <span style="position: absolute; left: 85%; top: 0; bottom: 0; width: 15%; background: var(--region-wide); color: var(--region-ink); display: flex; align-items: center; padding-left: 8px; font: 400 9px/1 var(--font-mono); letter-spacing: 0.04em">WIDE</span>
+                  <span style="position: absolute; left: 72%; top: 0; bottom: 0; width: 2px; background: var(--handle)"></span>
+                </span>
+              </div>
+              <div style="display: grid; grid-template-columns: 62px minmax(0,1fr); gap: 10px; align-items: center">
+                <span style="font: 400 9.5px/1 var(--font-mono); color: var(--text-3); text-align: right">Maya</span>
+                <span style="display: block; position: relative; height: 15px; border-radius: 3px; background: var(--track); overflow: hidden">
+                  <span style="position: absolute; left: 4%; top: 0; bottom: 0; width: 18%; background: var(--speaker-1); border-radius: 2px"></span>
+                  <span style="position: absolute; left: 30%; top: 0; bottom: 0; width: 24%; background: var(--speaker-1); border-radius: 2px"></span>
+                  <span style="position: absolute; left: 78%; top: 0; bottom: 0; width: 12%; background: var(--speaker-1); border-radius: 2px"></span>
+                </span>
+              </div>
+              <div style="display: grid; grid-template-columns: 62px minmax(0,1fr); gap: 10px; align-items: center">
+                <span style="font: 400 9.5px/1 var(--font-mono); color: var(--text-3); text-align: right">Dev</span>
+                <span style="display: block; position: relative; height: 15px; border-radius: 3px; background: var(--track); overflow: hidden">
+                  <span style="position: absolute; left: 24%; top: 0; bottom: 0; width: 9%; background: var(--speaker-2); border-radius: 2px"></span>
+                  <span style="position: absolute; left: 56%; top: 0; bottom: 0; width: 26%; background: var(--speaker-2); border-radius: 2px"></span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div style="width: 404px; flex: none; border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0">
+            <div style="flex: none; display: flex; align-items: center; gap: 9px; padding: 13px 17px; border-bottom: 1px solid var(--line)">
+              <span style="font: 600 9.5px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3)">Transcript</span>
+              <span style="margin-left: auto; display: flex; align-items: center; gap: 9px">
+                <span style="display: inline-flex; align-items: center; gap: 7px; font: 400 10px/1 var(--font-mono); color: var(--text-3)">
+                  <span style="width: 8px; height: 8px; border-radius: 2px; background: var(--warn)"></span>3 to review
+                </span>
+                <button type="button" style="width: 24px; height: 24px; border-radius: 5px; border: 1px solid var(--line); background: var(--raised); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0">
+                  <span style="width: 0; height: 0; border-right: 5px solid var(--text-2); border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent"></span>
+                </button>
+                <button type="button" style="width: 24px; height: 24px; border-radius: 5px; border: 1px solid var(--line); background: var(--raised); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0">
+                  <span style="width: 0; height: 0; border-left: 5px solid var(--text-2); border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent"></span>
+                </button>
+              </span>
+            </div>
+            <div style="flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column">
+              <sc-for list="{{ turns }}" as="t" hint-placeholder-count="5">
+                <div style="padding: {{ t.pad }}; display: flex; flex-direction: column; gap: {{ t.gap }}; background: {{ t.bg }}; border-left: 3px solid {{ t.rail }}; cursor: pointer">
+                  <span style="display: flex; align-items: center; gap: 7px; flex-wrap: wrap">
+                    <span style="display: inline-flex; gap: 2px">
+                      <sc-for list="{{ t.dots }}" as="d" hint-placeholder-count="1">
+                        <span style="width: 7px; height: 7px; border-radius: 50%; background: {{ d.color }}"></span>
+                      </sc-for>
+                    </span>
+                    <span style="font: 600 11.5px/1 var(--font-sans); color: {{ t.nameFg }}">{{ t.name }}</span>
+                    <span style="font: 400 10px/1 var(--font-mono); color: var(--text-3)">{{ t.tc }}</span>
+                    <sc-if value="{{ t.flag }}" hint-placeholder-val="{{ false }}">
+                      <span style="margin-left: auto; font: 500 9.5px/1 var(--font-mono); letter-spacing: 0.04em; padding: 4px 7px; border-radius: 3px; background: var(--warn-bg); color: var(--warn); text-transform: uppercase">{{ t.flag }}</span>
+                    </sc-if>
+                  </span>
+                  <span style="font: 400 {{ t.type }} var(--font-sans); color: {{ t.fg }}; text-wrap: pretty">{{ t.text }}</span>
+                  <sc-if value="{{ t.reason }}" hint-placeholder-val="{{ false }}">
+                    <span style="display: flex; align-items: center; gap: 7px; font: 400 10.5px/1.5 var(--font-sans); color: var(--text-3)">
+                      <span style="width: 9px; height: 9px; border-radius: 2px; flex: none; background: {{ t.reasonSwatch }}"></span>{{ t.reason }}
+                    </span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex: none; border-top: 1px solid var(--line); background: var(--chrome); display: flex; align-items: center; gap: 14px; padding: 11px 14px">
+          <div style="display: flex; align-items: center; gap: 9px; min-width: 0">
+            <span style="font: 500 9.5px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); flex: none">Selected</span>
+            <span style="display: inline-flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 3px; background: var(--raised); border: 1px solid var(--accent-edge); color: var(--text); font: 500 9.5px/1 var(--font-mono); letter-spacing: 0.04em">SHOT 12 · 05:41–05:58</span>
+            <span style="display: flex; gap: 6px">
+              <button type="button" style="display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border-radius: 5px; background: var(--raised); border: 1px solid var(--accent-edge); color: var(--text); font: 500 10.5px/1 var(--font-sans); cursor: pointer">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--speaker-1)"></span>Maya
+              </button>
+              <button type="button" style="display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border-radius: 5px; background: transparent; border: 1px solid var(--line); color: var(--text-3); font: 500 10.5px/1 var(--font-sans); cursor: pointer">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--speaker-2)"></span>Dev
+              </button>
+            </span>
+            <button type="button" style="font: 500 10.5px/1 var(--font-sans); padding: 7px 11px; border-radius: 5px; border: 1px solid var(--line); background: var(--raised); color: var(--text-2); cursor: pointer">Split</button>
+            <button type="button" style="font: 500 10.5px/1 var(--font-sans); padding: 7px 11px; border-radius: 5px; border: 1px solid var(--line); background: var(--raised); color: var(--text-2); cursor: pointer">Go wide</button>
+            <span style="display: grid; grid-template-columns: repeat(3, 15px); grid-template-rows: repeat(3, 15px); gap: 1px; flex: none" title="Nudge crop">
+              <span></span>
+              <button type="button" style="border: 1px solid var(--line); background: var(--raised); border-radius: 3px; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center">
+                <span style="width: 0; height: 0; border-bottom: 4px solid var(--text-2); border-left: 3px solid transparent; border-right: 3px solid transparent"></span>
+              </button>
+              <span></span>
+              <button type="button" style="border: 1px solid var(--line); background: var(--raised); border-radius: 3px; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center">
+                <span style="width: 0; height: 0; border-right: 4px solid var(--text-2); border-top: 3px solid transparent; border-bottom: 3px solid transparent"></span>
+              </button>
+              <span style="display: flex; align-items: center; justify-content: center; font: 400 8px/1 var(--font-mono); color: var(--text-3)">&#9679;</span>
+              <button type="button" style="border: 1px solid var(--line); background: var(--raised); border-radius: 3px; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center">
+                <span style="width: 0; height: 0; border-left: 4px solid var(--text-2); border-top: 3px solid transparent; border-bottom: 3px solid transparent"></span>
+              </button>
+              <span></span>
+              <button type="button" style="border: 1px solid var(--line); background: var(--raised); border-radius: 3px; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center">
+                <span style="width: 0; height: 0; border-top: 4px solid var(--text-2); border-left: 3px solid transparent; border-right: 3px solid transparent"></span>
+              </button>
+              <span></span>
+            </span>
+          </div>
+
+          <span style="width: 1px; align-self: stretch; background: var(--line); flex: none; margin: 0 2px"></span>
+
+          <div style="margin-left: auto; display: flex; align-items: center; gap: 9px; flex: none">
+            <span style="font: 500 9.5px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3)">Episode</span>
+            <button type="button" style="display: inline-flex; align-items: center; gap: 9px; font: 500 10.5px/1 var(--font-sans); padding: 8px 11px; border-radius: 5px; border: 1px solid var(--line); background: var(--raised); color: var(--text-2); cursor: pointer">
+              Framing: balanced
+              <span style="width: 0; height: 0; border-top: 4px solid var(--text-3); border-left: 3.5px solid transparent; border-right: 3.5px solid transparent"></span>
+            </button>
+            <button type="button" onClick="{{ toggleTrim }}" style="display: inline-flex; align-items: center; gap: 9px; font: 500 10.5px/1 var(--font-sans); padding: 8px 11px; border-radius: 5px; border: 1px solid var(--line); background: var(--raised); color: var(--text-2); cursor: pointer">
+              <span style="width: 15px; height: 15px; border-radius: 4px; flex: none; display: flex; align-items: center; justify-content: center; font: 700 10px/1 var(--font-sans); background: {{ trimBg }}; border: 1px solid {{ trimBorder }}; color: var(--on-accent)">{{ trimMark }}</span>
+              Trim silences
+            </button>
+            <span style="display: flex; gap: 6px">
+              <button type="button" style="font: 500 10.5px/1 var(--font-sans); padding: 7px 11px; border-radius: 5px; border: 1px solid var(--line); background: var(--raised); color: var(--text-2); cursor: pointer">Undo</button>
+              <button type="button" style="font: 500 10.5px/1 var(--font-sans); padding: 7px 11px; border-radius: 5px; border: 1px solid var(--line); background: var(--raised); color: var(--text-3); cursor: pointer; opacity: 0.5">Redo</button>
+            </span>
+            <button type="button" style="font: 500 10.5px/1 var(--font-sans); padding: 0; border: 1px solid transparent; background: transparent; color: var(--accent-text); cursor: pointer">Reset to suggested</button>
+            <button type="button" onClick="{{ goPublish }}" style="font: 600 11.5px/1 var(--font-sans); padding: 11px 15px; border-radius: 6px; border: 1px solid transparent; background: var(--accent); color: var(--on-accent); cursor: pointer">Export episode</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isPub }}" hint-placeholder-val="{{ false }}">
+      <div style="flex: 1; min-height: 0; overflow: auto; padding: 34px; display: flex; justify-content: center">
+        <div style="width: 820px; display: flex; gap: 26px">
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 18px">
+            <div style="display: flex; flex-direction: column; gap: 7px">
+              <div style="font: 600 19px/25px var(--font-sans); letter-spacing: -0.01em; color: var(--text)">Render and publish</div>
+              <div style="font: 400 12.5px/19px var(--font-sans); color: var(--text-3); text-wrap: pretty">Everything below is written to the folder you choose. Nothing is uploaded unless you pick a destination that uploads.</div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 9px">
+              <div style="font: 600 9.5px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3)">What you get</div>
+              <sc-for list="{{ artefacts }}" as="a" hint-placeholder-count="5">
+                <div style="display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 7px; background: var(--chrome); border: 1px solid var(--line)">
+                  <span style="width: 17px; height: 17px; border-radius: 4px; flex: none; display: flex; align-items: center; justify-content: center; font: 700 11px/1 var(--font-sans); background: {{ a.boxBg }}; border: 1px solid {{ a.boxBorder }}; color: var(--on-accent)">{{ a.mark }}</span>
+                  <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                    <span style="font: 500 12.5px/1.3 var(--font-sans); color: var(--text)">{{ a.name }}</span>
+                    <span style="font: 400 10.5px/1.4 var(--font-mono); color: var(--text-3)">{{ a.meta }}</span>
+                  </span>
+                  <sc-if value="{{ a.beta }}" hint-placeholder-val="{{ false }}">
+                    <span style="flex: none; font: 500 9.5px/1 var(--font-mono); letter-spacing: 0.04em; padding: 5px 8px; border-radius: 3px; background: var(--beta-bg); color: var(--beta); text-transform: uppercase">Not built yet</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 9px">
+              <div style="font: 600 9.5px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3)">Where it goes</div>
+              <div style="display: flex; gap: 9px; flex-wrap: wrap">
+                <span style="display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border-radius: 5px; background: var(--raised); border: 1px solid var(--accent-edge); color: var(--text); font: 500 10.5px/1 var(--font-sans); white-space: nowrap">A folder on this Mac</span>
+                <span style="display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border-radius: 5px; background: transparent; border: 1px solid var(--line); color: var(--text-3); font: 500 10.5px/1 var(--font-sans); white-space: nowrap">YouTube</span>
+                <span style="display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border-radius: 5px; background: transparent; border: 1px solid var(--line); color: var(--text-3); font: 500 10.5px/1 var(--font-sans); white-space: nowrap">RSS / podcast host</span>
+              </div>
+              <div style="font: 400 11px/17px var(--font-sans); color: var(--text-3); text-wrap: pretty">A folder is the only destination that keeps the local-first promise. The other two upload your episode to someone else's machine — Cutroom will say so again before it does.</div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 9px; padding: 13px 14px; border-radius: 7px; background: var(--chrome); border: 1px solid var(--warn-edge)">
+              <div style="display: flex; align-items: center; gap: 9px">
+                <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--warn)"></span>
+                <span style="font: 600 12.5px/1.3 var(--font-sans); color: var(--text)">Captions will be skipped</span>
+              </div>
+              <div style="font: 400 11.5px/17px var(--font-sans); color: var(--text-2); text-wrap: pretty">Whisper isn't installed, so the .srt won't be written. The video and audio render normally.</div>
+              <div style="padding: 9px 11px; border-radius: 6px; background: var(--well); border: 1px solid var(--line); font: 400 10.5px/1.5 var(--font-mono); color: oklch(0.86 0.01 80); overflow-x: auto">whisper: command not found</div>
+            </div>
+          </div>
+
+          <div style="width: 240px; flex: none; display: flex; flex-direction: column; gap: 14px">
+            <div style="display: flex; flex-direction: column; gap: 9px; padding: 14px; border-radius: 8px; background: var(--chrome); border: 1px solid var(--line)">
+              <div style="font: 600 9.5px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3)">Estimate</div>
+              <div style="font: 400 22px/1 var(--font-mono); color: var(--accent)">6:40</div>
+              <div style="font: 400 11px/17px var(--font-sans); color: var(--text-3)">1080×1080 · 42 min episode · h.264</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 11px">
+              <button type="button" style="font: 600 12.5px/1 var(--font-sans); padding: 13px 20px; border-radius: 6px; border: 1px solid transparent; background: var(--accent); color: var(--on-accent); cursor: pointer; width: 100%; flex: 0 0 auto">Render &amp; publish</button>
+              <button type="button" onClick="{{ goEdit }}" style="font: 500 11.5px/1 var(--font-sans); padding: 11px 15px; border-radius: 6px; border: 1px solid transparent; background: var(--control); color: var(--text); cursor: pointer; width: 100%">Back to editing</button>
+              <button type="button" style="font: 500 11.5px/1 var(--font-sans); padding: 11px 15px; border-radius: 6px; border: 1px solid transparent; background: var(--control); color: var(--text-3); cursor: default; width: 100%">Save a draft</button>
+            </div>
+            <div style="font: 400 11px/17px var(--font-sans); color: var(--text-3); text-wrap: pretty">Drafts aren't built yet. The edit is already saved to the .cutroom file beside your recording.</div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+
+  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <div style="width: 1240px; display: flex; flex-direction: column; gap: 11px; padding: 18px 20px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line)">
+      <div style="display: flex; align-items: baseline; gap: 11px">
+        <span style="font: 600 9.5px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent)">What changed here</span>
+        <span style="font: 400 10.5px/1 var(--font-mono); color: var(--text-3)">{{ noteFile }}</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 11px">
+        <sc-for list="{{ notes }}" as="n" hint-placeholder-count="4">
+          <div style="display: flex; gap: 9px; padding: 12px 13px; border-radius: 7px; background: var(--chrome); border: 1px solid var(--line)">
+            <span style="flex: none; font: 500 9.5px/1 var(--font-mono); letter-spacing: 0.04em; padding: 5px 7px; border-radius: 3px; background: var(--raised); color: var(--accent-text); height: fit-content">{{ n.tag }}</span>
+            <span style="font: 400 11.5px/17px var(--font-sans); color: var(--text-2); text-wrap: pretty">{{ n.text }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Handoff&quot;}}">
+const SCREENS = ["setup", "drop", "read", "cast", "edit", "publish"];
+
+const STAGE_META = [
+  { key: "setup", label: "Set up", file: "SetupGate.tsx" },
+  { key: "drop", label: "Drop in", file: "UploadScreen.tsx" },
+  { key: "read", label: "Read it", file: "ProcessingScreen.tsx" },
+  { key: "cast", label: "Name them", file: "CastScreen.tsx" },
+  { key: "edit", label: "Edit", file: "EditorView.tsx" },
+  { key: "publish", label: "Publish", file: "PublishScreen.tsx" }
+];
+
+const FILENAMES = {
+  setup: "untitled", drop: "untitled", read: "ep-114-raw",
+  cast: "ep-114-raw", edit: "ep-114", publish: "ep-114"
+};
+
+const NOTES = {
+  setup: [
+    { tag: "S1", text: "Dark is the base theme, not the override — this is what a default machine shows." },
+    { tag: "NEW", text: "Three status rows answer \"what is actually wrong\", with the token steps nested under the one row that's blocked." },
+    { tag: "S8", text: "The button is inert at full opacity, not disabled at 40%. Nothing here will become clickable until the token lands." },
+    { tag: "S8", text: "Captions appears as an optional dependency at 60% — the fixable thing is visible now, not at Publish." },
+    { tag: "S5", text: "No pulse on the blocked row. State is carried by the ring colour and the copy." }
+  ],
+  drop: [
+    { tag: "LAYOUT", text: "Left-aligned, and the heading is the task — not the wordmark and a product pitch." },
+    { tag: "S3", text: "The window carries the one shadow token; the reassurance row drops to chrome so it reads as a footnote." },
+    { tag: "S7", text: "The upload glyph is a 14×2.5px CSS bar. No arrow character, no font fallback." },
+    { tag: "NEW", text: "Recent episodes get a frame thumbnail and mono status, pinned to the bottom with margin-top:auto." },
+    { tag: "S7", text: "Delete is a quiet destructive button with a warn edge, not an ✕ glyph beside Reopen." }
+  ],
+  read: [
+    { tag: "LAYOUT", text: "One bar, on the active stage only. Done reads as a filled ok dot, pending as a ring at 50%." },
+    { tag: "S5", text: "Progress is 240ms linear — linear because it's a measurement, not an easing opportunity." },
+    { tag: "S6", text: "The frame thumbnail is the plate gradient, not bg-black, so it lifts correctly in light mode." },
+    { tag: "S4", text: "\"People found · 2\" as a section label — the count sits where the eye already is." }
+  ],
+  cast: [
+    { tag: "LAYOUT", text: "One question at a time. The no-face card is gone — it's the fourth grid cell it always duplicated." },
+    { tag: "S7", text: "Play is a CSS border triangle in a 32px accent circle. The waveform is a token colour, so it flips." },
+    { tag: "S4", text: "\"voice 1 of 2\" is quiet mono, not uppercase — caps are for machine micro-labels, not progress." },
+    { tag: "S4", text: "\"Previous voice\" is a ghost button. The system has no underlined links." }
+  ],
+  edit: [
+    { tag: "LAYOUT", text: "The bottom bar splits in two: selection-scoped on the left, episode-scoped on the right, divided by the 1px line." },
+    { tag: "LAYOUT", text: "Export is the only accent control on the screen and always sits last. It no longer competes with fifteen identical buttons." },
+    { tag: "NEW", text: "Four arrow-character buttons become one 4-way CSS nudge pad — fine adjustment, sized like fine adjustment." },
+    { tag: "S6", text: "Stage and dividers use plate-a/plate-b, never bg-black, so the plate stays dark without punching a hole in light mode." },
+    { tag: "S4", text: "The framing select and trim checkbox are styled controls — no OS blue, the one non-palette colour in the app." },
+    { tag: "NEW", text: "The title bar gets its traffic lights and the mono \"service ok\" label back beside the health dot." },
+    { tag: "NEW", text: "Chips sitting ON the plate use fixed ink, not theme ink — the plate never inverts, so anything over it can't either. Switch to light and watch the crop chip stay legible." },
+    { tag: "ASSET", text: "The title-bar mark is assets/logo/cutroom-mark-tiny.svg inline, not a redraw — currentColor themes it in both modes. One change from the file: the capsules are var(--accent) rather than the hardcoded #F88A3D." }
+  ],
+  publish: [
+    { tag: "S2", text: "The BETA pair is the real token — amber oklch(0.84 0.13 88) on beta-bg, not grey control ink at 9px." },
+    { tag: "S8", text: "Unbuilt artefacts sit at full opacity with a chip that says so. The honesty lands harder when it isn't whispered." },
+    { tag: "S7", text: "The tick is the check character in Instrument Sans 700, not a 3.5px-stroke SVG." },
+    { tag: "NEW", text: "The 9:16 dashed box is gone; the estimate card takes the column and earns the space." },
+    { tag: "S8", text: "\"Save a draft\" is inert, and the render estimate is a timecode — not a disabled button." }
+  ]
+};
+
+const WAVE_H = [30, 62, 88, 50, 74, 100, 44, 66, 34, 80, 56, 92, 40, 70, 52];
+
+class Component extends DCLogic {
+  state = { screen: "edit", theme: "dark", trim: true };
+
+  go = (screen) => () => this.setState({ screen });
+  setTheme = (theme) => () => this.setState({ theme });
+
+  renderVals() {
+    const { screen, theme, trim } = this.state;
+    const cur = STAGE_META.findIndex((s) => s.key === screen);
+
+    return {
+      theme,
+      filename: FILENAMES[screen],
+      showNotes: this.props.showNotes ?? true,
+      noteFile: "features/…/" + (STAGE_META[cur] || STAGE_META[0]).file,
+      notes: NOTES[screen],
+
+      themeTabs: ["dark", "light"].map((t) => ({
+        label: t,
+        onClick: this.setTheme(t),
+        bg: theme === t ? "var(--accent)" : "transparent",
+        fg: theme === t ? "var(--on-accent)" : "var(--text-3)"
+      })),
+
+      stages: STAGE_META.map((s, i) => {
+        const active = s.key === screen;
+        return {
+          label: s.label,
+          file: s.file,
+          onClick: this.go(s.key),
+          bg: active ? "var(--raised)" : "transparent",
+          border: active ? "var(--accent-edge)" : "transparent",
+          fg: active ? "var(--text)" : "var(--text-3)",
+          dot: i < cur ? "var(--ok)" : active ? "var(--accent)" : "var(--control)"
+        };
+      }),
+
+      isSetup: screen === "setup",
+      isDrop: screen === "drop",
+      isRead: screen === "read",
+      isCast: screen === "cast",
+      isEdit: screen === "edit",
+      isPub: screen === "publish",
+
+      goPublish: this.go("publish"),
+      goEdit: this.go("edit"),
+
+      episodes: [
+        { name: "Ep 113 — the one about latency", meta: "yesterday · edited · not published" },
+        { name: "Ep 112 — guest: Rina", meta: "6 days ago · published to a folder" }
+      ],
+
+      pipeline: [
+        { label: "Reading the file", value: "done", active: false, opacity: 1, dotBg: "var(--ok)", dotBorder: "var(--ok)", fg: "var(--text-3)", metaFg: "var(--text-3)" },
+        { label: "Writing the transcript", value: "done", active: false, opacity: 1, dotBg: "var(--ok)", dotBorder: "var(--ok)", fg: "var(--text-3)", metaFg: "var(--text-3)" },
+        { label: "Finding who's on camera", value: "64%", active: true, opacity: 1, dotBg: "var(--accent)", dotBorder: "var(--accent)", fg: "var(--text)", metaFg: "var(--text-2)" },
+        { label: "Matching voices to faces", value: "\u2014", active: false, opacity: 0.5, dotBg: "transparent", dotBorder: "var(--text-3)", fg: "var(--text-3)", metaFg: "var(--text-3)" }
+      ],
+
+      wave: WAVE_H.map((h, i) => ({
+        h: h + "%",
+        color: i < 9 ? "var(--accent)" : "var(--control)"
+      })),
+
+      faces: [
+        { name: "Maya", meta: "best match · 0.86", bg: "var(--sel)", border: "2px solid var(--speaker-1)", nameFg: "var(--text)", metaFg: "var(--speaker-1)", thumbOpacity: 1 },
+        { name: "Dev", meta: "0.41", bg: "var(--chrome)", border: "1px solid var(--line)", nameFg: "var(--text-2)", metaFg: "var(--text-3)", thumbOpacity: 0.75 },
+        { name: "Third person", meta: "0.12", bg: "var(--chrome)", border: "1px solid var(--line)", nameFg: "var(--text-2)", metaFg: "var(--text-3)", thumbOpacity: 0.75 }
+      ],
+
+      turns: [
+        {
+          name: "Maya", tc: "05:28", dots: [{ color: "var(--speaker-1)" }],
+          text: "Right, but that assumes the room is treated. Most people are recording in a box.",
+          pad: "10px 17px", gap: "4px", bg: "transparent", rail: "transparent",
+          nameFg: "var(--text-2)", fg: "var(--text-3)", type: "12.5px/19px", flag: false, reason: false, reasonSwatch: ""
+        },
+        {
+          name: "Maya", tc: "05:41 – 05:58", dots: [{ color: "var(--speaker-1)" }],
+          text: "…so the whole point was never the gear. You can shoot a good episode on a phone if the room is quiet.",
+          pad: "12px 17px 13px", gap: "7px", bg: "var(--sel)", rail: "var(--accent)",
+          nameFg: "var(--text)", fg: "var(--text)", type: "13.5px/22px", flag: false,
+          reason: "Cut close on Maya — she holds the floor for 17 seconds.", reasonSwatch: "var(--region-close)"
+        },
+        {
+          name: "Maya + Dev", tc: "05:58", dots: [{ color: "var(--speaker-1)" }, { color: "var(--speaker-2)" }],
+          text: "— and that's the thing people miss — sorry, go on —",
+          pad: "10px 17px", gap: "4px", bg: "transparent", rail: "var(--region-both)",
+          nameFg: "var(--text-2)", fg: "var(--text-3)", type: "12.5px/19px", flag: "Talking over",
+          reason: "Held wide — both of them are speaking.", reasonSwatch: "var(--region-both)"
+        },
+        {
+          name: "Dev", tc: "06:03", dots: [{ color: "var(--speaker-2)" }],
+          text: "No, finish it. I want to hear the phone version.",
+          pad: "10px 17px", gap: "4px", bg: "transparent", rail: "transparent",
+          nameFg: "var(--text-2)", fg: "var(--text-3)", type: "12.5px/19px", flag: false, reason: false, reasonSwatch: ""
+        },
+        {
+          name: "Dev", tc: "06:09", dots: [{ color: "var(--speaker-2)" }],
+          text: "Okay so if I'm starting tomorrow with nothing —",
+          pad: "10px 17px", gap: "4px", bg: "transparent", rail: "var(--warn)",
+          nameFg: "var(--text-2)", fg: "var(--text-3)", type: "12.5px/19px", flag: "No face",
+          reason: "Nobody matched on camera here — holding the last shot.", reasonSwatch: "var(--warn)"
+        }
+      ],
+
+      toggleTrim: () => this.setState((s) => ({ trim: !s.trim })),
+      trimBg: trim ? "var(--accent)" : "transparent",
+      trimBorder: trim ? "var(--accent)" : "oklch(0.40 0.01 80)",
+      trimMark: trim ? "\u2713" : "",
+
+      artefacts: [
+        { name: "The episode", meta: "ep-114.mp4 · 1080×1080 · ~1.4 GB", mark: "\u2713", boxBg: "var(--accent)", boxBorder: "var(--accent)", beta: false },
+        { name: "Audio only", meta: "ep-114.m4a · 42:11", mark: "\u2713", boxBg: "var(--accent)", boxBorder: "var(--accent)", beta: false },
+        { name: "The edit file", meta: "ep-114.cutroom · reopenable", mark: "\u2713", boxBg: "var(--accent)", boxBorder: "var(--accent)", beta: false },
+        { name: "Captions", meta: "ep-114.srt · whisper not installed", mark: "", boxBg: "transparent", boxBorder: "oklch(0.42 0.01 80)", beta: false },
+        { name: "Short clips", meta: "three 9:16 cuts from the flagged moments", mark: "", boxBg: "transparent", boxBorder: "oklch(0.42 0.01 80)", beta: true }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -7,17 +7,81 @@ left," below).
 
 ## Source of truth
 
-[`docs/design/handoff/`](design/handoff/) holds the original design handoff
-bundle, unmodified — four `.dc.html` design-canvas files plus a `README.md`
-that is the actual spec (full colour/type/spacing tokens, the logo
-geometry, and a component-by-component breakdown of all six screens, the
-landing page, render states and every edge case). Open any `.dc.html`
-directly in a browser to see the reference mockups; **they're prototypes,
-not code to copy** — this doc and the source below are the real
-implementation.
+The design system lives in Claude Design:
+<https://claude.ai/design/p/5c7b0728-8af5-422c-9fa8-576daaf42312> (read it
+with the DesignSync tool after `/design-login`). Its `readme.md` is the brand
+rulebook, and a copy is kept here so nobody needs the login to read it:
+[`design/handoff/design-system-readme.md`](design/handoff/design-system-readme.md).
+The brand rules in it are fixed. Read it before touching anything visual.
 
-Read `docs/design/handoff/README.md` before touching anything visual. It is
-more precise than this file on any point where they'd disagree.
+Also in [`docs/design/handoff/`](design/handoff/), openable in a browser
+from the dev server (`http://localhost:3460/docs/design/handoff/...`):
+
+- **`Screen Audit.dc.html`**, a design QA of this codebase (2026-09-19):
+  nine system-wide breaks (S1-S9) and the per-screen list.
+- **`Screens Corrected.dc.html`**, every stage rebuilt on the design system.
+  This is the layout spec the app now follows.
+- The original bundle: four `.dc.html` canvases and `README.md`, the first
+  handoff's token and screen spec. Where it and the design-system readme
+  disagree, the readme wins (it is the later turn).
+
+They're prototypes, not code to copy. The implementation is
+`src/index.css` (tokens) and `src/components/ui.tsx` (primitives).
+
+## Design system pass, 2026-09-19
+
+The audit's headline was "The tokens landed. The screens didn't." This pass
+applied the system instead of redesigning anything:
+
+- **Dark is the default.** `src/index.css` has dark on the base layer and
+  light behind `data-theme="light"` or a light OS in "System" mode.
+  `useThemeMode` defaults to dark and only saves a choice someone actually
+  made, under a new key (`cutroom.themeChoice`). The old key was written on
+  every launch, so it couldn't tell a choice from a default. The marketing
+  site pins `data-theme="light"` and is unaffected.
+- **The missing tokens** (accent edge/wash/ring, ok/warn edges, beta, well,
+  traffic lights) and **the type scale as named sizes** (`text-title`,
+  `text-ui`, `text-meta`, `text-mono-sm`, `text-label`...). There is no 13px
+  any more.
+- **`src/components/ui.tsx`** holds the design's primitives: Button (six
+  variants, including `inert`), SectionLabel, PlayButton (CSS triangle and
+  bars), Triangle, CheckMark, StatusRow, StageRow, CommandBlock, RawMessage,
+  EdgeCaseCard, Screen, and `AppWindow`, the title bar every stage now sits
+  in (traffic lights, tiny mark, file name, theme switch, "service ok").
+- **Every screen rebuilt to `Screens Corrected`**: setup as status rows;
+  Drop in left-aligned with the task as its heading; Read it with one bar on
+  the active stage; Name them as one question with the no-face card folded
+  into the "didn't see" cell; the editor on plate tokens with its bottom bar
+  split into Selected and Episode groups and Export last; Publish in two
+  columns; the two dead ends as EdgeCaseCards.
+- **`Logo.tsx`** is a port of the design's `Logo.jsx` (the shipped
+  `assets/logo` geometry), not the earlier rebuild.
+- **Desktop app:** on macOS the window hides its native title bar
+  (`titleBarStyle: "hiddenInset"`) and the real traffic lights sit where the
+  app's title bar leaves room for them. A browser draws them instead.
+
+Where this differs from `Screens Corrected`, on purpose:
+
+- **Copy stays true to what the app does.** The reference build mentions
+  whisper for captions (it's ffmpeg's libass here), "Audio only" and "The
+  edit file (.cutroom)" outputs, a `.cutroom` file extension, "Skip, one
+  speaker only", and a "6:40" render estimate. None of those exist, so the
+  screens say what does: the Publish card shows the episode's real length.
+- **The transcript stays on the left** of the editor, as in `5a` and the
+  app kit. The reference build moved it right without a note saying so;
+  the founder decided on 2026-09-19 to keep it left.
+- **Read it keeps the streaming transcript** (from `2e`), which the
+  reference build dropped. It's the evidence that work is happening.
+- **The spacing scale isn't registered as Tailwind spacing keys**, as the
+  audit suggested. Defining `--spacing-5: 5px` would silently redefine
+  every existing `gap-5`/`w-5` in the app from 20px to 5px. Exact values are
+  written as `gap-[13px]` instead.
+- **The terminal well stays dark in light mode.** The design's `--well`
+  flips; commands and raw errors keep the dark terminal (as the audit
+  praised), and only text inputs use the flipping `well`.
+- **The editor's Selected group wraps to two lines** around 1340px with
+  three people on camera, because it keeps the editable start/end times.
+  The Episode group never wraps into it.
 
 ## What's implemented (Foundation phase)
 
@@ -153,12 +217,13 @@ Each landed as its own commit, in the handoff's order.
 
 ## Known, deliberate deviations
 
-- **Drop zone border** uses the `line` token instead of the handoff's single
+- **Drop zone border** is `text3` at 45% instead of the handoff's single
   literal, which was tuned for the dark theme only.
 - **No filename echo on drag-over** — browsers don't expose the file until
   `drop`.
-- **No recents list** — it needs `.cutroom` project persistence, which
-  doesn't exist yet.
+- **Recent episodes say "processed", not "edited · not published"**:
+  edits aren't saved with an episode yet, so a reopened one starts again
+  from naming the people.
 - **Regions are pointer-only.** They aren't focusable, so framing can't be
   edited from the keyboard. The accessibility audit is deferred per
   `UX_PRD.md` §5, but this is the first gap it should close.
@@ -171,28 +236,22 @@ Each landed as its own commit, in the handoff's order.
 - **"Your episode is ready" instead of "Episode 12 is out".** There are no
   episode numbers, and nothing is published anywhere yet — the file is on
   this machine.
-- **"Save a draft" is visible but disabled**, because project persistence
-  isn't built, and the 9:16 clip preview is a dashed "Not built yet" panel
-  rather than a mock clip.
-- **Publish is tall.** The 9:16 clips column makes the card about 850px,
-  so on a small laptop screen "Render & publish" sits below the fold.
+- **"Save a draft" is visible but inert**, because project persistence
+  isn't built. The 9:16 clip preview is gone; the right column holds the
+  episode's length and then the render state.
 - **No "Follow the issue" link on `+ Note`.** There's no GitHub issue for
   annotations (searched), and a link to nothing is worse than none. Opening
   one is a public action, so it wasn't done unasked.
 - **"Pick a different file" on the failed screen**, which the design's card
   doesn't have. Without it, a file that fails every time is a dead end.
-- **"Give them a name anyway" is a labelled input**, not a button that
-  reveals one — a step shorter.
-- **The setup gate shows one thing at a time, not the handoff's rows.** At the
-  founder's direction, nobody should have to leave the app: `npm run dev`
-  starts the processing service (`vite.config.ts`), the Hugging Face token is
-  pasted in, and the gate only shows what needs doing — "Getting ready" while
-  the service starts, "Connect Hugging Face" when the token is missing, or the
-  service's own last lines with "Try again" if it stopped. With everything in
-  place it opens and closes in under a second. The "This window" and optional
-  "Captions" rows are gone; captions are handled on Publish. Creating the token
-  and accepting the model's terms still happen on huggingface.co, because
-  they're on the user's own account and can't be done for them.
+- **"Give them a name anyway" is an input inside the "Someone we didn't
+  see" cell**, shown when that cell is picked, rather than a separate card.
+- **Nobody has to leave the setup screen** (founder's direction):
+  `npm run dev` starts the processing service (`vite.config.ts`), and the
+  Hugging Face token is pasted into the "Speaker models" row. Creating the
+  token and accepting the model's terms still happen on huggingface.co,
+  because they're on the user's own account. With everything in place the
+  gate opens and closes in under a second.
 - **Audio-only files are only half handled.** The editor no longer collapses
   on a 0×0 frame and Publish says "no video track", but exporting an
   audio-only file through `render.py` hasn't been tried and may fail. If it

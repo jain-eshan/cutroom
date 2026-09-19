@@ -31,9 +31,7 @@ import {
 	zoomView,
 	type TimeSpan,
 } from "@/features/timeline/timelineView";
-import { Logo } from "@/components/Logo";
-import { ThemeSwitcher } from "@/components/ThemeSwitcher";
-import type { ThemeMode } from "@/lib/theme";
+import { Button, CheckMark, PlayButton, SectionLabel, Triangle } from "@/components/ui";
 
 // Two people get a side-by-side split; three or more get the speaker-focus
 // layout instead of N narrow columns. Must match render.py's DUO_SPLIT_MAX
@@ -146,7 +144,7 @@ function CroppedVideo({
 	}, [driverRef]);
 
 	if (!bbox || paneWidth === 0 || paneHeight === 0) {
-		return <div className="h-full w-full bg-black" />;
+		return <div className="h-full w-full bg-plate-b" />;
 	}
 
 	const crop = personCrop(bbox, frameWidth, frameHeight, paneWidth, paneHeight, undefined, cropNudge);
@@ -169,7 +167,7 @@ function CroppedVideo({
 				}}
 			/>
 			{label && (
-				<span className="absolute bottom-1 left-1 rounded-chip bg-black/60 px-1.5 py-0.5 font-mono text-[10px] text-white">
+				<span className="absolute bottom-2 left-2 rounded-control bg-black/55 px-2 py-[5px] text-mono-xs leading-none text-[oklch(0.92_0.005_80)]">
 					{label}
 				</span>
 			)}
@@ -261,112 +259,116 @@ function RegionInspector({
 		onSetPeople(next);
 	}
 
+	const timeField = (
+		key: string,
+		value: number,
+		title: string,
+		commit: (raw: string, revert: () => void) => void,
+	) => (
+		<input
+			key={key}
+			type="text"
+			defaultValue={formatTime(value, true)}
+			title={title}
+			onFocus={() => setInvalidReason(null)}
+			onBlur={(e) => {
+				const field = e.currentTarget;
+				commit(field.value, () => {
+					field.value = formatTime(value, true);
+				});
+			}}
+			onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+			className={`w-[70px] rounded-chip border bg-well px-1.5 py-[5px] text-center font-mono text-mono-sm leading-none text-text outline-none focus:border-accent-edge ${
+				invalidReason ? "border-warn" : "border-line"
+			}`}
+		/>
+	);
+
 	return (
 		<>
-			<span className="text-[11px] font-medium text-text2">{label}</span>
-			<div className="flex items-center gap-1" title="Who's on screen in this shot.">
+			<span className="max-w-[160px] truncate rounded-chip border border-accent-edge bg-raised px-2 py-[5px] font-mono text-label leading-none font-medium tracking-[0.04em] text-text uppercase">
+				{label}
+			</span>
+			<span className="flex items-center gap-1">
+				{timeField(`${region.id}-start-${region.start}`, region.start, "Start. Type a new time and press Enter.", (raw, revert) =>
+					commitTimes(raw, formatTime(region.end, true), revert),
+				)}
+				<span className="text-text3">–</span>
+				{timeField(`${region.id}-end-${region.end}`, region.end, "End. Type a new time and press Enter.", (raw, revert) =>
+					commitTimes(formatTime(region.start, true), raw, revert),
+				)}
+			</span>
+			{invalidReason && <span className="text-fine text-warn">{invalidReason}</span>}
+			<span className="flex gap-1.5" title="Who's on screen in this shot.">
 				{orderBySeat(
 					people.map((p) => p.id),
 					people,
 				).map((id) => {
 					const on = region.personIds.includes(id);
+					const seat = people.findIndex((p) => p.id === id);
 					return (
 						<button
 							key={id}
 							type="button"
 							onClick={() => togglePerson(id)}
 							aria-pressed={on}
-							className={`rounded-control border px-2 py-1 text-[11px] ${
-								on ? "border-accent bg-accent/15 text-text" : "border-line text-text3"
+							className={`inline-flex items-center gap-[7px] rounded-control border px-[11px] py-2 text-mono-sm leading-none font-medium ${
+								on ? "border-accent-edge bg-raised text-text" : "border-line text-text3"
 							}`}
 						>
+							<span className={`h-2 w-2 rounded-full ${SPEAKER_DOT[seat % SPEAKER_DOT.length]}`} />
 							{nameOf(id)}
 						</button>
 					);
 				})}
-			</div>
-			<div className="mx-1 h-4 w-px bg-line" />
-			<input
-				key={`${region.id}-start-${region.start}`}
-				type="text"
-				defaultValue={formatTime(region.start, true)}
-				title="Start. Type a new time and press Enter."
-				onFocus={() => setInvalidReason(null)}
-				onBlur={(e) =>
-					commitTimes(e.currentTarget.value, formatTime(region.end, true), () => {
-						e.currentTarget.value = formatTime(region.start, true);
-					})
-				}
-				onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-				className={`w-16 rounded-control border bg-control px-1.5 py-1 text-center font-mono text-[11px] text-text2 ${
-					invalidReason ? "border-warn" : "border-line"
-				}`}
-			/>
-			<span className="text-text3">–</span>
-			<input
-				key={`${region.id}-end-${region.end}`}
-				type="text"
-				defaultValue={formatTime(region.end, true)}
-				title="End. Type a new time and press Enter."
-				onFocus={() => setInvalidReason(null)}
-				onBlur={(e) =>
-					commitTimes(formatTime(region.start, true), e.currentTarget.value, () => {
-						e.currentTarget.value = formatTime(region.end, true);
-					})
-				}
-				onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-				className={`w-16 rounded-control border bg-control px-1.5 py-1 text-center font-mono text-[11px] text-text2 ${
-					invalidReason ? "border-warn" : "border-line"
-				}`}
-			/>
-			{invalidReason && <span className="text-[10.5px] text-warn">{invalidReason}</span>}
-			<button
-				type="button"
-				onClick={onSplit}
-				disabled={!canSplit}
-				title="Split this shot at the playhead (S)"
-				className="rounded-control border border-line px-2 py-1 text-[11px] text-text2 disabled:opacity-40"
-			>
-				Split here
-			</button>
-			<button
-				type="button"
-				onClick={onGoWide}
-				className="rounded-control border border-line px-2 py-1 text-[11px] text-text2"
-			>
-				Go wide here
-			</button>
-			<div className="mx-1 h-4 w-px bg-line" />
-			<span className="text-[11px] text-text3" title="Shifts the automatic crop without changing what the region frames.">
-				Nudge crop
 			</span>
-			<div className="flex items-center gap-0.5">
+			<Button size="sm" variant="quiet" onClick={onSplit} disabled={!canSplit} title="Split this shot at the playhead (S)">
+				Split
+			</Button>
+			<Button size="sm" variant="quiet" onClick={onGoWide} title="Make this stretch wide (Delete)">
+				Go wide
+			</Button>
+			{/* Fine adjustment, sized like fine adjustment: one 4-way pad. */}
+			<span
+				className="grid shrink-0 grid-cols-[repeat(3,15px)] grid-rows-[repeat(3,15px)] gap-px text-text2"
+				title="Nudge the crop. Shifts the automatic framing without changing who it frames."
+			>
 				{(
 					[
-						["←", -NUDGE_STEP, 0],
-						["→", NUDGE_STEP, 0],
-						["↑", 0, -NUDGE_STEP],
-						["↓", 0, NUDGE_STEP],
+						[null, null],
+						[0, -NUDGE_STEP, "up", "Nudge up"],
+						[null, null],
+						[-NUDGE_STEP, 0, "left", "Nudge left"],
+						"centre",
+						[NUDGE_STEP, 0, "right", "Nudge right"],
+						[null, null],
+						[0, NUDGE_STEP, "down", "Nudge down"],
+						[null, null],
 					] as const
-				).map(([arrow, dx, dy]) => (
-					<button
-						key={arrow}
-						type="button"
-						onClick={() => nudgeBy(dx, dy)}
-						className="h-6 w-6 rounded-control border border-line bg-control text-[11px] text-text2"
-					>
-						{arrow}
-					</button>
-				))}
-			</div>
+				).map((cell, i) =>
+					cell === "centre" ? (
+						<span key={i} className="flex items-center justify-center">
+							<span className={`h-1 w-1 rounded-full ${nudged ? "bg-accent" : "bg-text3"}`} />
+						</span>
+					) : cell[0] === null ? (
+						<span key={i} />
+					) : (
+						<button
+							key={i}
+							type="button"
+							aria-label={cell[3]}
+							onClick={() => nudgeBy(cell[0], cell[1])}
+							className="flex items-center justify-center rounded-chip border border-line bg-raised hover:bg-control"
+						>
+							<Triangle direction={cell[2]} size={4} />
+						</button>
+					),
+				)}
+			</span>
 			{nudged && (
-				<button
-					type="button"
-					onClick={() => onSetCropNudge({ x: 0, y: 0 })}
-					className="rounded-control border border-line px-2 py-1 text-[11px] text-text2"
-				>
+				<Button size="sm" variant="ghost" onClick={() => onSetCropNudge({ x: 0, y: 0 })}>
 					Reset crop
-				</button>
+				</Button>
 			)}
 		</>
 	);
@@ -374,7 +376,6 @@ function RegionInspector({
 
 export function EditorView({
 	videoUrl,
-	fileName,
 	jobId,
 	turns,
 	words,
@@ -390,14 +391,11 @@ export function EditorView({
 	framingStyle,
 	onFramingStyleChange,
 	onPublish,
-	themeMode,
-	onThemeModeChange,
 }: {
 	/** Playable directly -- a fresh upload's object URL, or (a resumed
 	 * session, a reopened saved episode) the server's own `/jobs/{id}/media`.
 	 * Owned by App, which knows which one it has. */
 	videoUrl: string;
-	fileName: string;
 	/** The `/process` job this recording ran as -- still good for fetching the
 	 * waveform and timeline thumbnails, which (unlike faces) aren't embedded
 	 * in the processing result itself. */
@@ -421,8 +419,6 @@ export function EditorView({
 	framingStyle: FramingStyle;
 	onFramingStyleChange: (style: FramingStyle) => void;
 	onPublish: (duration: number) => void;
-	themeMode: ThemeMode;
-	onThemeModeChange: (mode: ThemeMode) => void;
 }) {
 	const captionsAvailable = health?.captions ?? true;
 	const videoRef = useRef<HTMLVideoElement>(null);
@@ -849,73 +845,63 @@ export function EditorView({
 		return `${speakerName(turn)} is talking alone here, so we cut in close.`;
 	}
 
+	/** The colour of the decision a line's reason describes, as in the timeline. */
+	function reasonSwatch(index: number): string {
+		const turn = turns[index];
+		const region = regionAt(regions, turn.start + 0.01);
+		if (!region) return cast.speakerToPerson[turn.speaker] === undefined ? "bg-warn" : "bg-r-wide";
+		if (region.source === "user") return "bg-r-mine";
+		return region.layout === "split" ? "bg-r-both" : "bg-r-close";
+	}
+
 	const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null;
 	const reviewCount = flaggedTurnStarts.length;
-
-	const dotExt = fileName.lastIndexOf(".");
-	const baseName = dotExt > 0 ? fileName.slice(0, dotExt) : fileName;
-	const ext = dotExt > 0 ? fileName.slice(dotExt) : "";
 
 	const framingLabel =
 		framing.kind === "wide"
 			? "Wide"
 			: framing.kind === "split"
 				? framing.subjects.map((s) => nameOf(s.personId)).join(" + ")
-				: `Close on ${nameOf(framing.subjects[0].personId)}`;
+				: `Close · ${nameOf(framing.subjects[0].personId)}`;
 	const cropped = framing.kind !== "wide";
 
-	return (
-		<div className="flex h-screen flex-col bg-bg">
-			<header className="flex h-11 shrink-0 items-center gap-3 border-b border-line bg-chrome px-3">
-				<Logo size={18} className="text-text" />
-				<span className="font-mono text-[12px] text-text">
-					{baseName}
-					<span className="text-text3">{ext}</span>
-				</span>
-				<div className="flex-1" />
-				<ThemeSwitcher mode={themeMode} onChange={onThemeModeChange} />
-				<span
-					className={`h-[7px] w-[7px] rounded-full ${health ? "bg-ok" : "bg-text3"}`}
-					title={
-						health ? "The processing service is running" : "The processing service is not answering"
-					}
-				/>
-			</header>
+	const pill = "rounded-control bg-black/55 px-2 py-[5px] font-mono text-mono-xs leading-none text-[oklch(0.92_0.005_80)]";
 
+	return (
+		<div className="flex min-h-0 flex-1 flex-col bg-bg">
 			<div className="flex min-h-0 flex-1 overflow-hidden">
-				<aside className="flex w-[404px] shrink-0 flex-col overflow-y-auto border-r border-line bg-panel">
-					<div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
-						<span className="text-[13px] font-semibold text-text">Transcript</span>
+				<aside className="flex w-[404px] shrink-0 flex-col border-r border-line bg-panel">
+					<div className="flex shrink-0 items-center gap-[9px] border-b border-line px-[17px] py-[13px]">
+						<SectionLabel>Transcript</SectionLabel>
 						{reviewCount > 0 && (
-							<span className="flex items-center gap-1 rounded-card bg-raised px-1 py-1 font-mono text-[10px] text-text2">
-								<span className="ml-1 h-2 w-2 rounded-[2px] bg-accent" />
-								<span className="mr-1">{reviewCount} to review</span>
-								<button
-									type="button"
-									onClick={() => jumpToFlaggedTurn(-1)}
-									title="Previous line to review (Shift Tab)"
-									className="h-5 w-5 rounded-control text-text3 hover:bg-control hover:text-text2"
-								>
-									‹
-								</button>
-								<button
-									type="button"
-									onClick={() => jumpToFlaggedTurn(1)}
-									title="Next line to review (Tab)"
-									className="h-5 w-5 rounded-control text-text3 hover:bg-control hover:text-text2"
-								>
-									›
-								</button>
+							<span className="ml-auto flex items-center gap-[9px]">
+								<span className="inline-flex items-center gap-[7px] font-mono text-mono-xs leading-none text-text3">
+									<span className="h-2 w-2 rounded-[2px] bg-warn" />
+									{reviewCount} to review
+								</span>
+								{([-1, 1] as const).map((direction) => (
+									<button
+										key={direction}
+										type="button"
+										onClick={() => jumpToFlaggedTurn(direction)}
+										aria-label={direction < 0 ? "Previous line to review" : "Next line to review"}
+										title={direction < 0 ? "Previous line to review (Shift Tab)" : "Next line to review (Tab)"}
+										className="flex h-6 w-6 items-center justify-center rounded-control border border-line bg-raised text-text2 hover:bg-control"
+									>
+										<Triangle direction={direction < 0 ? "left" : "right"} size={5} />
+									</button>
+								))}
 							</span>
 						)}
 					</div>
-					<div className="flex flex-col">
+					<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
 						{turns.map((t, i) => {
 							const overlap = overlapFor(overlapWindows, t.start, t.end);
 							const assigned = cast.speakerToPerson[t.speaker] ?? null;
 							const selected = i === selectedTurn;
 							const needsAttention = assigned === null;
-							const borderColor = selected
+							// The left rail carries state: selection over overlap over a missing face.
+							const rail = selected
 								? "border-l-accent"
 								: overlap
 									? "border-l-r-both"
@@ -927,47 +913,48 @@ export function EditorView({
 									type="button"
 									key={i}
 									onClick={() => selectTurn(i)}
-									className={`border-l-[3px] px-3 py-2.5 text-left ${borderColor} ${selected ? "bg-sel" : ""}`}
+									className={`flex flex-col border-l-[3px] px-[17px] text-left ${rail} ${
+										selected ? "gap-[7px] bg-sel pt-3 pb-[13px]" : "gap-1 py-[10px]"
+									}`}
 								>
-									<div className="mb-1 flex flex-wrap items-center gap-2">
-										<span
-											className={`h-[7px] w-[7px] shrink-0 rounded-full ${SPEAKER_DOT[t.speaker % SPEAKER_DOT.length]}`}
-										/>
-										<span className="text-[11.5px] font-semibold text-text">{speakerName(t)}</span>
-										<span className="font-mono text-[10px] text-text3">
-											{formatTime(t.start)}–{formatTime(t.end)}
+									<span className="flex flex-wrap items-center gap-[7px]">
+										<span className={`h-[7px] w-[7px] shrink-0 rounded-full ${SPEAKER_DOT[t.speaker % SPEAKER_DOT.length]}`} />
+										<span className={`text-meta leading-none font-semibold ${selected ? "text-text" : "text-text2"}`}>
+											{speakerName(t)}
 										</span>
-										{needsAttention && (
-											<span className="rounded-chip bg-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] tracking-[0.04em] text-warn">
-												NO FACE
+										<span className="font-mono text-mono-xs leading-none text-text3">
+											{formatTime(t.start)} – {formatTime(t.end)}
+										</span>
+										{(needsAttention || overlap) && (
+											<span className="ml-auto flex gap-1">
+												{needsAttention && (
+													<span className="rounded-chip bg-warn-bg px-[7px] py-1 font-mono text-label leading-none font-medium tracking-[0.04em] text-warn">
+														NO FACE
+													</span>
+												)}
+												{overlap && (
+													<span className="rounded-chip bg-warn-bg px-[7px] py-1 font-mono text-label leading-none font-medium tracking-[0.04em] text-warn">
+														TALKING OVER
+													</span>
+												)}
 											</span>
 										)}
-										{overlap && (
-											<span className="rounded-chip bg-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] tracking-[0.04em] text-warn">
-												TALKING OVER
-											</span>
-										)}
-									</div>
-									<p
-										className={
-											selected
-												? "text-[13.5px] leading-[1.6] text-text"
-												: "text-[12.5px] leading-[1.55] text-text3"
-										}
-									>
-										{t.text}
-									</p>
-									<p className="mt-1 text-[11px] leading-[1.5] text-text3">{reasonFor(i)}</p>
+									</span>
+									<span className={`text-pretty ${selected ? "text-body text-text" : "text-ui text-text3"}`}>{t.text}</span>
+									<span className="flex items-center gap-[7px] text-mono-sm text-text3">
+										<span className={`h-[9px] w-[9px] shrink-0 rounded-[2px] ${reasonSwatch(i)}`} />
+										{reasonFor(i)}
+									</span>
 								</button>
 							);
 						})}
 					</div>
 				</aside>
 
-				<main className="flex min-h-0 flex-1 flex-col gap-3 p-6">
+				<main className="flex min-h-0 flex-1 flex-col gap-[13px] px-5 py-[18px]">
 					<div
 						ref={stageRef}
-						className="relative min-h-0 flex-1 overflow-hidden rounded-card bg-black"
+						className="relative min-h-0 flex-1 overflow-hidden rounded-card-lg bg-plate-b"
 						// An audio-only file reports a 0x0 frame; without a fallback the stage
 						// collapses to nothing.
 						style={{
@@ -987,8 +974,8 @@ export function EditorView({
 						)}
 
 						{mediaError && (
-							<div className="absolute inset-0 flex items-center justify-center bg-black p-6 text-center">
-								<p className="max-w-[380px] text-[13px] leading-[1.6] text-white/80">
+							<div className="plate-stripes absolute inset-0 flex items-center justify-center p-6 text-center">
+								<p className="max-w-[380px] text-ui text-plate-ink">
 									Couldn't load this recording. The file may have been moved, renamed, or deleted
 									since this episode was processed.
 								</p>
@@ -1017,7 +1004,7 @@ export function EditorView({
 										{framing.subjects.map((subject) => (
 											<div
 												key={subject.personId}
-												className="h-full flex-1 border-l border-black first:border-l-0"
+												className="h-full flex-1 border-l border-plate-a first:border-l-0"
 											>
 												<CroppedVideo
 													videoUrl={videoUrl}
@@ -1050,11 +1037,11 @@ export function EditorView({
 												driverRef={videoRef}
 											/>
 										</div>
-										<div className="flex h-full flex-1 flex-col border-l border-black">
+										<div className="flex h-full flex-1 flex-col border-l border-plate-a">
 											{framing.subjects.slice(1).map((subject) => (
 												<div
 													key={subject.personId}
-													className="flex-1 border-t border-black first:border-t-0"
+													className="flex-1 border-t border-plate-a first:border-t-0"
 												>
 													<CroppedVideo
 														videoUrl={videoUrl}
@@ -1075,144 +1062,109 @@ export function EditorView({
 							</div>
 						)}
 
-						<div className="pointer-events-none absolute top-2 left-2 flex gap-1.5">
-							<span className="rounded-chip bg-black/55 px-1.5 py-0.5 text-[10px] text-plate-ink">
+						{/* Anything over the plate uses fixed ink: the plate never inverts. */}
+						<div className="pointer-events-none absolute top-[14px] left-[14px] flex gap-1.5">
+							<span className="rounded-chip bg-accent px-2 py-[5px] font-mono text-label leading-none font-medium tracking-[0.04em] text-on-accent uppercase">
 								{framingLabel}
 							</span>
-							<span className="rounded-chip bg-black/55 px-1.5 py-0.5 font-mono text-[10px] text-plate-ink">
-								{faces.frameWidth > 0 ? `${faces.frameWidth}×${faces.frameHeight}` : "audio only"}
-							</span>
+							{framing.kind !== "wide" && framing.region.source === "user" && (
+								<span className="rounded-chip bg-r-mine px-2 py-[5px] font-mono text-label leading-none font-medium tracking-[0.04em] text-r-mine-ink uppercase">
+									Yours
+								</span>
+							)}
+							<span className={pill}>{faces.frameWidth > 0 ? `${faces.frameWidth}×${faces.frameHeight}` : "audio only"}</span>
 						</div>
-						<span className="pointer-events-none absolute right-2 bottom-2 rounded-chip bg-black/55 px-1.5 py-0.5 font-mono text-[10px] text-plate-ink">
-							{formatTime(currentTime)}
-						</span>
+						<span className={`pointer-events-none absolute right-[14px] bottom-[14px] ${pill}`}>{formatTime(currentTime)}</span>
 					</div>
 
-					<div className="flex shrink-0 items-center gap-3">
-						<button
-							type="button"
-							onClick={togglePlay}
-							className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-on-accent"
-							aria-label={playing ? "Pause" : "Play"}
-							title={`${playing ? "Pause" : "Play"} (Space)`}
-						>
-							{playing ? "❚❚" : "▶"}
-						</button>
-						<span className="font-mono text-[11px] text-text2">
+					<div className="flex shrink-0 items-center gap-[13px]">
+						<PlayButton playing={playing} onClick={togglePlay} title={`${playing ? "Pause" : "Play"} (Space)`} />
+						<span className="font-mono text-mono leading-none text-text2">
 							{formatTime(currentTime)} / {formatTime(duration)}
 							{rate !== 1 && <span className="ml-2 text-accent-text">{rate}×</span>}
 						</span>
-						<div className="flex-1" />
-						<span
-							className={`rounded-chip px-2 py-1 font-mono text-[10px] ${
-								captionsEnabled && captionsAvailable
-									? "bg-control text-text2"
-									: "bg-control text-text3"
-							}`}
-						>
-							{captionsAvailable
-								? captionsEnabled
-									? "Captions on"
-									: "Captions off"
-								: "No captions"}
+						<span className="ml-auto rounded-control bg-control px-[11px] py-2 text-mono-sm leading-none font-medium text-text2">
+							{captionsAvailable ? (captionsEnabled ? "Captions on" : "Captions off") : "No captions"}
 						</span>
 					</div>
 				</main>
 			</div>
 
-			<div className="shrink-0 border-t border-line bg-panel px-4 py-3">
-				<div className="mb-2 flex items-center gap-2">
-					<span className="font-mono text-[9.5px] tracking-[0.08em] text-text3">FRAMING</span>
-					<button
-						type="button"
-						onClick={addCloseUp}
-						disabled={targetPerson === undefined}
-						className="rounded-control border border-line bg-control px-2 py-1 text-[11px] text-text2 disabled:opacity-40"
-					>
-						+ {LAYOUT_LABELS.zoom}
-					</button>
-					<button
-						type="button"
-						onClick={addBothOnScreen}
-						disabled={!targetTurn}
-						className="rounded-control border border-line bg-control px-2 py-1 text-[11px] text-text2 disabled:opacity-40"
-					>
-						+ {LAYOUT_LABELS.split}
-					</button>
-					{/* Not built yet, shown rather than hidden. No issue link: there is
-					    no issue for this yet, and a link to nothing is worse than none. */}
-					<button
-						type="button"
-						disabled
-						title="Notes on screen: captions for names, terms and links, drawn over the video. Not built yet — it's next after clips."
-						className="cursor-not-allowed rounded-control border border-dashed border-line px-2 py-1 text-[11px] text-text3"
-					>
-						+ Note
-					</button>
-					<div className="flex-1" />
-					<div className="flex items-center gap-1">
-						<button
-							type="button"
+			<div className="shrink-0 border-t border-line bg-panel px-5 pt-[14px] pb-3">
+				<div className="mb-[11px] flex flex-wrap items-center gap-[10px]">
+					<SectionLabel>Framing</SectionLabel>
+					<span className="flex gap-[5px]">
+						<Button size="sm" onClick={addCloseUp} disabled={targetPerson === undefined}>
+							+ {LAYOUT_LABELS.zoom}
+						</Button>
+						<Button size="sm" onClick={addBothOnScreen} disabled={!targetTurn}>
+							+ {LAYOUT_LABELS.split}
+						</Button>
+						{/* Not built yet, shown rather than hidden, and inert rather than a
+						    dashed ghost that reads as broken. No issue link: there is no
+						    issue for this yet, and a link to nothing is worse than none. */}
+						<Button
+							size="sm"
+							variant="inert"
+							title="Notes on screen: captions for names, terms and links, drawn over the video. Not built yet — it's next after clips."
+						>
+							+ Note
+						</Button>
+					</span>
+					<span className="ml-auto flex items-center gap-1">
+						<Button
+							size="sm"
+							variant="quiet"
 							onClick={() => zoomBy(2)}
 							disabled={!zoomed}
 							aria-label="Zoom out"
 							title="Zoom out (−). Pinch or ⌘-scroll on the timeline works too."
-							className="h-6 w-6 rounded-control border border-line bg-control text-[12px] text-text2 disabled:opacity-40"
 						>
 							−
-						</button>
-						<button
-							type="button"
+						</Button>
+						<Button
+							size="sm"
+							variant="quiet"
 							onClick={() => zoomBy(0.5)}
 							disabled={view.end - view.start <= MIN_VIEW_S}
 							aria-label="Zoom in"
 							title="Zoom in (=). Pinch or ⌘-scroll on the timeline works too."
-							className="h-6 w-6 rounded-control border border-line bg-control text-[12px] text-text2 disabled:opacity-40"
 						>
 							+
-						</button>
-						<button
-							type="button"
-							onClick={() => setZoomed(null)}
-							disabled={!zoomed}
-							title="Show the whole episode (Shift Z)"
-							className="rounded-control border border-line px-2 py-1 text-[11px] text-text2 disabled:opacity-40"
-						>
+						</Button>
+						<Button size="sm" variant="quiet" onClick={() => setZoomed(null)} disabled={!zoomed} title="Show the whole episode (Shift Z)">
 							Show all
-						</button>
-						<button
-							type="button"
-							popoverTarget="editor-shortcuts"
-							className="rounded-control border border-line px-2 py-1 text-[11px] text-text2"
-						>
+						</Button>
+						<button type="button" popoverTarget="editor-shortcuts" className="rounded-control border border-line bg-raised px-[11px] py-[7px] text-mono-sm leading-none font-medium text-text2 hover:bg-control">
 							Shortcuts
 						</button>
 						<div
 							id="editor-shortcuts"
 							popover="auto"
-							className="m-auto rounded-card border border-line bg-panel p-4 text-text shadow-lg"
+							className="m-auto rounded-card-lg border border-line bg-panel p-[18px] text-text shadow-panel"
 						>
-							<p className="mb-3 text-[13px] font-semibold">Keyboard shortcuts</p>
+							<p className="mb-[13px] text-section font-semibold">Keyboard shortcuts</p>
 							<dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5">
 								{SHORTCUTS.map(([keys, what]) => (
 									<Fragment key={keys}>
 										<dt>
-											<kbd className="rounded-chip bg-raised px-1.5 py-0.5 text-[11px] text-text2">{keys}</kbd>
+											<kbd className="rounded-chip bg-raised px-1.5 py-0.5 font-mono text-mono-sm text-text2">{keys}</kbd>
 										</dt>
-										<dd className="text-[12px] text-text3">{what}</dd>
+										<dd className="text-ui text-text3">{what}</dd>
 									</Fragment>
 								))}
 							</dl>
 						</div>
-					</div>
-					<div className="w-2" />
-					<span className="flex items-center gap-1.5 font-mono text-[9.5px] tracking-[0.08em] text-text3">
-						<span className="h-[9px] w-[9px] rounded-[2px] bg-r-close" />
-						SUGGESTED
 					</span>
-					<span className="flex items-center gap-1.5 font-mono text-[9.5px] tracking-[0.08em] text-text3">
-						<span className="h-[9px] w-[9px] rounded-[2px] border border-handle bg-r-mine" />
-						YOURS
+					<span className="flex items-center gap-[13px]">
+						<span className="flex items-center gap-[5px] text-mono-xs leading-none text-text2">
+							<span className="h-[9px] w-[14px] rounded-[2px] bg-r-close" />
+							Suggested
+						</span>
+						<span className="flex items-center gap-[5px] text-mono-xs leading-none text-text2">
+							<span className="h-[9px] w-[14px] rounded-[2px] border border-handle bg-r-mine" />
+							Yours
+						</span>
 					</span>
 				</div>
 
@@ -1235,107 +1187,100 @@ export function EditorView({
 					onResize={resize}
 					onSeek={seek}
 				/>
+			</div>
 
-				<div className="mt-3 flex flex-wrap items-center justify-between gap-4">
-					<div className="flex flex-wrap items-center gap-2">
-						{selectedRegion ? (
-							<RegionInspector
-								region={selectedRegion}
-								label={
-									selectedRegion.layout === "zoom"
-										? `Close on ${nameOf(selectedRegion.personIds[0])}`
-										: selectedRegion.personIds.map((id) => nameOf(id)).join(" + ")
-								}
-								canSplit={
-									// now(), not currentTime -- currentTime only updates on the
-									// video's own timeupdate event, which trails playback by up
-									// to a quarter second, so this could show enabled/disabled a
-									// beat behind the position splitHere() would actually use.
-									now() - selectedRegion.start >= MIN_REGION_S &&
-									selectedRegion.end - now() >= MIN_REGION_S
-								}
-								duration={duration}
-								people={faces.people}
-								nameOf={nameOf}
-								onSplit={splitHere}
-								onGoWide={() => goWide(selectedRegion.id)}
-								onSetTimes={(start, end) => setRegionTimes(selectedRegion.id, start, end)}
-								onSetCropNudge={(nudge) => setCropNudge(selectedRegion.id, nudge)}
-								onSetPeople={(personIds) => setRegionPeople(selectedRegion.id, personIds)}
-							/>
-						) : (
-							<span className="text-[11px] text-text3">
-								Pick a shot on the timeline to move its edges, or a line in the transcript to jump
-								there. Drag either edge -- it snaps to the nearest word; hold Option to place it
-								freely.
-							</span>
-						)}
-					</div>
-					<div className="flex items-center gap-3">
-						<label
-							className="flex items-center gap-2 text-[12px] text-text2"
-							title="How much automatic framing this episode gets. Wide only suggests nothing; Gentle cuts only for longer stretches; Dynamic uses every rule. A manual + Close-up or + Both on screen always works, and switching never touches a shot you made."
+			{/* Split in two: what's selected on the left, the episode's own
+			    controls on the right, and Export as the one accent action, last. */}
+			<div className="flex shrink-0 items-center gap-[14px] border-t border-line bg-chrome px-[14px] py-[11px]">
+				<div className="flex min-w-0 flex-1 flex-wrap items-center gap-[9px]">
+					<SectionLabel className="shrink-0">Selected</SectionLabel>
+					{selectedRegion ? (
+						<RegionInspector
+							region={selectedRegion}
+							label={
+								selectedRegion.layout === "zoom"
+									? `Close · ${nameOf(selectedRegion.personIds[0])}`
+									: selectedRegion.personIds.map((id) => nameOf(id)).join(" + ")
+							}
+							canSplit={
+								// now(), not currentTime -- currentTime only updates on the
+								// video's own timeupdate event, which trails playback by up
+								// to a quarter second, so this could show enabled/disabled a
+								// beat behind the position splitHere() would actually use.
+								now() - selectedRegion.start >= MIN_REGION_S && selectedRegion.end - now() >= MIN_REGION_S
+							}
+							duration={duration}
+							people={faces.people}
+							nameOf={nameOf}
+							onSplit={splitHere}
+							onGoWide={() => goWide(selectedRegion.id)}
+							onSetTimes={(start, end) => setRegionTimes(selectedRegion.id, start, end)}
+							onSetCropNudge={(nudge) => setCropNudge(selectedRegion.id, nudge)}
+							onSetPeople={(personIds) => setRegionPeople(selectedRegion.id, personIds)}
+						/>
+					) : (
+						<span className="text-fine text-text3">
+							Nothing yet. Pick a shot on the timeline to move its edges, or a line in the transcript to jump
+							there. Edges snap to the nearest word; hold Option to place one freely.
+						</span>
+					)}
+				</div>
+
+				<span className="w-px shrink-0 self-stretch bg-line" />
+
+				<div className="flex shrink-0 items-center gap-[9px]">
+					<SectionLabel>Episode</SectionLabel>
+					<label
+						className="relative inline-flex items-center gap-[5px] rounded-control border border-line bg-raised py-2 pr-6 pl-[11px] text-mono-sm leading-none font-medium text-text2 hover:bg-control"
+						title="How much automatic framing this episode gets. Wide only suggests nothing; Gentle cuts only for longer stretches; Dynamic uses every rule. A manual + Close-up or + Both on screen always works, and switching never touches a shot you made."
+					>
+						Framing:
+						<select
+							value={framingStyle}
+							onChange={(e) => changeFramingStyle(e.target.value as FramingStyle)}
+							className="appearance-none bg-transparent font-medium text-text2 outline-none"
 						>
-							Framing
-							<select
-								value={framingStyle}
-								onChange={(e) => changeFramingStyle(e.target.value as FramingStyle)}
-								className="rounded-control border border-line bg-control px-1.5 py-1 text-[12px] text-text2"
-							>
-								{(Object.keys(FRAMING_STYLE_LABELS) as FramingStyle[]).map((style) => (
-									<option key={style} value={style}>
-										{FRAMING_STYLE_LABELS[style]}
-									</option>
-								))}
-							</select>
-						</label>
-						<label
-							className="flex items-center gap-2 text-[12px] text-text2"
-							title="Cuts long pauses down to a short beat and removes standalone filler words (um, uh). Conservative on purpose -- see docs/FEATURES.md."
-						>
-							<input
-								type="checkbox"
-								checked={trimDeadAirEnabled}
-								onChange={(e) => onTrimDeadAirChange(e.target.checked)}
-							/>
-							Trim dead air
-						</label>
-						<button
-							type="button"
-							onClick={undo}
-							disabled={history.past.length === 0}
-							title="Undo (⌘Z)"
-							className="rounded-control border border-line px-2 py-1 text-[11px] text-text2 disabled:opacity-40"
-						>
+							{(Object.keys(FRAMING_STYLE_LABELS) as FramingStyle[]).map((style) => (
+								<option key={style} value={style}>
+									{FRAMING_STYLE_LABELS[style]}
+								</option>
+							))}
+						</select>
+						<span className="pointer-events-none absolute right-[10px] text-text3">
+							<Triangle direction="down" size={4} />
+						</span>
+					</label>
+					<button
+						type="button"
+						role="checkbox"
+						aria-checked={trimDeadAirEnabled}
+						onClick={() => onTrimDeadAirChange(!trimDeadAirEnabled)}
+						title="Cuts long pauses down to a short beat and removes standalone filler words (um, uh). Conservative on purpose -- see docs/FEATURES.md."
+						className="inline-flex items-center gap-[9px] rounded-control border border-line bg-raised px-[11px] py-2 text-mono-sm leading-none font-medium text-text2 hover:bg-control"
+					>
+						<CheckMark checked={trimDeadAirEnabled} size={15} />
+						Trim dead air
+					</button>
+					<span className="flex gap-1.5">
+						<Button size="sm" variant="quiet" onClick={undo} disabled={history.past.length === 0} title="Undo (⌘Z)">
 							Undo
-						</button>
-						<button
-							type="button"
-							onClick={redo}
-							disabled={history.future.length === 0}
-							title="Redo (⇧⌘Z)"
-							className="rounded-control border border-line px-2 py-1 text-[11px] text-text2 disabled:opacity-40"
-						>
+						</Button>
+						<Button size="sm" variant="quiet" onClick={redo} disabled={history.future.length === 0} title="Redo (⇧⌘Z)">
 							Redo
-						</button>
-						<button
-							type="button"
-							onClick={() => {
-								edit(suggested);
-								setSelectedRegionId(null);
-							}}
-							className="rounded-control border border-line px-2 py-1 text-[11px] text-text2"
-						>
-							Reset to suggested
-						</button>
-						<button
-							type="button"
-							onClick={() => onPublish(duration)}
-							className="rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent"
-						>
-							Export episode
-						</button>
-					</div>
+						</Button>
+					</span>
+					<Button
+						variant="ghost"
+						onClick={() => {
+							edit(suggested);
+							setSelectedRegionId(null);
+						}}
+					>
+						Reset to suggested
+					</Button>
+					<Button variant="primary" onClick={() => onPublish(duration)}>
+						Export episode
+					</Button>
 				</div>
 			</div>
 		</div>

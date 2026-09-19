@@ -65,7 +65,7 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | Export completes and is faithful | **95,436 frames in -> 95,436 out**, duration exact, 1920x1080 preserved, audio stream-copied **bit-identical** (matching MD5), 3.5GB out, peak 949MB RAM |
 | Diarisation does **not** hold up at length | 4 people -> **2 speakers, 34 turns in 53 min** (median turn 33s, longest 6.4 min). See "What's left" |
 
-**Checks:** 119 backend tests and 15 frontend tests (`npm test`) passing, `tsc` clean, `oxlint` clean (two
+**Checks:** 119 backend tests and 89 frontend tests (`npm test`) passing, `tsc` clean, `oxlint` clean (two
 deliberate, documented warnings), production build clean, full flow verified
 in a real browser against real footage.
 
@@ -603,7 +603,11 @@ the founder's call, to find testers and contributors early:
 ### Separate passes, not roadmap items
 
 - ~~**Visual design language**~~: done. See
-  [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
+  [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md). A design QA on 2026-09-19 found the
+  tokens were right but the screens weren't using them (the app shipped
+  light, nine hand-rolled button styles, pulsing bars, black video plates).
+  Every stage was rebuilt on the design system's primitives that day; see
+  "Design system pass" there.
 - **Public-release readiness**: CI, cross-platform checks, CONTRIBUTING.md, a
   demo GIF. (Docker setup is cut above.)
 - ~~**Agent-friendly fixture mode**~~: done, 2026-09-17. `?fixture` on the

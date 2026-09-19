@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  body { margin: 0; background: oklch(0.15 0.008 70); color: oklch(0.95 0.005 80); font-family: "Instrument Sans", system-ui, sans-serif; }
+  *, *::before, *::after { box-sizing: border-box; }
+  a { color: oklch(0.80 0.13 60); text-decoration: none; }
+  a:hover { color: oklch(0.74 0.16 52); }
+</style>
+</helmet>
+
+<div ref="{{ rootRef }}" style="max-width: 1040px; margin: 0 auto; padding: 52px 26px 96px; display: flex; flex-direction: column; gap: 44px">
+
+  <header style="display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; align-items: center; gap: 11px">
+      <span style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.2 0.02 60); background: oklch(0.74 0.16 52); padding: 5px 8px; border-radius: 3px">Design QA</span>
+      <span style="font: 400 11.5px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">podcast-editor / src · 8 screens · 9 systematic · 30 screen-level</span>
+    </div>
+    <h1 style="margin: 0; font: 600 34px/38px 'Instrument Sans', sans-serif; letter-spacing: -0.02em; color: oklch(0.95 0.005 80); text-wrap: pretty">The tokens landed. The screens didn't.</h1>
+    <p style="margin: 0; max-width: 72ch; font: 400 13.5px/22px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">Every colour, radius and font in <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: oklch(0.95 0.005 80)">index.css</span> is transcribed faithfully from the handoff — OKLCH, both themes, the right comments in the right places. Almost none of it reaches the components. The screens are built out of Tailwind's defaults with token names sprinkled on top: nine ad-hoc button recipes, a font size the scale doesn't contain used twenty times, three pulsing animations the system forbids, and raw <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: oklch(0.95 0.005 80)">black</span> where the video-plate tokens exist precisely to prevent it. Nothing here is a redesign. It is the design system, applied.</p>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 11px; margin-top: 7px">
+      <div style="padding: 13px 14px; border-radius: 7px; background: oklch(0.2 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+        <div style="font: 400 22px/1 'JetBrains Mono', monospace; color: oklch(0.8 0.13 40)">9</div>
+        <div style="margin-top: 5px; font: 400 11.5px/17px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80)">stated brand rules broken</div>
+      </div>
+      <div style="padding: 13px 14px; border-radius: 7px; background: oklch(0.2 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+        <div style="font: 400 22px/1 'JetBrains Mono', monospace; color: oklch(0.74 0.16 52)">7</div>
+        <div style="margin-top: 5px; font: 400 11.5px/17px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80)">token families never added to @theme</div>
+      </div>
+      <div style="padding: 13px 14px; border-radius: 7px; background: oklch(0.2 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+        <div style="font: 400 22px/1 'JetBrains Mono', monospace; color: oklch(0.72 0.13 155)">3</div>
+        <div style="margin-top: 5px; font: 400 11.5px/17px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80)">shared components in src, none of them primitives</div>
+      </div>
+      <div style="padding: 13px 14px; border-radius: 7px; background: oklch(0.2 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+        <div style="font: 400 22px/1 'JetBrains Mono', monospace; color: oklch(0.8 0.01 80)">7</div>
+        <div style="margin-top: 5px; font: 400 11.5px/17px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80)">files fix most of it</div>
+      </div>
+    </div>
+  </header>
+
+  <section style="display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.74 0.16 52 / 0.45)">
+    <div style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.66 0.01 80)">WHAT IS ALREADY RIGHT</div>
+    <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">Worth saying before the list, because it is the part that is hard to get back once it's lost. The <strong style="font-weight: 600; color: oklch(0.95 0.005 80)">voice is excellent</strong> — every automatic decision states what it did and why in one clause, errors follow the four-beat order with the raw string in the mono well underneath the plain line, numbers are specific, there is no "AI", no emoji, no exclamation marks. <strong style="font-weight: 600; color: oklch(0.95 0.005 80)">Monospace discipline holds</strong>: timecodes, sizes, filenames and shell strings are mono, prose never is. The <strong style="font-weight: 600; color: oklch(0.95 0.005 80)">terminal well stays dark in both themes</strong> with the reasoning written in the comment. The 55%-black timecode pill over the video, opacity-as-state on older transcript lines, and the global <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">box-sizing</span> with its timeline-overflow comment all match spec exactly. The honest unbuilt artefacts on Publish are intact. Keep all of it.</p>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; flex-direction: column; gap: 7px">
+      <h2 style="margin: 0; font: 600 19px/25px 'Instrument Sans', sans-serif; letter-spacing: -0.01em; color: oklch(0.95 0.005 80)">Nine systematic fixes</h2>
+      <p style="margin: 0; max-width: 74ch; font: 400 12.5px/19px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80); text-wrap: pretty">Each of these is one cause showing up on five or six screens. Fixing them here is worth more than fixing them screen by screen, and most of the per-screen list below disappears when they land.</p>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 13px">
+
+      <div data-sev="rule">
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 18px 20px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: center; gap: 11px; flex-wrap: wrap">
+            <span style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.8 0.13 40); background: oklch(0.62 0.15 30 / 0.2); padding: 5px 8px; border-radius: 3px">BRAND RULE</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">S1 · index.css</span>
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">The base theme is inverted — the app ships light</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">The system's own <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">tokens/colors.css</span> says it in a comment on line two: <em style="color: oklch(0.95 0.005 80)">":root is the DARK app theme (the product's primary surface)."</em> The app does the opposite — light values sit on <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">@theme</span>, dark is the override. So a light-OS user gets the marketing theme as their editor, and every screenshot, doc and first-run demo taken on a default machine shows the wrong product. It also means the video plate and terminal well — surfaces designed for a dark surround — are the odd ones out by default rather than at home.</p>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80); text-wrap: pretty">Keep <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">system</span> mode; just flip which side is the base. Dark on <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">@theme</span>, light behind an explicit opt-in plus a light-OS media query. One block moves; no values change.</p>
+          <pre data-snippet="1" style="margin: 0; padding: 14px 16px; border-radius: 6px; background: oklch(0.11 0.008 70); border: 1px solid oklch(0.25 0.008 70); overflow-x: auto; font: 400 11.5px/1.7 'JetBrains Mono', monospace; color: oklch(0.72 0.01 80)">@theme { <span style="color: oklch(0.72 0.13 155)">/* the dark values, verbatim as they are today */</span> }
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) { <span style="color: oklch(0.72 0.13 155)">/* the light values */</span> }
+}
+:root[data-theme="light"] { <span style="color: oklch(0.72 0.13 155)">/* the light values */</span> }</pre>
+        </div>
+      </div>
+
+      <div data-sev="rule">
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 18px 20px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: center; gap: 11px; flex-wrap: wrap">
+            <span style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.8 0.13 40); background: oklch(0.62 0.15 30 / 0.2); padding: 5px 8px; border-radius: 3px">BRAND RULE</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">S2 · index.css</span>
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">Seven token families are missing, so screens invent them with alpha</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">"Emphasis borders use the accent at 45% alpha (<span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">--accent-edge</span>)." That token doesn't exist in <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">@theme</span>, so six places write <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">border-accent/45</span> and <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">border-warn/45</span> by hand. Same for the 12% drag ring, the 9% wash, the ok and warn edges, and the beta pair — which is why the BETA badge on Publish is grey <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">control</span> ink instead of the beta colour, and why the drop-zone drag ring is a hardcoded <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">shadow-[0_0_0_6px_oklch(...)]</span> string. Add the tokens and eight hand-mixed alphas collapse into named values.</p>
+          <pre data-snippet="1" style="margin: 0; padding: 14px 16px; border-radius: 6px; background: oklch(0.11 0.008 70); border: 1px solid oklch(0.25 0.008 70); overflow-x: auto; font: 400 11.5px/1.7 'JetBrains Mono', monospace; color: oklch(0.72 0.01 80)"><span style="color: oklch(0.72 0.13 155)">/* add to @theme — identical in both themes, like --accent itself */</span>
+--color-accent-edge: oklch(0.74 0.16 52 / 0.45);
+--color-accent-wash: oklch(0.74 0.16 52 / 0.09);
+--color-accent-ring: oklch(0.74 0.16 52 / 0.12);
+--color-ok-edge:     oklch(0.72 0.13 155 / 0.40);
+--color-warn-edge:   oklch(0.62 0.15 30 / 0.50);
+--color-beta:        oklch(0.84 0.13 88);
+--color-beta-bg:     oklch(0.76 0.14 85 / 0.18);</pre>
+        </div>
+      </div>
+
+      <div data-sev="rule">
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 18px 20px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: center; gap: 11px; flex-wrap: wrap">
+            <span style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.8 0.13 40); background: oklch(0.62 0.15 30 / 0.2); padding: 5px 8px; border-radius: 3px">BRAND RULE</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">S3 · every screen</span>
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">The one shadow token is defined and never used once</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">"Elevation: one shadow token, no scale." <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">--shadow-panel</span> is declared correctly and appears in zero components. Every centred screen — setup, drop-in, processing, cast, publish, no-faces, failed — is a flat bordered rectangle on a nearly-identical ground, so the card never reads as a window sitting on a desk. Meanwhile the editor's shortcuts popover uses Tailwind's <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">shadow-lg</span>, which is the one place a shadow does appear and the one place it isn't the token. Add <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">shadow-panel</span> to all seven cards; swap <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">shadow-lg</span> for it.</p>
+        </div>
+      </div>
+
+      <div data-sev="rule">
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 18px 20px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: center; gap: 11px; flex-wrap: wrap">
+            <span style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.8 0.13 40); background: oklch(0.62 0.15 30 / 0.2); padding: 5px 8px; border-radius: 3px">BRAND RULE</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">S4 · every screen</span>
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">Nine button recipes, and a font size the scale doesn't contain</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">There is no Button in <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">src</span>. Every button is written from scratch where it stands, and they disagree: the primary action is <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">px-4 py-2 text-[13px] font-medium</span> on five screens, secondaries are variously <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">px-3 py-2</span>, <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">px-2.5 py-1.5</span>, <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">px-2 py-1</span> and a bare underlined text link. The spec's ladder is <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">11/15px · fs-meta · semibold · r-6</span> for primary; the code is one step too small, one weight too light, and on a size that isn't on the scale at all.</p>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80); text-wrap: pretty"><strong style="font-weight: 600; color: oklch(0.8 0.13 40)">13px is the tell.</strong> The type scale is 19 / 18 / 16 / 15 / 13.5 / 12.5 / 11.5 / 11 — there is no 13. It appears about twenty times across five files, on button labels, card titles and input text, always where <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">12.5</span> (UI) or <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">11.5</span> (meta) was meant. <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">text-[12px]</span>, <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">text-[10px]</span> and a <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">text-[9px]</span> BETA badge (under the 9.5 mono floor) have the same cause: no named sizes, so each author rounds to a habit.</p>
+        </div>
+      </div>
+
+      <div data-sev="rule">
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 18px 20px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: center; gap: 11px; flex-wrap: wrap">
+            <span style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.8 0.13 40); background: oklch(0.62 0.15 30 / 0.2); padding: 5px 8px; border-radius: 3px">BRAND RULE</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">S5 · setup, processing, editor, publish</span>
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">Three pulsing animations, in a system that forbids motion</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">"No skeleton shimmer, no spinners, no entrance animations. Streaming transcript lines simply appear." The code has <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">animate-pulse</span> on the setup gate's indeterminate bar, on the processing bar whenever a stage reports zero, and on a blinking caret after the newest transcript line. That last one is the sharpest miss: it's a shimmer attached to the exact element the system names as the thing that should just appear. This is a tool for judging frames — a breathing UI next to a moving picture is a real usability cost, not only a rule.</p>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80); text-wrap: pretty">Progress transitions are specified as <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">240ms linear</span> — linear because it is a measurement. The bars use <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">duration-300</span> with Tailwind's default ease. For genuinely indeterminate work, the honest answer isn't a pulse: it's a static track with the elapsed clock beside it, which the setup gate already renders one line below.</p>
+          <div data-snippet="1" style="padding: 14px 16px; border-radius: 6px; background: oklch(0.11 0.008 70); border: 1px solid oklch(0.25 0.008 70); font: 400 11.5px/1.8 'JetBrains Mono', monospace; color: oklch(0.72 0.01 80); overflow-wrap: anywhere">
+  <div style="color: oklch(0.8 0.13 40)">- animate-pulse <span style="color: oklch(0.66 0.01 80)">&nbsp;&nbsp;// three of them</span></div>
+  <div style="color: oklch(0.8 0.13 40)">- transition-[width] duration-300</div>
+  <div style="color: oklch(0.72 0.13 155)">+ transition-[width] duration-[240ms] ease-linear</div>
+</div>
+        </div>
+      </div>
+
+      <div data-sev="rule">
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 18px 20px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: center; gap: 11px; flex-wrap: wrap">
+            <span style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.8 0.13 40); background: oklch(0.62 0.15 30 / 0.2); padding: 5px 8px; border-radius: 3px">BRAND RULE</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">S6 · editor, processing, cast, publish</span>
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">Raw black and loose OKLCH literals bypass the plate tokens</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">"The video plate stays dark in both themes — a light surround changes how a person judges exposure and skin tone. Light mode lifts it only enough not to look like a hole punched in the window." <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">--plate-a / -b / -ink</span> exist for exactly this. The editor stage, the cropped-pane fallback, the split-pane dividers and the processing thumbnail all use <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">bg-black</span>. In dark mode you can't see the difference; in light mode it is the hole the spec describes, and the divider lines between panes vanish into it.</p>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80); text-wrap: pretty">Three more colours are written as literals rather than tokens, which means they won't flip with the theme: the cast waveform bars (<span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">bg-[oklch(0.38_0.01_80)]</span>), Publish's unchecked artefact ring (<span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">border-[oklch(0.42_0.01_80)]</span>), and the media-error copy (<span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">text-white/80</span>, where text is never alpha-muted — secondary ink is its own solid token). The <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">bg-black/55</span> timecode pill over the video is the one correct use of black and should stay.</p>
+        </div>
+      </div>
+
+      <div data-sev="rule">
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 18px 20px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: center; gap: 11px; flex-wrap: wrap">
+            <span style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.8 0.13 40); background: oklch(0.62 0.15 30 / 0.2); padding: 5px 8px; border-radius: 3px">BRAND RULE</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">S7 · cast, editor, drop-in, setup</span>
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">Unicode glyphs where the system draws shapes in CSS</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">Cutroom deliberately has no icon set. What carries meaning instead is colour and shape drawn in CSS: "the play triangle is a CSS border triangle inside a circle", "the upload glyph in the drop zone is a 14×2.5px rounded bar". The code substitutes characters — <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: oklch(0.95 0.005 80)">&#9654;</span> and <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: oklch(0.95 0.005 80)">&#10074;&#10074;</span> for play/pause on both the cast and editor transports, <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: oklch(0.95 0.005 80)">&#8595;</span> in the drop zone, <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: oklch(0.95 0.005 80)">&#10005;</span> to delete an episode, <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: oklch(0.95 0.005 80)">&#8249; &#8250;</span> to step through flagged lines, <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: oklch(0.95 0.005 80)">&#8599;</span> on external links.</p>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80); text-wrap: pretty">These aren't equivalent. Instrument Sans has no glyph for most of them, so the OS silently falls back — the pause bars render in a different typeface at a different weight than everything beside them, and the metrics shift between macOS, Linux and Windows. Publish's one real SVG has the opposite problem: it is drawn at <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">strokeWidth 3.5</span>, where the system's single icon rule is 1.5px stroke and no fill, matched to the 1px border weight. Rendered corrections are below.</p>
+        </div>
+      </div>
+
+      <div data-sev="spec">
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 18px 20px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: center; gap: 11px; flex-wrap: wrap">
+            <span style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.2 0.02 60); background: oklch(0.74 0.16 52); padding: 5px 8px; border-radius: 3px">OFF-SPEC</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">S8 · every screen</span>
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">Disabled at 40%, and the inert state is never used</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">"<span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">disabled</span> is 50% opacity on something that will become clickable. <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">inert</span> is a full-opacity control button with text-3 text for when there is nothing correct to click." <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">disabled:opacity-40</span> appears twelve times; the inert treatment appears nowhere. So things that will never become clickable in this build — "Save a draft", the render percentage readout, "+ Note" — are drawn as dashed-border ghosts and 40% text, reading as broken rather than as deliberately not-yet. Publish adds a third and fourth value, <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">opacity-70</span> on unbuilt artefacts and <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">opacity-60</span> on unbuilt destinations, where the spec reserves 60% for optional dependencies and would have unbuilt carry a beta chip instead of a fade.</p>
+        </div>
+      </div>
+
+      <div data-sev="spec">
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 18px 20px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: center; gap: 11px; flex-wrap: wrap">
+            <span style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.2 0.02 60); background: oklch(0.74 0.16 52); padding: 5px 8px; border-radius: 3px">OFF-SPEC</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">S9 · every screen</span>
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">Spacing snapped back onto Tailwind's 4px grid</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">"Lifted verbatim from the source. If a spec says 13px, write 13px." The outer card padding does this correctly everywhere — <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">p-[26px]</span>, good. Inside them every gap reverts to a Tailwind default: <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">gap-5</span> (20), <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">gap-3</span> (12), <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">py-2.5</span> (10), <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">p-4</span> (16). The scale's deliberate half-steps at small sizes — 5, 7, 9, 11, 13, 18 — never appear, so the vertical rhythm is a fifth looser than drawn and the cards run taller than the source. Registering the scale as Tailwind spacing keys makes the correct value the easy one to type.</p>
+          <pre data-snippet="1" style="margin: 0; padding: 14px 16px; border-radius: 6px; background: oklch(0.11 0.008 70); border: 1px solid oklch(0.25 0.008 70); overflow-x: auto; font: 400 11.5px/1.7 'JetBrains Mono', monospace; color: oklch(0.72 0.01 80)"><span style="color: oklch(0.72 0.13 155)">/* @theme — then gap-7, px-13, py-11 mean the spec's numbers */</span>
+--spacing-5: 5px;   --spacing-7: 7px;   --spacing-9: 9px;
+--spacing-11: 11px; --spacing-13: 13px; --spacing-18: 18px;
+--spacing-22: 22px; --spacing-26: 26px; --spacing-34: 34px;</pre>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; flex-direction: column; gap: 7px">
+      <h2 style="margin: 0; font: 600 19px/25px 'Instrument Sans', sans-serif; letter-spacing: -0.01em; color: oklch(0.95 0.005 80)">The primitives, rendered</h2>
+      <p style="margin: 0; max-width: 74ch; font: 400 12.5px/19px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80); text-wrap: pretty">Live, at spec sizes, so the targets aren't a description. These four are what the nine ad-hoc button recipes and the character glyphs collapse into.</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 13px">
+
+      <div style="display: flex; flex-direction: column; gap: 16px; padding: 20px 22px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70); box-shadow: 0 2px 16px rgba(0,0,0,.24)">
+        <div style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.66 0.01 80)">BUTTON — SIX VARIANTS, ONE LADDER</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 9px; align-items: center">
+          <button type="button" style="font: 600 11.5px/1 'Instrument Sans', sans-serif; padding: 11px 15px; border-radius: 6px; border: 1px solid transparent; background: oklch(0.74 0.16 52); color: oklch(0.2 0.02 60); cursor: pointer; transition: background-color 90ms linear" style-hover="background: oklch(0.78 0.16 52)">Render &amp; publish</button>
+          <button type="button" style="font: 500 11.5px/1 'Instrument Sans', sans-serif; padding: 11px 15px; border-radius: 6px; border: 1px solid transparent; background: oklch(0.26 0.008 70); color: oklch(0.95 0.005 80); cursor: pointer; transition: background-color 90ms linear" style-hover="background: oklch(0.30 0.008 70)">Back to editing</button>
+          <button type="button" style="font: 500 11.5px/1 'Instrument Sans', sans-serif; padding: 11px 15px; border-radius: 6px; border: 1px solid oklch(0.25 0.008 70); background: oklch(0.22 0.008 70); color: oklch(0.8 0.01 80); cursor: pointer; transition: background-color 90ms linear" style-hover="background: oklch(0.26 0.008 70)">Copy the details</button>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 9px; align-items: center">
+          <button type="button" style="font: 500 11.5px/1 'Instrument Sans', sans-serif; padding: 0; border: 1px solid transparent; background: transparent; color: oklch(0.8 0.13 60); cursor: pointer">Pick a different file</button>
+          <button type="button" style="font: 500 11.5px/1 'Instrument Sans', sans-serif; padding: 11px 15px; border-radius: 6px; border: 1px solid oklch(0.26 0.008 70); background: oklch(0.26 0.008 70); color: oklch(0.66 0.01 80); cursor: default">Waiting…</button>
+          <button type="button" style="font: 500 11.5px/1 'Instrument Sans', sans-serif; padding: 11px 15px; border-radius: 6px; border: 1px solid transparent; background: oklch(0.26 0.008 70); color: oklch(0.95 0.005 80); opacity: 0.5; cursor: default">Split here</button>
+        </div>
+        <div style="display: grid; gap: 4px; font: 400 11px/17px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80)">
+          <div>Top row: <span style="color: oklch(0.8 0.01 80)">primary</span> (one per screen) · <span style="color: oklch(0.8 0.01 80)">secondary</span> · <span style="color: oklch(0.8 0.01 80)">quiet</span>.</div>
+          <div>Bottom: <span style="color: oklch(0.8 0.01 80)">ghost</span> replaces every underlined text link · <span style="color: oklch(0.8 0.01 80)">inert</span>, full opacity, for nothing-to-click · <span style="color: oklch(0.8 0.01 80)">disabled</span> at 50%, not 40.</div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 16px; padding: 20px 22px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70); box-shadow: 0 2px 16px rgba(0,0,0,.24)">
+        <div style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.66 0.01 80)">SHAPES, NOT CHARACTERS</div>
+        <div style="display: flex; align-items: center; gap: 26px; flex-wrap: wrap">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 9px">
+            <div style="width: 32px; height: 32px; border-radius: 50%; background: oklch(0.74 0.16 52); display: flex; align-items: center; justify-content: center">
+              <div style="width: 0; height: 0; border-style: solid; border-width: 6px 0 6px 10px; border-color: transparent transparent transparent oklch(0.2 0.02 60); margin-left: 2px"></div>
+            </div>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">play</span>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 9px">
+            <div style="width: 32px; height: 32px; border-radius: 50%; background: oklch(0.74 0.16 52); display: flex; align-items: center; justify-content: center; gap: 3px">
+              <div style="width: 3px; height: 12px; border-radius: 1px; background: oklch(0.2 0.02 60)"></div>
+              <div style="width: 3px; height: 12px; border-radius: 1px; background: oklch(0.2 0.02 60)"></div>
+            </div>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">pause</span>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 9px">
+            <div style="width: 38px; height: 38px; border-radius: 9px; background: oklch(0.26 0.008 70); display: flex; align-items: center; justify-content: center">
+              <div style="width: 14px; height: 2.5px; border-radius: 2px; background: oklch(0.8 0.01 80)"></div>
+            </div>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">upload</span>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 9px">
+            <div style="width: 17px; height: 17px; border-radius: 4px; background: oklch(0.74 0.16 52); display: flex; align-items: center; justify-content: center; font: 700 11px/1 'Instrument Sans', sans-serif; color: oklch(0.2 0.02 60)">&#10003;</div>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">checked</span>
+          </div>
+        </div>
+        <p style="margin: 0; font: 400 11px/17px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80); text-wrap: pretty">Border-triangle play, two 3px bars for pause, the 14×2.5px upload bar, and the literal check character in Instrument Sans 700 — no font fallback, no cross-platform drift, nothing to install. If a future screen truly needs a glyph, the rule is one SVG set at 1.5px stroke with no fill, recorded in the system.</p>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 16px; padding: 20px 22px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70); box-shadow: 0 2px 16px rgba(0,0,0,.24)">
+        <div style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.66 0.01 80)">STAGE ROW — STATE CARRIED BY A DOT</div>
+        <div style="display: flex; flex-direction: column; gap: 11px">
+          <div style="display: grid; grid-template-columns: 9px 1fr 46px; align-items: center; gap: 11px">
+            <div style="width: 9px; height: 9px; border-radius: 50%; background: oklch(0.72 0.13 155)"></div>
+            <div style="font: 500 12.5px/19px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80)">Writing the transcript</div>
+            <div style="justify-self: end; font: 400 10.5px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">done</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 9px 1fr 46px; align-items: center; gap: 11px">
+            <div style="width: 9px; height: 9px; border-radius: 50%; background: oklch(0.74 0.16 52)"></div>
+            <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+              <div style="font: 500 12.5px/19px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">Finding who's on camera</div>
+              <div style="height: 6px; border-radius: 3px; background: oklch(0.215 0.008 70); overflow: hidden">
+                <div style="height: 100%; width: 64%; border-radius: 3px; background: oklch(0.74 0.16 52); transition: width 240ms linear"></div>
+              </div>
+            </div>
+            <div style="justify-self: end; font: 400 10.5px/1 'JetBrains Mono', monospace; color: oklch(0.8 0.01 80)">64%</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 9px 1fr 46px; align-items: center; gap: 11px; opacity: 0.5">
+            <div style="width: 9px; height: 9px; border-radius: 50%; border: 1px solid oklch(0.66 0.01 80)"></div>
+            <div style="font: 500 12.5px/19px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80)">Matching voices to faces</div>
+            <div style="justify-self: end; font: 400 10.5px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">&mdash;</div>
+          </div>
+        </div>
+        <p style="margin: 0; font: 400 11px/17px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80); text-wrap: pretty">Filled ok / filled accent / ringed pending — status reads at a glance without four bars competing for it, and only the active stage carries a bar. Pending is 50% opacity, per the state model. No pulse on the indeterminate case: the elapsed clock is the honest signal.</p>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 16px; padding: 20px 22px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70); box-shadow: 0 2px 16px rgba(0,0,0,.24)">
+        <div style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.66 0.01 80)">EMPHASIS &amp; STATE, FROM TOKENS</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 9px">
+          <span style="display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border-radius: 6px; border: 1px solid oklch(0.74 0.16 52 / 0.45); background: oklch(0.22 0.008 70); font: 500 10.5px/1 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">A folder on this Mac</span>
+          <span style="display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border-radius: 6px; border: 1px solid oklch(0.25 0.008 70); background: transparent; font: 500 10.5px/1 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80)">YouTube</span>
+          <span style="display: inline-flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 3px; background: oklch(0.76 0.14 85 / 0.18); font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.04em; color: oklch(0.84 0.13 88)">BETA</span>
+          <span style="display: inline-flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 3px; background: oklch(0.62 0.15 30 / 0.2); font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.04em; color: oklch(0.8 0.13 40)">TALKING OVER</span>
+        </div>
+        <div style="display: flex; gap: 0; border-radius: 7px; overflow: hidden; border: 1px solid oklch(0.25 0.008 70)">
+          <div style="flex: 1; padding: 13px 14px; background: oklch(0.21 0.008 70); border-left: 3px solid oklch(0.74 0.16 52)">
+            <div style="display: flex; align-items: center; gap: 7px">
+              <span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(0.72 0.13 175)"></span>
+              <span style="font: 600 11.5px/17px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">Dev</span>
+              <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">05:41–05:58</span>
+            </div>
+            <div style="margin-top: 5px; font: 400 13.5px/22px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">Selected turn — sel ground, 3px accent rail, body at 13.5/22.</div>
+          </div>
+        </div>
+        <p style="margin: 0; font: 400 11px/17px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80); text-wrap: pretty">Every emphasis colour above is a named token, not an alpha written at the call site. The beta pair replaces the grey unbuilt badge; the warn pair is already correct in the transcript.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; flex-direction: column; gap: 7px">
+      <h2 style="margin: 0; font: 600 19px/25px 'Instrument Sans', sans-serif; letter-spacing: -0.01em; color: oklch(0.95 0.005 80)">Screen by screen</h2>
+      <p style="margin: 0; max-width: 74ch; font: 400 12.5px/19px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80); text-wrap: pretty">What's left once the nine systematic fixes land — the things specific to each screen's layout, hierarchy and copy. Ordered by the stage the user is in.</p>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 13px">
+
+      <div data-sev="spec">
+        <div style="display: flex; flex-direction: column; gap: 13px; padding: 20px 22px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap">
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">1 · Set up</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">features/setup/SetupGate.tsx</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">The screen answers a different question than the design does. The design shows <em style="color: oklch(0.95 0.005 80)">"Two things need to be running"</em> as three status rows — this window, the processing service, captions-optional — each carrying its own state dot, with the command block nested under whichever row is blocked, and an <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">inert</span> "Waiting…" button. The code shows one heading plus a numbered <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">ol</span> of Hugging Face steps, and never tells the user what the machine's state actually is. Someone stuck here can't see which of the two things is wrong.</p>
+          <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font: 400 12.5px/19px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80)">
+            <li>Adopt the three-status-row layout as the frame; keep the token steps as the nested detail of the row that needs them. Health already returns everything the rows need.</li>
+            <li>Numbered step circles are <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">22px</span> control discs with mono numerals — correct, keep.</li>
+            <li><span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">OutLink</span> ends in a <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: oklch(0.8 0.01 80)">&#8599;</span> character; drop it and let it be a quiet button. The token input at 12px mono should be 11.5.</li>
+            <li>"Captions available" never appears as an optional dependency at 60% — so the one thing a user could fix before rendering is invisible until Publish tells them it's too late.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div data-sev="spec">
+        <div style="display: flex; flex-direction: column; gap: 13px; padding: 20px 22px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap">
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">2 · Drop in</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">features/upload/UploadScreen.tsx</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">Closest of any screen to the design, and the drag state is genuinely well built — 2px accent border, the 12% ring, the 40% dim on the content behind, and the "a second file would replace this one" line all match. Two structural differences: the content is <strong style="font-weight: 600; color: oklch(0.95 0.005 80)">centre-aligned</strong> where the whole product is left-aligned, and the heading is the wordmark "Cutroom" with a product pitch under it, where the design's is the task — <em style="color: oklch(0.95 0.005 80)">"Start a new episode"</em> with "One video of everyone in one frame, with one audio track. That's all it needs." The app doesn't need to introduce itself to someone who already opened it.</p>
+          <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font: 400 12.5px/19px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80)">
+            <li>Left-align; logo at 24px with wordmark in the corner, not a 40px centred mark.</li>
+            <li>The local-first reassurance row sits on <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">raised</span>; the design puts it on <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">chrome</span>, one step down, so it reads as a footnote rather than a card.</li>
+            <li>"RECENT EPISODES" → <em style="color: oklch(0.8 0.01 80)">"Pick up where you left off"</em> as a section label, pinned to the bottom with <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">margin-top:auto</span>. Rows want a frame thumbnail, the name in sans, and mono status ("edited · not published") — the current row is name + locale date + a <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: oklch(0.8 0.01 80)">&#10005;</span>.</li>
+            <li>Delete has no confirm and sits one pixel from Reopen. At minimum make it a quiet destructive button that appears on row hover.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div data-sev="spec">
+        <div style="display: flex; flex-direction: column; gap: 13px; padding: 20px 22px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap">
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">3 · Read it</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">features/upload/ProcessingScreen.tsx</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">The 22px mono accent clock with "about 1:20 left" beneath it is exactly right, and the live video thumbnail following the transcript position is a better idea than the design had. The problem is four identical progress bars stacked in a column: every stage looks equally live, so there's no reading of where the work actually is. The design gives each stage a state dot and a bar only on the active one — rendered above. Everything else on this screen is systematic: two pulses, <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">bg-black</span> on the thumbnail, 13px labels, no shadow.</p>
+          <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font: 400 12.5px/19px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80)">
+            <li>"FACES FOUND" as a bare uppercase mono span → a section label reading <em style="color: oklch(0.8 0.01 80)">"People found · 2"</em>, which puts the count where the eye already is.</li>
+            <li>Face thumbs are 46px squares with a 2px speaker ring — correct. The dashed next-person slot is correct. Both should sit in a 3-up grid at 35% opacity for the empty slot, not <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">flex-wrap</span>.</li>
+            <li>The closing reassurance paragraph is doing two jobs (how long, and what closing the tab does). Split it, or cut the second half — the notification permission already covers it.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div data-sev="rule">
+        <div style="display: flex; flex-direction: column; gap: 13px; padding: 20px 22px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap">
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">4 · Name them</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">features/faces/CastScreen.tsx</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">This is the screen where the design most wants one thing on screen at a time, and the code can show five. In the worst case — a voice with no face, plus two match notes, plus three people — the card stacks a quote block, a no-face card with its own input, a warn list, a two-row face grid and a footer, and the primary action ends up below the fold on a laptop. The question being asked is <em style="color: oklch(0.95 0.005 80)">"who is this?"</em>; everything that isn't evidence for that answer should be one line, not a card.</p>
+          <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font: 400 12.5px/19px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80)">
+            <li><strong style="font-weight: 600; color: oklch(0.8 0.13 40)">Rule break:</strong> play/pause are the <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: oklch(0.8 0.01 80)">&#9654;</span> / <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: oklch(0.8 0.01 80)">&#10074;&#10074;</span> characters, and the waveform bars are a hardcoded OKLCH literal that won't flip to light mode. Both are drawn above.</li>
+            <li>Collapse the no-face card into the empty-slot option it duplicates — the fourth grid cell already says "Someone we didn't see / They stay wide". Name-anyway becomes an input revealed on that cell, not a second card above it.</li>
+            <li>The face grid is <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">grid-cols-3</span> plus a 4th cell, so with three people the "didn't see" option lands alone on a second row. Make it a flex row of equal cards that wraps as a unit.</li>
+            <li>Evidence block sits on <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">raised</span>; spec is <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">chrome</span> at <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">r-card-lg</span>. The 16px/25px quote is correct.</li>
+            <li>"Who is this?" → <em style="color: oklch(0.8 0.01 80)">"Who's speaking here?"</em>, and <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">VOICE 1 OF 2</span> → quiet mono <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">voice 1 of 2</span>. The uppercase label is reserved for machine micro-labels; a progress count in caps reads as a warning.</li>
+            <li>"Previous voice" is an underlined text link — the system has no underlined links. Ghost button.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div data-sev="rule">
+        <div style="display: flex; flex-direction: column; gap: 13px; padding: 20px 22px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.74 0.16 52 / 0.45)">
+          <div style="display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap">
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">5 · Edit</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">features/timeline/EditorView.tsx · 1344 lines</span>
+            <span style="font: 500 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: oklch(0.2 0.02 60); background: oklch(0.74 0.16 52); padding: 5px 8px; border-radius: 3px">BIGGEST WIN</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">The transcript pane is the best-built thing in the codebase: 404px to the token, the 3px state rail with the right precedence, 13.5/22 on the selected turn and 12.5 elsewhere, speaker dots at 7px, warn chips for NO FACE and TALKING OVER, and a one-clause reason under every line exactly as the voice rule asks. The stage and the timeline are solid. <strong style="font-weight: 600; color: oklch(0.95 0.005 80)">The bottom bar is where it falls apart.</strong></p>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">With a shot selected, one wrapping flex row holds up to sixteen controls: the shot label, a person toggle per cast member, two timecode inputs, Split, Go wide, four nudge arrows, Reset crop, then a framing select, a trim checkbox, Undo, Redo, Reset to suggested and Export episode. They are all the same size, the same border, the same ink. "Export episode" — the one accent action on the screen, and the thing that ends the session — is the sixteenth item in a row of visually identical buttons. Nothing tells the eye where selection-scoped controls end and episode-scoped ones begin, and on a 1280px window the row wraps mid-group.</p>
+          <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font: 400 12.5px/19px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80)">
+            <li><strong style="color: oklch(0.8 0.01 80)">Split the bar in two.</strong> Left: what's selected — label, who's on screen, times, Split, Go wide, Nudge. Right, separated by the 1px line already used inside the group: what's the episode's — framing style, trim, undo/redo, reset, and Export as the only primary. Give the right group a fixed order that never wraps into the left.</li>
+            <li>The nudge cluster is four 24px arrow-character buttons. Make it one labelled 4-way pad drawn in CSS, or fold it into a small popover off "Nudge crop" — it's fine adjustment, not a top-level control.</li>
+            <li><strong style="font-weight: 600; color: oklch(0.8 0.13 40)">Rule break:</strong> <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">bg-black</span> on the stage, the pane fallback and every split divider → <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">plate-b</span> ground with <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">plate-a</span> dividers, so the plate lifts in light mode instead of punching a hole. <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">text-white/80</span> on the media error → <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">plate-ink</span>. Play/pause characters again. <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">shadow-lg</span> on the shortcuts popover.</li>
+            <li>The title bar drops two things the design carries: the three 11px traffic lights, and the mono <em style="color: oklch(0.8 0.01 80)">"service ok"</em> label beside the health dot. A bare 7px dot with a title attribute is not legible state — that dot is the only signal that the thing doing all the work is alive.</li>
+            <li>The review counter packs a square, a count, and two <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: oklch(0.8 0.01 80)">&#8249; &#8250;</span> steppers into one 10px mono pill with <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">ml-1</span>/<span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">mr-1</span> nudges holding it together. Rebuild as label + two quiet 24px steppers with real gap.</li>
+            <li>The framing <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">select</span> and the trim <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">checkbox</span> are unstyled browser controls — the only two in the product. The checkbox renders as the OS blue, which is the one place a non-palette colour appears anywhere in the app.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div data-sev="spec">
+        <div style="display: flex; flex-direction: column; gap: 13px; padding: 20px 22px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap">
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">6 · Publish</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">features/publish/PublishScreen.tsx</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">Structurally the most faithful screen in the app — the honest manifest with unbuilt artefacts shown rather than hidden, the destination line stating the one exception to the local-first promise out loud, the four render states, and the ffmpeg warning arriving before the render rather than after. All of that is the credibility block and it's intact. The gap is entirely in the marks on the page.</p>
+          <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font: 400 12.5px/19px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80)">
+            <li><strong style="font-weight: 600; color: oklch(0.8 0.13 40)">Rule break:</strong> the tick SVG is <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">strokeWidth 3.5</span> against a system whose only icon rule is 1.5px stroke, no fill. Use the literal check character in Instrument Sans 700 — rendered above.</li>
+            <li>Unbuilt artefacts carry <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">opacity-70</span> and destinations <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">opacity-60</span>, which reads as "broken" rather than "not yet". Full-opacity row, outline chip, beta tokens on the badge — the honesty lands harder when it isn't whispered.</li>
+            <li>The unchecked ring is a literal <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">oklch(0.42 0.01 80)</span> at 2px. Token it, and drop to the 1px border weight the rest of the system uses.</li>
+            <li>The BETA badge is 9px — under the 9.5px mono floor — in <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">control</span>/<span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">text-3</span> instead of the beta pair.</li>
+            <li>The CLIPS column is a 9:16 dashed box reading "Not built yet" beside a paragraph explaining the heuristic — a third of the body width spent on an empty rectangle. The design's striped placeholder with a mono caption says the same thing and looks deliberate; or drop the box and keep the sentence.</li>
+            <li>"Save a draft" is <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">disabled</span> with a dashed border; the render <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">%</span> readout is a disabled button. Both are inert, not disabled — and the percentage isn't a button at all; it's a timecode.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div data-sev="polish">
+        <div style="display: flex; flex-direction: column; gap: 13px; padding: 20px 22px; border-radius: 8px; background: oklch(0.17 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+          <div style="display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap">
+            <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">7 · The two dead ends</span>
+            <span style="font: 400 10px/1 'JetBrains Mono', monospace; color: oklch(0.66 0.01 80)">NoFacesScreen.tsx · ProcessingFailed.tsx</span>
+          </div>
+          <p style="margin: 0; max-width: 78ch; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">Both follow the four-beat error pattern properly, keep the raw message in the mono well beneath the plain line, and offer a way forward and a way out. The copy is on-voice. Only three things to change: <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">border-warn/45</span> → the warn-edge token, the 13px buttons → the ladder, and "Pick a different file" as an underlined text link → ghost button. The system documents eight edge cases through one card component; these two are hand-built versions of it, so factoring them into a shared card is what keeps the ninth one honest.</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; flex-direction: column; gap: 7px">
+      <h2 style="margin: 0; font: 600 19px/25px 'Instrument Sans', sans-serif; letter-spacing: -0.01em; color: oklch(0.95 0.005 80)">Where to start</h2>
+      <p style="margin: 0; max-width: 74ch; font: 400 12.5px/19px 'Instrument Sans', sans-serif; color: oklch(0.66 0.01 80); text-wrap: pretty">Seven files close most of the list. Six of them don't exist yet, and none of them are a design decision.</p>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 13px">
+      <div style="display: flex; flex-direction: column; gap: 11px; padding: 20px 22px; border-radius: 8px; background: oklch(0.2 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+        <div style="display: flex; align-items: center; gap: 9px">
+          <span style="font: 400 22px/1 'JetBrains Mono', monospace; color: oklch(0.74 0.16 52)">1</span>
+          <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">Finish index.css</span>
+        </div>
+        <p style="margin: 0; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">Flip the base layer to dark, add the seven missing token families, register the spacing scale and the type scale as named keys. No component changes. This alone kills S1, S2, S9 and makes S4's 13px impossible to type by accident.</p>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 11px; padding: 20px 22px; border-radius: 8px; background: oklch(0.2 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+        <div style="display: flex; align-items: center; gap: 9px">
+          <span style="font: 400 22px/1 'JetBrains Mono', monospace; color: oklch(0.74 0.16 52)">2</span>
+          <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">Add components/ui</span>
+        </div>
+        <p style="margin: 0; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">Six files: <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">Button</span>, <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">Chip</span>, <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">Card</span>, <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">SectionLabel</span>, <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">PlayButton</span>, <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px">StageRow</span>. Every one of them already exists in the design system as JSX with the exact values — they're a port, not a design task. That's S3 through S8, and about 400 lines of ad-hoc className deleted.</p>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 11px; padding: 20px 22px; border-radius: 8px; background: oklch(0.2 0.008 70); border: 1px solid oklch(0.25 0.008 70)">
+        <div style="display: flex; align-items: center; gap: 9px">
+          <span style="font: 400 22px/1 'JetBrains Mono', monospace; color: oklch(0.74 0.16 52)">3</span>
+          <span style="font: 600 15px/20px 'Instrument Sans', sans-serif; color: oklch(0.95 0.005 80)">Then the two layouts</span>
+        </div>
+        <p style="margin: 0; font: 400 12.5px/20px 'Instrument Sans', sans-serif; color: oklch(0.8 0.01 80); text-wrap: pretty">Only two screens need real design work once the primitives land: the editor's bottom bar split into selection-scoped and episode-scoped groups, and the cast screen collapsed back to one question at a time. Say the word and I'll build both as working screens against the ported components.</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;filter&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Everything&quot;,&quot;Brand-rule breaks only&quot;],&quot;default&quot;:&quot;Everything&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Reading&quot;},&quot;showSnippets&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Reading&quot;}}">
+class Component extends DCLogic {
+  rootRef = (node) => { this.root = node; this.apply(); };
+
+  componentDidUpdate() { this.apply(); }
+
+  apply() {
+    if (!this.root) return;
+    const rulesOnly = (this.props.filter ?? "Everything") === "Brand-rule breaks only";
+    this.root.querySelectorAll("[data-sev]").forEach((el) => {
+      el.style.display = rulesOnly && el.getAttribute("data-sev") !== "rule" ? "none" : "";
+    });
+    const snippets = this.props.showSnippets ?? true;
+    this.root.querySelectorAll("[data-snippet]").forEach((el) => {
+      el.style.display = snippets ? "block" : "none";
+    });
+  }
+
+  renderVals() {
+    return { rootRef: this.rootRef };
+  }
+}
+</script>
+</body>
+</html>

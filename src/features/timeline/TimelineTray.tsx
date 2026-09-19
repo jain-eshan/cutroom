@@ -328,8 +328,15 @@ export function TimelineTray({
 								} ${isSelected ? "ring-1 ring-handle" : ""}`}
 								style={{ left: `${at(region.start)}%`, width: `${at(region.end) - at(region.start)}%` }}
 							>
-								<span className="truncate text-[10px] font-medium whitespace-nowrap">
-									{regionLabel(region)}
+								<span
+									className={`truncate font-mono text-[9px] leading-none tracking-[0.04em] whitespace-nowrap uppercase ${
+										mine ? "font-medium" : ""
+									}`}
+								>
+									{region.layout === "zoom"
+										? `Close · ${region.personIds.map(nameOf)[0] ?? "nobody"}`
+										: region.personIds.map(nameOf).join(" + ")}
+									{mine ? " · yours" : ""}
 								</span>
 
 								{isSelected &&

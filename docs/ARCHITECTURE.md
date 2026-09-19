@@ -381,14 +381,15 @@ troubleshooting), CONTRIBUTING.md (layout, rules, checks) and SECURITY.md.
 src/
 ├── App.tsx                          # top-level state machine (see below)
 ├── components/
-│   ├── Logo.tsx                     # Cutroom SVG mark, reduction ladder by render size
+│   ├── ui.tsx                       # design-system primitives + AppWindow, the title bar every stage sits in
+│   ├── Logo.tsx                     # Cutroom SVG mark (design's assets/logo), tiny at <=20px
 │   └── ThemeSwitcher.tsx            # System/Light/Dark segmented control
 ├── lib/
 │   ├── api.ts                       # typed fetch wrappers for /health, /process, /progress, /export
 │   ├── faceCrop.ts                  # bbox → CSS zoom transform math + pixel-space crop math
-│   └── theme.ts                     # `useThemeMode` — persisted, live system-preference-aware
+│   └── theme.ts                     # `useThemeMode` — dark by default, saves only an explicit choice
 ├── features/
-│   ├── setup/SetupGate.tsx          # only what needs doing: starting, connect Hugging Face, or why it stopped
+│   ├── setup/SetupGate.tsx          # status rows: this window, the service, speaker models (token), captions
 │   ├── upload/UploadScreen.tsx      # file picker + real drag-and-drop (idle / error states)
 │   ├── upload/ProcessingFailed.tsx  # stopped partway: how far it got, the raw error, try again
 │   ├── upload/ProcessingScreen.tsx  # per-stage progress + live transcript and faces found
@@ -406,7 +407,9 @@ src/
 **Design tokens & theming:** colors, type, spacing and radii are CSS custom
 properties defined once in `src/index.css`'s `@theme` block (Tailwind v4's
 CSS-first config) and re-pointed under a `[data-theme]` attribute + a
-`prefers-color-scheme` media query for the three-state theme switch. See
+`prefers-color-scheme` media query for the three-state theme switch. Dark
+is the base layer. Screens build from `src/components/ui.tsx` rather than
+their own button and label styles. See
 [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) for the full token table, what's
 implemented vs. deferred, and where the source design files live.
 

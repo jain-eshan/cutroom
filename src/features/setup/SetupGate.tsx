@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { getHealth, saveHfToken, type Health } from "@/lib/api";
+import { API_BASE, getHealth, saveHfToken, type Health } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
-import { Logo } from "@/components/Logo";
+import { Button, CommandBlock, RawMessage, Screen, ScreenHeading, StatusRow } from "@/components/ui";
 
 const SERVICE_COMMAND = "cd server && uv run uvicorn main:app --port 8787";
 const POLL_MS = 1500;
@@ -38,15 +38,6 @@ async function getService(): Promise<Service | null> {
 	}
 }
 
-function Heading({ title, children }: { title: string; children: React.ReactNode }) {
-	return (
-		<div className="flex flex-col gap-2">
-			<h1 className="text-[19px] font-semibold tracking-[-0.01em] text-text">{title}</h1>
-			<p className="text-[12.5px] leading-[1.6] text-text3">{children}</p>
-		</div>
-	);
-}
-
 type TokenState =
 	| { status: "idle" }
 	| { status: "checking" }
@@ -76,8 +67,8 @@ function TokenForm() {
 	}
 
 	return (
-		<form onSubmit={submit} className="flex flex-col gap-2">
-			<div className="flex gap-2">
+		<form onSubmit={submit} className="flex flex-col gap-[7px]">
+			<div className="flex gap-[9px]">
 				<input
 					type="password"
 					autoComplete="off"
@@ -87,45 +78,16 @@ function TokenForm() {
 						setToken(e.target.value);
 						if (state.status === "error") setState({ status: "idle" });
 					}}
-					placeholder="Paste your token (hf_…)"
+					placeholder="hf_…"
 					aria-label="Hugging Face token"
-					className="min-w-0 flex-1 rounded-control border border-line bg-panel px-2.5 py-2 font-mono text-[12px] text-text"
+					className="min-w-0 flex-1 rounded-control-lg border border-line bg-well px-3 py-[10px] font-mono text-mono leading-none text-text outline-none focus:border-accent-edge"
 				/>
-				<button
-					type="submit"
-					disabled={!token.trim() || checking || state.status === "saved"}
-					className="shrink-0 rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent disabled:opacity-40"
-				>
-					{checking ? "Checking…" : state.status === "saved" ? "Saved" : "Save"}
-				</button>
+				<Button type="submit" variant="primary" disabled={!token.trim() || checking || state.status === "saved"}>
+					{checking ? "Checking…" : state.status === "saved" ? "Saved" : "Save token"}
+				</Button>
 			</div>
-			{state.status === "error" && <p className="text-[11px] leading-[1.6] text-warn">{state.message}</p>}
-			<p className="text-[11px] text-text3">Kept on this machine only.</p>
+			{state.status === "error" && <p className="text-fine text-warn">{state.message}</p>}
 		</form>
-	);
-}
-
-function Step({ n, children }: { n: number; children: React.ReactNode }) {
-	return (
-		<li className="flex gap-3">
-			<span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-control font-mono text-[11px] text-text2">
-				{n}
-			</span>
-			<div className="flex min-w-0 flex-1 flex-col gap-2 pt-0.5">{children}</div>
-		</li>
-	);
-}
-
-function OutLink({ href, children }: { href: string; children: React.ReactNode }) {
-	return (
-		<a
-			href={href}
-			target="_blank"
-			rel="noreferrer"
-			className="w-fit rounded-control border border-line bg-raised px-3 py-1.5 text-[12.5px] font-medium text-text"
-		>
-			{children} ↗
-		</a>
 	);
 }
 
@@ -188,125 +150,155 @@ export function SetupGate({ onReady }: { onReady: (health: Health) => void }) {
 		}
 	}
 
-	let body: React.ReactNode;
-	if (ready) {
-		body = <Heading title="Ready">Opening Cutroom…</Heading>;
-	} else if (health) {
-		body = (
-			<>
-				<Heading title="Connect Hugging Face">
-					Telling voices apart uses a free model from Hugging Face, and it needs your account's
-					go-ahead. You only do this once.
-				</Heading>
-				<ol className="flex flex-col gap-4">
-					<Step n={1}>
-						<OutLink href="https://huggingface.co/settings/tokens">Create a token</OutLink>
-						<span className="text-[11px] text-text3">Read access is enough.</span>
-					</Step>
-					<Step n={2}>
-						<OutLink href="https://huggingface.co/pyannote/speaker-diarization-community-1">
-							Agree to the model's terms
-						</OutLink>
-						<span className="text-[11px] text-text3">Signed in to the same account.</span>
-					</Step>
-					<Step n={3}>
-						<TokenForm />
-					</Step>
-				</ol>
-			</>
-		);
+	const serviceHost = new URL(API_BASE).host;
+	const log = (lines: string[] | undefined) => lines?.slice(-12).join("\n") || "It didn't print anything.";
+	const tryAgain = (
+		<Button variant="primary" onClick={retry} disabled={retrying} className="self-start">
+			{retrying ? "Starting…" : "Try again"}
+		</Button>
+	);
+
+	// The processing service, and what to do about it when it's not answering.
+	let serviceRow: React.ReactNode;
+	if (health) {
+		serviceRow = <StatusRow state="ok" title="The processing service" detail={`${serviceHost} · responding`} />;
 	} else if (service?.state === "exited") {
-		body = (
-			<>
-				<Heading
-					title={
-						service.ranBefore
-							? "The processing service stopped"
-							: "The processing service couldn't start"
-					}
-				>
+		serviceRow = (
+			<StatusRow
+				state="active"
+				title="The processing service"
+				detail={service.ranBefore ? `${serviceHost} · stopped` : `${serviceHost} · couldn't start`}
+			>
+				<p className="text-meta text-text2">
 					{service.ranBefore
 						? "It was running, then stopped. This is the last thing it said:"
-						: "This is what it said:"}
-				</Heading>
-				<code className="block max-h-44 overflow-auto rounded-control bg-terminal px-2.5 py-2 font-mono text-[10.5px] leading-[1.5] whitespace-pre-wrap text-plate-ink">
-					{service.log.slice(-12).join("\n") || "It didn't print anything."}
-				</code>
-				<button
-					type="button"
-					onClick={retry}
-					disabled={retrying}
-					className="w-fit rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent disabled:opacity-40"
-				>
-					{retrying ? "Starting…" : "Try again"}
-				</button>
-			</>
+						: "It couldn't start. This is what it said:"}
+				</p>
+				<RawMessage className="max-h-44 overflow-auto">{log(service.log)}</RawMessage>
+				{tryAgain}
+			</StatusRow>
 		);
 	} else if (serviceUp && upSince !== null && now - upSince > UNRESPONSIVE_AFTER_MS) {
 		// Everything above this is a state that explains itself. This one used
-		// to fall through to "Getting ready" and sit there forever: the service
+		// to fall through to "starting" and sit there forever: the service
 		// says it is up, /health keeps failing, and nothing on screen says so or
 		// offers a way out.
-		body = (
-			<>
-				<Heading
-					title={
-						service?.state === "external"
-							? "Something else is on port 8787"
-							: "The processing service isn't answering"
-					}
-				>
-					{service?.state === "external"
+		const external = service?.state === "external";
+		serviceRow = (
+			<StatusRow
+				state="active"
+				title="The processing service"
+				detail={external ? `${serviceHost} · something else is on this port` : `${serviceHost} · not answering`}
+			>
+				<p className="text-meta text-text2">
+					{external
 						? "Cutroom found a service already running on its port and left it alone, but it isn't answering as Cutroom would. If that's another copy of Cutroom, close it and try again; if it's a different program, quit it first."
 						: "It started, but it isn't responding to requests. This is the last thing it said:"}
-				</Heading>
-				<code className="block max-h-44 overflow-auto rounded-control bg-terminal px-2.5 py-2 font-mono text-[10.5px] leading-[1.5] whitespace-pre-wrap text-plate-ink">
-					{service?.log.slice(-12).join("\n") || "It didn't print anything."}
-				</code>
-				<button
-					type="button"
-					onClick={retry}
-					disabled={retrying}
-					className="w-fit rounded-control bg-accent px-4 py-2 text-[13px] font-medium text-on-accent disabled:opacity-40"
-				>
-					{retrying ? "Starting…" : "Try again"}
-				</button>
-			</>
+				</p>
+				<RawMessage className="max-h-44 overflow-auto">{log(service?.log)}</RawMessage>
+				{tryAgain}
+			</StatusRow>
 		);
 	} else if (service === null && now - startedAt > UNMANAGED_AFTER_MS) {
-		body = (
-			<>
-				<Heading title="Start the processing service">
-					This copy of Cutroom can't start it by itself. Run this in a terminal in the project
-					folder, and this page will move on when it's up:
-				</Heading>
-				<code className="block rounded-control bg-terminal px-2.5 py-2 font-mono text-[11.5px] leading-[1.5] break-words text-plate-ink">
-					{SERVICE_COMMAND}
-				</code>
-			</>
+		serviceRow = (
+			<StatusRow state="active" title="The processing service" detail={`${serviceHost} · not answering`}>
+				<p className="text-meta text-text2">
+					This copy of Cutroom can't start it by itself. Open a terminal in the project folder and paste
+					this. This page moves on when it's up.
+				</p>
+				<CommandBlock command={SERVICE_COMMAND} />
+			</StatusRow>
 		);
 	} else {
-		body = (
-			<>
-				<Heading title="Getting ready">
-					Starting the processing service on this machine. The very first start installs it, which
-					can take a few minutes — this page moves on by itself.
-				</Heading>
-				{/* Indeterminate: there's no honest percentage for an install. */}
-				<div className="h-[5px] w-full overflow-hidden rounded-full bg-track">
-					<div className="h-full w-full animate-pulse rounded-full bg-accent/60" />
-				</div>
-				<span className="font-mono text-[10.5px] text-text3">{formatDuration((now - startedAt) / 1000)}</span>
-			</>
+		// Indeterminate: there's no honest percentage for an install, so the
+		// elapsed time is the signal, not a pulse.
+		serviceRow = (
+			<StatusRow
+				state="active"
+				title="The processing service"
+				detail={`${serviceHost} · starting · ${formatDuration((now - startedAt) / 1000)}`}
+			>
+				<p className="text-meta text-text2">
+					The very first start installs it, which can take a few minutes. This page moves on by itself.
+				</p>
+			</StatusRow>
 		);
 	}
 
 	return (
-		<div className="flex min-h-screen flex-col items-center justify-center bg-bg px-6 py-10">
-			<div className="flex w-full max-w-[440px] flex-col gap-5 rounded-panel border border-line bg-panel p-[26px]">
-				<Logo size={26} className="text-text" />
-				{body}
+		<Screen width={560}>
+			<ScreenHeading title={ready ? "Ready" : "Two things need to be running"}>
+				Cutroom does the work on this machine. Nothing uploads, so both pieces have to be here.
+			</ScreenHeading>
+
+			<div className="flex flex-col gap-[11px]">
+				<StatusRow state="ok" title="This window" detail={`${window.location.host} · ready`} />
+				{serviceRow}
+				{!health ? (
+					<StatusRow state="pending" title="Speaker models" detail="pyannote · waits for the service" />
+				) : health.diarization ? (
+					<StatusRow state="ok" title="Speaker models" detail="pyannote · token saved" />
+				) : (
+					<StatusRow state="active" title="Speaker models" detail="pyannote · needs a one-time access token">
+						<ol className="flex flex-col gap-[11px] pl-[30px]">
+							<li className="flex items-start gap-[11px]">
+								<span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-control font-mono text-mono-sm leading-none text-text2">
+									1
+								</span>
+								<span className="pt-0.5 text-ui text-text2">
+									Signed in to Hugging Face,{" "}
+									<a
+										href="https://huggingface.co/pyannote/speaker-diarization-community-1"
+										target="_blank"
+										rel="noreferrer"
+										className="text-accent-text hover:text-accent"
+									>
+										agree to the model's terms
+									</a>
+									. It's free.
+								</span>
+							</li>
+							<li className="flex items-start gap-[11px]">
+								<span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-control font-mono text-mono-sm leading-none text-text2">
+									2
+								</span>
+								<span className="pt-0.5 text-ui text-text2">
+									<a
+										href="https://huggingface.co/settings/tokens"
+										target="_blank"
+										rel="noreferrer"
+										className="text-accent-text hover:text-accent"
+									>
+										Create a read token
+									</a>{" "}
+									and paste it here. It's kept on this machine only.
+								</span>
+							</li>
+							<TokenForm />
+						</ol>
+					</StatusRow>
+				)}
+				{health?.captions ? (
+					<StatusRow state="ok" title="Captions" detail="ffmpeg with libass · captions can be burned in" />
+				) : (
+					<StatusRow
+						state="pending"
+						optional
+						title="Captions"
+						detail={
+							health
+								? "optional · this ffmpeg has no libass, so captions will be skipped"
+								: "optional · checked once the service is up"
+						}
+					/>
+				)}
 			</div>
-		</div>
+
+			<div className="flex items-center gap-[14px] pt-1">
+				<Button variant="inert">
+					{ready ? "Opening Cutroom…" : health ? "Waiting for the token…" : "Waiting for the service…"}
+				</Button>
+			</div>
+		</Screen>
 	);
 }

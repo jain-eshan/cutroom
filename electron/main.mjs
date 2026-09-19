@@ -122,6 +122,14 @@ function createWindow() {
 		width: 1280,
 		height: 800,
 		title: "Cutroom",
+		// The app's own dark `bg`, so opening the window doesn't flash white.
+		backgroundColor: "#0d0b08",
+		// On macOS the app draws its own title bar (src/components/ui.tsx,
+		// AppWindow), and the real traffic lights sit in the slot it leaves
+		// for them, centred in its 44px height.
+		...(process.platform === "darwin"
+			? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 14, y: 16 } }
+			: {}),
 		webPreferences: { preload: path.join(__dirname, "preload.mjs") },
 	});
 	win.loadURL(`http://127.0.0.1:${FRONTEND_PORT}/`);
