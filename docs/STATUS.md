@@ -829,8 +829,11 @@ the founder's call, to find testers and contributors early:
   of v0.2.0's bundle. `package.json` and `package-lock.json` only; no tag
   cut and no release published (see v0.2.0's entry above for what that
   involves) -- these three shipped as a normal merged PR, not a release.
-- **v0.3.0, prepared 2026-09-19, not yet tagged.** The design system pass
-  (every screen, dark by default) plus three desktop-app changes:
+- **v0.3.0, tagged and published 2026-09-19.** Three PRs: the design system
+  pass ([#6](https://github.com/jain-eshan/cutroom/pull/6), every screen,
+  dark by default), the landing page moved onto the same system
+  ([#7](https://github.com/jain-eshan/cutroom/pull/7)), and three
+  desktop-app changes ([#8](https://github.com/jain-eshan/cutroom/pull/8)):
   - **The app checks for updates.** `electron-updater` reads the
     `latest.yml` / `latest-mac.yml` the release workflow already attaches,
     once per launch, packaged builds only. Windows downloads quietly and
@@ -850,10 +853,26 @@ the founder's call, to find testers and contributors early:
     folder fell back to the browser's upload and download without any
     error. It's `preload.cjs` now. Found by running a packaged build and
     reading its console; verified the same way afterwards.
-  - Verified: a packaged build posing as 0.1.9 found the live 0.2.0
-    release and showed "Cutroom 0.2.0 is out" with Download. Not yet
-    verified: the Windows download-and-install path, and read-in-place and
-    save-to-folder now that the bridge loads.
+  - Verified before tagging: a packaged build posing as 0.1.9 found the
+    live 0.2.0 release and showed "Cutroom 0.2.0 is out" with Download.
+  - **The release itself split into two drafts again** — release.yml's own
+    long-standing comment on `max-parallel: 1` already names this exact
+    failure mode and says to check for it, and it still happened: the mac
+    job's 4 assets and the Windows job's 4 assets landed in two separate
+    `v0.3.0` drafts (ids ending `...557` and `...556`) instead of one. Fixed
+    by hand: downloaded the second draft's 4 assets, uploaded them onto the
+    first via the GitHub API, checked each `latest.yml`/`latest-mac.yml`
+    entry's sha512 against the matching installer file, then deleted the
+    now-empty duplicate and published the one with all 8. The workflow's
+    root cause from that comment is still open — this is the second time it
+    has happened, so the manual check it prescribes is not optional.
+  - Verified after publishing: `gh release view v0.3.0` shows 8 assets, not
+    a draft, and `Latest`; the public `.../releases/latest/download/` links
+    for `Cutroom-arm64.dmg`, `Cutroom-Setup.exe` and `latest-mac.yml` all
+    redirect to the `v0.3.0` asset URLs.
+  - Not yet verified: the Windows download-and-install path, and
+    read-in-place and save-to-folder now that the bridge loads (needs a
+    real recording and a Hugging Face token run through the packaged app).
 
 ## Known limitations
 
