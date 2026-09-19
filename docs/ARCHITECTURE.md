@@ -372,6 +372,21 @@ Wine, so it isn't buildable on this Mac locally). `server/` ships as an
 versus the project root in dev. `.github/workflows/release.yml` builds both
 platforms on a `v*` tag push and attaches the installers to a GitHub Release.
 
+**Updates.** On launch, a packaged build asks GitHub for the newest
+published release through `electron-updater`, which reads the `latest.yml`/
+`latest-mac.yml` files that release attaches (`publish` in package.json
+names the repo). Windows downloads it quietly and installs on quit. An
+unsigned Mac can't replace itself, so it only shows "Cutroom X is out" with
+a link to the download page. The title bar shows either one
+(`UpdateNotice` in `src/components/ui.tsx`). Draft releases are invisible
+to it, so an update reaches people only once the release is published.
+
+**The bridge.** `electron/preload.cjs` exposes the few things only the main
+process can do (a file's real path, the save dialog, revealing a file,
+updates) as `window.cutroom`, which `src/lib/electron.ts` wraps. It has to
+be CommonJS: Electron runs preloads sandboxed, and a sandboxed preload
+can't use `import`.
+
 Contributor-facing guides live at the root: README.md (setup and
 troubleshooting), CONTRIBUTING.md (layout, rules, checks) and SECURITY.md.
 

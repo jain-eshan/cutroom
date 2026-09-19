@@ -3,7 +3,7 @@
   "description": "Cutroom: free, local, open-source auto-editing for one-camera podcast video. Transcribes, works out who's talking, and frames the shot on them.",
   "license": "MIT",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -20,6 +20,7 @@
   "dependencies": {
     "@fontsource-variable/instrument-sans": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.3.0",
     "ffprobe-static": "^3.1.0",
     "react": "^19.2.8",
@@ -115,7 +116,9 @@
       "artifactName": "${productName}-Setup.${ext}"
     },
     "publish": {
-      "provider": "github"
+      "provider": "github",
+      "owner": "jain-eshan",
+      "repo": "cutroom"
     }
   }
 }

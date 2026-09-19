@@ -11,9 +11,12 @@ import { fileURLToPath } from "node:url";
 import ffmpegPath from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import electronUpdater from "electron-updater";
 import { ensureUv } from "../scripts/ensure-uv.mjs";
 import { createProcessingService } from "../scripts/processing-service.mjs";
 
+// electron-updater is CommonJS, so its named export comes off the default.
+const { autoUpdater } = electronUpdater;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
 const distDir = path.join(projectRoot, "dist");
@@ -130,14 +133,14 @@ function createWindow() {
 		...(process.platform === "darwin"
 			? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 14, y: 16 } }
 			: {}),
-		webPreferences: { preload: path.join(__dirname, "preload.mjs") },
+		webPreferences: { preload: path.join(__dirname, "preload.cjs") },
 	});
 	win.loadURL(`http://127.0.0.1:${FRONTEND_PORT}/`);
 }
 
-// The two things `electron/preload.mjs` bridges out to the renderer that
-// only the main process can do: pick where a render goes (dialog), and
-// reveal it once it's there (shell). See src/lib/electron.ts.
+// What `electron/preload.cjs` bridges out to the renderer that only the main
+// process can do: pick where a render goes (dialog), reveal it once it's
+// there (shell), and the update calls below. See src/lib/electron.ts.
 ipcMain.handle("choose-export-path", async (_event, defaultName) => {
 	const { canceled, filePath } = await dialog.showSaveDialog({
 		defaultPath: defaultName,
@@ -150,9 +153,49 @@ ipcMain.handle("show-item-in-folder", (_event, filePath) => {
 	shell.showItemInFolder(filePath);
 });
 
+// Updates. electron-updater reads latest.yml / latest-mac.yml from the newest
+// published (not draft) GitHub Release -- the release workflow already
+// attaches both.
+//
+// macOS only lets an app replace itself if it's signed with a paid Developer
+// ID, and ours is ad-hoc signed (scripts/afterSign.mjs), so on a Mac this
+// only says a new version exists and links to where to download it. Windows
+// has no such rule: it downloads quietly and installs when the app quits.
+// Once there's a Developer ID, drop CAN_SELF_INSTALL's platform check.
+const CAN_SELF_INSTALL = process.platform !== "darwin";
+const DOWNLOAD_PAGE = "https://github.com/jain-eshan/cutroom/releases/latest";
+// The last state, so a window opened (or reloaded) after it arrived still sees it.
+let updateState = null;
+
+function sendUpdate(state) {
+	updateState = state;
+	for (const win of BrowserWindow.getAllWindows()) win.webContents.send("update-state", state);
+}
+
+ipcMain.handle("get-update-state", () => updateState);
+ipcMain.handle("open-download-page", () => shell.openExternal(DOWNLOAD_PAGE));
+ipcMain.handle("restart-to-update", () => autoUpdater.quitAndInstall());
+
+function checkForUpdates() {
+	autoUpdater.autoDownload = CAN_SELF_INSTALL;
+	autoUpdater.autoInstallOnAppQuit = CAN_SELF_INSTALL;
+	autoUpdater.on("update-available", (info) => {
+		sendUpdate({ version: info.version, ready: false, canSelfInstall: CAN_SELF_INSTALL });
+	});
+	autoUpdater.on("update-downloaded", (info) => {
+		sendUpdate({ version: info.version, ready: true, canSelfInstall: true });
+	});
+	// Offline, GitHub down, rate-limited: none of it should reach the person
+	// editing. The next launch tries again.
+	autoUpdater.on("error", (err) => console.log(`Update check failed: ${err.message}`));
+	void autoUpdater.checkForUpdates().catch(() => {});
+}
+
 app.whenReady().then(async () => {
 	startFrontendServer();
 	createWindow();
+	// A dev run (`npm run electron`) has no release to compare itself with.
+	if (app.isPackaged) checkForUpdates();
 
 	// Best-effort: if this fails, service.start() below hits the same "uv
 	// isn't installed" error path it always has, which the setup screen

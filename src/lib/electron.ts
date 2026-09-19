@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
+
 /** `window.cutroom` only exists inside the desktop app (see
- * `electron/preload.mjs`) -- undefined in the plain browser dev server and
+ * `electron/preload.cjs`) -- undefined in the plain browser dev server and
  * the marketing site, where there is no local filesystem to read a
  * recording back from or write a render to. */
 declare global {
@@ -8,6 +10,9 @@ declare global {
 			getPathForFile: (file: File) => string;
 			chooseExportPath: (defaultName: string) => Promise<string | null>;
 			showItemInFolder: (path: string) => void;
+			onUpdate: (callback: (state: UpdateState) => void) => () => void;
+			openDownloadPage: () => void;
+			restartToUpdate: () => void;
 		};
 	}
 }
@@ -41,4 +46,28 @@ export function chooseExportPath(defaultName: string): Promise<string | null> {
 /** Reveals a finished render in the OS file browser. */
 export function showItemInFolder(path: string): void {
 	window.cutroom?.showItemInFolder(path);
+}
+
+/** A newer release than the one running, from electron/main.mjs's update
+ * check. `ready` means it's downloaded and installs on quit; that only
+ * happens where `canSelfInstall` (not on an unsigned Mac build). */
+export interface UpdateState {
+	version: string;
+	ready: boolean;
+	canSelfInstall: boolean;
+}
+
+/** The latest update state, or null -- always null outside the desktop app. */
+export function useUpdateState(): UpdateState | null {
+	const [state, setState] = useState<UpdateState | null>(null);
+	useEffect(() => window.cutroom?.onUpdate(setState), []);
+	return state;
+}
+
+export function openDownloadPage(): void {
+	window.cutroom?.openDownloadPage();
+}
+
+export function restartToUpdate(): void {
+	window.cutroom?.restartToUpdate();
 }
