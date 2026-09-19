@@ -8,10 +8,25 @@
 // arbitrary paths from the page itself. `chooseExportPath` and
 // `showItemInFolder` need the main process (`dialog` and `shell` don't
 // exist in a renderer/preload context), so they go over `ipcRenderer`.
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+//
+// CommonJS, not ESM: Electron runs preload scripts in a sandbox, and a
+// sandboxed preload can't use `import`. As preload.mjs it failed to load in
+// every packaged build, so `window.cutroom` never existed and the desktop
+// app quietly behaved like a browser tab.
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("cutroom", {
 	getPathForFile: (file) => webUtils.getPathForFile(file),
 	chooseExportPath: (defaultName) => ipcRenderer.invoke("choose-export-path", defaultName),
 	showItemInFolder: (path) => ipcRenderer.invoke("show-item-in-folder", path),
+	// Updates: the current state once, then every change. Returns an
+	// unsubscribe function.
+	onUpdate: (callback) => {
+		const listener = (_event, state) => callback(state);
+		ipcRenderer.on("update-state", listener);
+		void ipcRenderer.invoke("get-update-state").then((state) => state && callback(state));
+		return () => ipcRenderer.removeListener("update-state", listener);
+	},
+	openDownloadPage: () => ipcRenderer.invoke("open-download-page"),
+	restartToUpdate: () => ipcRenderer.invoke("restart-to-update"),
 });

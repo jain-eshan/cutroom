@@ -10,7 +10,7 @@
 import { useState } from "react";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { Logo } from "@/components/Logo";
-import { hasElectronBridge } from "@/lib/electron";
+import { hasElectronBridge, openDownloadPage, restartToUpdate, useUpdateState } from "@/lib/electron";
 import type { ThemeMode } from "@/lib/theme";
 
 type Variant = "primary" | "secondary" | "quiet" | "ghost" | "destructive" | "inert";
@@ -317,6 +317,35 @@ export function ScreenHeading({ title, children }: { title: string; children?: R
 	);
 }
 
+/** A newer Cutroom exists: says so, in one line, with the one thing to do
+ * about it. Quiet on purpose -- it shouldn't compete with the screen. */
+function UpdateNotice() {
+	const update = useUpdateState();
+	if (!update) return null;
+	const { version, ready, canSelfInstall } = update;
+	return (
+		<span className="flex items-center gap-[9px]">
+			<span className="text-fine leading-none text-text2">
+				{!canSelfInstall
+					? `Cutroom ${version} is out`
+					: ready
+						? `Cutroom ${version} installs when you quit`
+						: `Downloading Cutroom ${version}`}
+			</span>
+			{!canSelfInstall && (
+				<Button size="sm" variant="quiet" onClick={openDownloadPage}>
+					Download
+				</Button>
+			)}
+			{canSelfInstall && ready && (
+				<Button size="sm" variant="quiet" onClick={restartToUpdate}>
+					Restart now
+				</Button>
+			)}
+		</span>
+	);
+}
+
 /** macOS draws its own traffic lights in the desktop app (the window's title
  * bar is hidden, see electron/main.mjs), so the title bar leaves room for
  * them there and draws them only in a plain browser. */
@@ -365,6 +394,7 @@ export function AppWindow({
 					</span>
 				</span>
 				<span className="ml-auto flex items-center gap-[10px] [-webkit-app-region:no-drag]">
+					<UpdateNotice />
 					<ThemeSwitcher mode={themeMode} onChange={onThemeModeChange} />
 					{serviceOk !== undefined && (
 						<span

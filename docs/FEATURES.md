@@ -277,5 +277,6 @@ supports this without a rewrite — the frontend only ever talks to
 `localhost` over HTTP, so where that service actually runs doesn't change
 anything about how the frontend is built. Shipped: an Electron shell and
 `electron-builder` pipeline producing a real macOS `.dmg`/`.zip` (and a
-Windows `.exe` build in CI). Not signed/notarised yet. See
-[STATUS.md](STATUS.md).
+Windows `.exe` build in CI), which checks for updates from v0.3.0 on:
+automatic on Windows, a "new version" prompt on the Mac until the app is
+signed. Not signed/notarised yet. See [STATUS.md](STATUS.md).

@@ -829,6 +829,31 @@ the founder's call, to find testers and contributors early:
   of v0.2.0's bundle. `package.json` and `package-lock.json` only; no tag
   cut and no release published (see v0.2.0's entry above for what that
   involves) -- these three shipped as a normal merged PR, not a release.
+- **v0.3.0, prepared 2026-09-19, not yet tagged.** The design system pass
+  (every screen, dark by default) plus three desktop-app changes:
+  - **The app checks for updates.** `electron-updater` reads the
+    `latest.yml` / `latest-mac.yml` the release workflow already attaches,
+    once per launch, packaged builds only. Windows downloads quietly and
+    installs on quit ("Restart now" in the title bar). macOS only lets a
+    Developer ID-signed app replace itself, and ours is ad-hoc signed, so a
+    Mac only shows "Cutroom X is out" with a Download button that opens the
+    Releases page. Signing turns that into a real update
+    (`CAN_SELF_INSTALL` in `electron/main.mjs`). Anyone on 0.2.0 or older
+    has to download 0.3.0 by hand once, to get the version that checks.
+  - **`publish` names the repo** (`owner`/`repo` in `package.json`). Left
+    to infer it, electron-builder wrote an `app-update.yml` with no address
+    in it, so an update check would have had nowhere to look.
+  - **The preload bridge now actually loads.** `electron/preload.mjs` used
+    `import`, which Electron's sandboxed preloads can't run, so in every
+    packaged build so far `window.cutroom` never existed: reading the
+    recording in place (2026-09-17) and saving the render straight to a
+    folder fell back to the browser's upload and download without any
+    error. It's `preload.cjs` now. Found by running a packaged build and
+    reading its console; verified the same way afterwards.
+  - Verified: a packaged build posing as 0.1.9 found the live 0.2.0
+    release and showed "Cutroom 0.2.0 is out" with Download. Not yet
+    verified: the Windows download-and-install path, and read-in-place and
+    save-to-folder now that the bridge loads.
 
 ## Known limitations
 
