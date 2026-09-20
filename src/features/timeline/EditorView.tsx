@@ -8,6 +8,7 @@ import { TimelineTray } from "@/features/timeline/TimelineTray";
 import {
 	FRAMING_STYLE_LABELS,
 	LAYOUT_LABELS,
+	framingStyleRule,
 	MAX_CROP_NUDGE,
 	type FramingRegion,
 	type FramingStyle,
@@ -17,7 +18,7 @@ import {
 	addRegion,
 	orderBySeat,
 	otherSpeakerNear,
-	reconcileWithStyle,
+	applyStyleWithin,
 	regionAt,
 	resizeRegion,
 	resolveFraming,
@@ -572,14 +573,6 @@ export function EditorView({
 		[turns, overlapWindows, cast.speakerToPerson, faces.people, framingStyle],
 	);
 
-	// The style control's own change handler: unlike "Reset to suggested"
-	// (a deliberate full reset the editor explicitly asks for), switching
-	// style should never discard a shot the editor made -- see
-	// reconcileWithStyle's own comment for why this isn't just `edit(suggested)`.
-	function changeFramingStyle(style: FramingStyle) {
-		onFramingStyleChange(style);
-		edit(reconcileWithStyle(regions, turns, overlapWindows, cast.speakerToPerson, faces.people, style));
-	}
 	// Lines worth a second look: no face to frame, or talking over someone
 	// else. The transcript already marks these; this is the same test, kept
 	// as start times so the playhead can step between them in order.
@@ -595,6 +588,8 @@ export function EditorView({
 	);
 	const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
 	const [selectedTurn, setSelectedTurn] = useState<number | null>(null);
+	/** The far end of a Shift-clicked range; equal to `selectedTurn` for one line. */
+	const [selectedTurnEnd, setSelectedTurnEnd] = useState<number | null>(null);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [playing, setPlaying] = useState(false);
 	// server/jobs/ has no eviction policy (see STATUS.md's Known
@@ -845,11 +840,39 @@ export function EditorView({
 		if (video) video.currentTime = t;
 	}
 
-	function selectTurn(index: number) {
+	/** Click picks a line; Shift-click reaches back to the last one picked, so
+	 * a stretch of the conversation can be framed as a stretch. The transcript
+	 * is where a section *is* -- an introduction, a long answer, the bit where
+	 * everyone talks at once -- which is why the range is chosen here rather
+	 * than by dragging a span on the timeline. */
+	function selectTurn(index: number, extend = false) {
+		if (extend && selectedTurn !== null) {
+			setSelectedTurnEnd(index);
+			return;
+		}
 		setSelectedTurn(index);
+		setSelectedTurnEnd(index);
 		seek(turns[index].start);
 		const covering = regionAt(regions, turns[index].start + 0.01);
 		setSelectedRegionId(covering?.id ?? null);
+	}
+
+	/** The stretch the framing choice applies to: the selected lines, or the
+	 * whole episode when none are. "The whole episode" is not a separate mode,
+	 * just the stretch you get by default. */
+	const selectedSpan = useMemo(() => {
+		if (selectedTurn === null || selectedTurnEnd === null) return null;
+		const [a, b] = [Math.min(selectedTurn, selectedTurnEnd), Math.max(selectedTurn, selectedTurnEnd)];
+		if (!turns[a] || !turns[b]) return null;
+		return { from: a, to: b, start: turns[a].start, end: turns[b].end };
+	}, [selectedTurn, selectedTurnEnd, turns]);
+
+	/** Re-suggest a stretch (or the episode) under `style`. Shots made by hand
+	 * survive either way -- see `applyStyleWithin`. */
+	function frameAs(style: FramingStyle) {
+		onFramingStyleChange(style);
+		const span = selectedSpan ?? { start: 0, end: duration || Infinity };
+		edit(applyStyleWithin(regions, turns, overlapWindows, cast.speakerToPerson, faces.people, style, span));
 	}
 
 	function togglePlay() {
@@ -1180,6 +1203,7 @@ export function EditorView({
 							const overlap = overlapFor(overlapWindows, t.start, t.end);
 							const assigned = cast.speakerToPerson[t.speaker] ?? null;
 							const selected = i === selectedTurn;
+							const inRange = selectedSpan !== null && i >= selectedSpan.from && i <= selectedSpan.to;
 							const spoken = i === playingTurn;
 							const needsAttention = assigned === null;
 							// The left rail carries state: selection over overlap over a missing face.
@@ -1195,10 +1219,10 @@ export function EditorView({
 									type="button"
 									key={i}
 									ref={spoken ? playingRef : undefined}
-									onClick={() => selectTurn(i)}
+									onClick={(e) => selectTurn(i, e.shiftKey)}
 									className={`flex flex-col border-l-[3px] px-[17px] text-left ${rail} ${
 										selected ? "gap-[7px] bg-sel pt-3 pb-[13px]" : "gap-1 py-[10px]"
-									}`}
+									} ${inRange && !selected ? "bg-sel" : ""}`}
 								>
 									<span className="flex flex-wrap items-center gap-[7px]">
 										<span className={`h-[7px] w-[7px] shrink-0 rounded-full ${colourOfSpeaker(t.speaker)}`} />
@@ -1630,9 +1654,10 @@ export function EditorView({
 							onSetPeople={(personIds) => setRegionPeople(selectedRegion.id, personIds)}
 						/>
 					) : (
-						<span className="text-fine text-text3">
+						<span className="text-fine text-pretty text-text3">
 							Nothing yet. Pick a shot on the timeline to move its edges, or a line in the transcript to jump
-							there. Edges snap to the nearest word; hold Option to place one freely.
+							there. Edges snap to the nearest word; hold Option to place one freely. Shift-click a second
+							line to frame that whole stretch at once.
 						</span>
 					)}
 				</div>
@@ -1640,27 +1665,44 @@ export function EditorView({
 				<span className="w-px shrink-0 self-stretch bg-line" />
 
 				<div className="flex shrink-0 items-center gap-[9px]">
-					<SectionLabel>Episode</SectionLabel>
-					<label
-						className="relative inline-flex items-center gap-[5px] rounded-control border border-line bg-raised py-2 pr-6 pl-[11px] text-mono-sm leading-none font-medium text-text2 hover:bg-control"
-						title="How much automatic framing this episode gets. Wide only suggests nothing; Gentle cuts only for longer stretches; Dynamic uses every rule. A manual + Close-up or + Both on screen always works, and switching never touches a shot you made."
+					{/* One control, whatever it is pointed at. A style was a property
+					    of the episode, and it isn't one: an introduction, a long
+					    answer and the moment everyone talks at once want different
+					    framing. "Whole episode" is just what it applies to when no
+					    lines are picked. */}
+					<SectionLabel>Frame</SectionLabel>
+					<span
+						className="rounded-chip border border-line bg-raised px-[9px] py-[6px] font-mono text-mono-xs leading-none text-text2"
+						title={
+							selectedSpan
+								? "Shift-click another line in the transcript to stretch this, or click one line to shrink it."
+								: "Pick a line in the transcript, and Shift-click another, to frame just that stretch."
+						}
 					>
-						Framing:
-						<select
-							value={framingStyle}
-							onChange={(e) => changeFramingStyle(e.target.value as FramingStyle)}
-							className="appearance-none bg-transparent font-medium text-text2 outline-none"
-						>
-							{(Object.keys(FRAMING_STYLE_LABELS) as FramingStyle[]).map((style) => (
-								<option key={style} value={style}>
-									{FRAMING_STYLE_LABELS[style]}
-								</option>
-							))}
-						</select>
-						<span className="pointer-events-none absolute right-[10px] text-text3">
-							<Triangle direction="down" size={4} />
-						</span>
-					</label>
+						{/* Where, not just how much: "6 lines · 0:50" leaves you guessing
+						    which fifty seconds you are about to reframe. */}
+						{selectedSpan
+							? `${selectedSpan.to - selectedSpan.from + 1} ${
+									selectedSpan.to > selectedSpan.from ? "lines" : "line"
+								} · ${formatTime(selectedSpan.start)}–${formatTime(selectedSpan.end)}`
+							: "Whole episode"}
+					</span>
+					<span className="flex gap-[5px]">
+						{(Object.keys(FRAMING_STYLE_LABELS) as FramingStyle[]).map((style) => (
+							<Button
+								key={style}
+								size="sm"
+								// The last one applied stays marked, so the control says
+								// what the episode was last framed as without pretending
+								// to be a mode.
+								variant={style === framingStyle ? "secondary" : "quiet"}
+								onClick={() => frameAs(style)}
+								title={framingStyleRule(style)}
+							>
+								{FRAMING_STYLE_LABELS[style]}
+							</Button>
+						))}
+					</span>
 					<button
 						type="button"
 						role="checkbox"

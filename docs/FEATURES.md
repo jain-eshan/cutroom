@@ -26,6 +26,7 @@ design). For measured accuracy and performance numbers, see
 | 15 | [Multi-camera support](#15-multi-camera-support) | Not started |
 | 16 | [Desktop packaging](#16-desktop-packaging) | Shipped |
 | 17 | [Credits](#17-credits) | Shipped |
+| 18 | [Opt-in usage counts](#18-opt-in-usage-counts) | Shipped |
 | — | [Vary shot length](#vary-shot-length-deferred) | Deferred |
 
 ---
@@ -160,6 +161,28 @@ The timeline works like a video editor's, cut down to what a podcast needs:
 - Keyboard: Space, J (back 5 s), K, L (2×, 4×), the arrows, ↑/↓ between
   shots, Delete and Esc. The Shortcuts button lists them.
 
+Framing is chosen per stretch, not per episode. Pick a line in the transcript
+and Shift-click another, and the choice applies to those lines; with nothing
+picked it applies to the whole episode, which is simply the default stretch.
+An introduction, a long answer and the moment everyone talks at once want
+different treatment, and an editor should not have to pick one for 53
+minutes.
+
+The three choices are named for what they do, and the rule is the tooltip:
+
+| Choice | Rule |
+|---|---|
+| Stay wide | Everyone stays in frame. No close-ups suggested. |
+| Long answers | Cut to a close-up after someone has talked for 12 seconds. |
+| Most answers | Cut to a close-up after someone has talked for 4 seconds. |
+
+They were "Wide only", "Gentle" and "Dynamic". Those named a temperament
+rather than a result, so nothing about the edit could be checked against
+them -- and measured on the reference episode, Gentle and Dynamic barely
+differ (see STATUS.md). The thresholds now live beside the labels
+(`FRAMING_STYLE_MIN_LINE_S`) and the suggestions read the same numbers, so
+the interface cannot claim a rule the edit does not follow.
+
 The transcript can be corrected. Double-click a word to retype it; the
 timings never move, because the timings were not what was wrong. Where the
 same word was misheard elsewhere -- and it usually was, since transcription
@@ -200,9 +223,9 @@ drew a caption.
 
 Shipped: split at the playhead (`S`), waveforms on the speaker lanes and
 timeline thumbnails, stepping through the review flags (Tab/Shift+Tab), a
-shot inspector with exact start/end times and a crop nudge, a per-episode
-framing style (Wide only / Gentle / Dynamic) that governs how much automatic
-framing gets suggested -- switching it never touches a shot made by hand --
+shot inspector with exact start/end times and a crop nudge, a framing choice
+applied to a stretch or to the whole episode that governs how much automatic
+framing gets suggested -- applying it never touches a shot made by hand --
 and a who's-on-screen picker in the inspector: toggle chips for everyone the
 pipeline found on camera, so a shot isn't limited to the automatic pairing.
 See [STATUS.md](STATUS.md).
@@ -379,3 +402,30 @@ allowed rather than merely convenient.
 *Implementation:* `src/components/Credits.tsx`, opened from `AppWindow` in
 `src/components/ui.tsx`. Attribution rationale for the bundled weights is in
 `server/.models/diarization/NOTICE.md`.
+
+### 18. Opt-in usage counts
+
+Six anonymous counts — the app opened, the install finished, a recording
+started and finished or failed, an export finished — so the developer
+preview's biggest unknown becomes answerable: how many people get through a
+first-run install that fetches a Python service and several models, and how
+many ever reach a finished video.
+
+Off until someone says yes. The question is asked once, on the first launch
+and *before* the setup gate, because asking afterwards would only ever hear
+from the installs that worked. It can be changed back at any time from
+"usage data" in the title bar.
+
+The constraint that shapes it: Cutroom's argument is that nothing leaves the
+machine, so this is written as forty lines of `fetch` rather than an
+analytics SDK. Someone who distrusts an open-source tool that phones home can
+read one file and know what leaves; they cannot audit a dependency that also
+ships autocapture and session replay, whatever its settings say. Error text
+is deliberately excluded — a pipeline failure carries the path of the
+recording that caused it — so failures report only which stage they reached.
+
+*Implementation:* `src/lib/telemetry.ts` (the sender, and the `Event` union
+that is the complete list), `src/features/setup/TelemetryConsent.tsx` (the
+first-run card), `src/components/UsageData.tsx` (changing it later). Dormant
+without `VITE_POSTHOG_KEY`. Documented for users in
+[PRIVACY.md](../PRIVACY.md).

@@ -1,16 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-	addRegion,
-	orderBySeat,
-	reconcileWithStyle,
-	regionAt,
-	resizeRegion,
-	resolveFraming,
-	splitRegion,
-	suggestRegions,
-	wideGaps,
-} from "./regions.ts";
+import { MIN_REGION_S, addRegion, applyStyleWithin, orderBySeat, reconcileWithStyle, regionAt, resizeRegion, resolveFraming, splitRegion, suggestRegions, wideGaps } from "./regions.ts";
 import type { FramingRegion } from "./types.ts";
 import type { Person, Turn } from "../../lib/api.ts";
 
@@ -569,4 +559,77 @@ test("a both-on-screen shot goes wide when nobody named is actually visible any 
 	const people = [personSeenAt(0, 0, 0), personSeenAt(1, 100, 5)];
 	const framing = resolveFraming([region], people, 65);
 	assert.equal(framing.kind, "wide");
+});
+
+// --- Framing a stretch rather than the whole episode ---------------------
+
+// Three substantial turns, so every style has something to say about them:
+// long enough to earn a shot under `gentle`'s threshold as well as
+// `dynamic`'s, and close enough together not to fall wide between.
+const TURNS = [turn(0, 0, 20), turn(1, 21, 41), turn(2, 42, 62)];
+
+test("a stretch can be framed differently from the rest of the episode", () => {
+	// The whole point: an introduction and a long answer want different
+	// treatment, and an editor should not have to pick one for 53 minutes.
+	const dynamic = suggestRegions(TURNS, [], CAST, PEOPLE, "dynamic");
+	assert.ok(dynamic.length > 0, "fixture should suggest something under dynamic");
+
+	const span = { start: 0, end: TURNS[1].end };
+	const mixed = applyStyleWithin(dynamic, TURNS, [], CAST, PEOPLE, "wideOnly", span);
+
+	// Nothing suggested inside the stretch...
+	assert.deepEqual(
+		mixed.filter((r) => r.start < span.end - MIN_REGION_S),
+		[],
+	);
+	// ...and the rest of the episode is untouched.
+	assert.ok(mixed.some((r) => r.start >= span.end - MIN_REGION_S));
+});
+
+test("framing a stretch leaves shots made by hand alone, inside it and out", () => {
+	const mine = {
+		id: "mine",
+		start: TURNS[0].start,
+		end: TURNS[0].end,
+		layout: "zoom" as const,
+		personIds: [PEOPLE[0].id],
+		source: "user" as const,
+	};
+	const before = [...suggestRegions(TURNS, [], CAST, PEOPLE, "dynamic"), mine];
+	const after = applyStyleWithin(before, TURNS, [], CAST, PEOPLE, "wideOnly", {
+		start: 0,
+		end: TURNS[TURNS.length - 1].end,
+	});
+	// Wide-only over the whole episode, so the only thing left is the shot the
+	// editor placed. Changing how a stretch is framed says what to suggest,
+	// never what they already decided.
+	assert.deepEqual(
+		after.map((r) => r.id),
+		["mine"],
+	);
+});
+
+test("framing the whole episode is the same as framing every stretch of it", () => {
+	// "The whole episode" is not a separate mode; it is the stretch you get
+	// when nothing is selected.
+	const start = [...suggestRegions(TURNS, [], CAST, PEOPLE, "dynamic")];
+	const whole = { start: 0, end: TURNS[TURNS.length - 1].end + 1 };
+	const viaSpan = applyStyleWithin(start, TURNS, [], CAST, PEOPLE, "gentle", whole);
+	const viaStyle = reconcileWithStyle(start, TURNS, [], CAST, PEOPLE, "gentle");
+	assert.deepEqual(
+		viaSpan.map((r) => [r.start, r.end, r.layout, r.personIds]),
+		viaStyle.map((r) => [r.start, r.end, r.layout, r.personIds]),
+	);
+});
+
+test("a suggested shot straddling the edge of a stretch is cut at the edge", () => {
+	// Otherwise framing one stretch would silently reach into the next.
+	const dynamic = suggestRegions(TURNS, [], CAST, PEOPLE, "dynamic");
+	const longest = [...dynamic].sort((a, b) => b.end - b.start - (a.end - a.start))[0];
+	const cutAt = (longest.start + longest.end) / 2;
+	const after = applyStyleWithin(dynamic, TURNS, [], CAST, PEOPLE, "wideOnly", {
+		start: cutAt,
+		end: cutAt + 1000,
+	});
+	for (const region of after) assert.ok(region.end <= cutAt + MIN_REGION_S, `${region.start}-${region.end}`);
 });

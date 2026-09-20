@@ -32,7 +32,7 @@ export function UsageDataSheet({ id }: { id: string }) {
 
 			{/* The segmented control the theme switch uses, so it reads as the
 			    same kind of setting rather than something graver. */}
-			<div className="mt-[15px] flex gap-0.5 self-start rounded-card bg-raised p-[3px]">
+			<div className="mt-[15px] flex w-fit gap-0.5 rounded-card bg-raised p-[3px]">
 				{[
 					{ value: true, label: "On" },
 					{ value: false, label: "Off" },
