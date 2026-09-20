@@ -132,3 +132,64 @@ class TestDelete:
 
 	def test_deleting_a_job_that_never_existed_does_not_raise(self):
 		jobs.delete_job("nobody")
+
+
+class TestDiscardWav:
+	"""The extracted wav is ~115MB per hour of episode and nothing reads it
+	once the pipeline is done. Dropping it is the one piece of eviction this
+	store does, and it is safe precisely because the file is derived."""
+
+	def test_the_wav_goes_but_the_episode_stays(self):
+		jobs.wav_path("j").write_bytes(b"RIFF")
+		jobs.save_result("j", "ep1.mp4", {"ok": True})
+		jobs.save_waveform("j", [1.0])
+
+		jobs.discard_wav("j")
+
+		assert not (jobs.job_dir("j") / "audio.wav").exists()
+		# What the saved episode is actually made of has to survive.
+		assert jobs.load_result("j") == {"ok": True}
+		assert jobs.load_waveform("j") == [1.0]
+
+	def test_discarding_twice_does_not_raise(self):
+		jobs.wav_path("j").write_bytes(b"RIFF")
+		jobs.discard_wav("j")
+		jobs.discard_wav("j")
+
+	def test_discarding_after_the_job_was_deleted_does_not_recreate_it(self):
+		# _run_pipeline calls this from a `finally`, which also runs when
+		# DELETE /jobs/{id} cancelled the task -- by which point it has
+		# already removed the directory. Going through wav_path (which calls
+		# _ensure_dir) would put it back, resurrecting the job the delete was
+		# for. This is the regression that guards the non-creating path.
+		jobs.save_result("j", "ep1.mp4", {})
+		jobs.delete_job("j")
+
+		jobs.discard_wav("j")
+
+		assert not jobs.job_dir("j").exists()
+
+
+class TestSpaceCheck:
+	def test_no_problem_when_there_is_room(self, monkeypatch):
+		monkeypatch.setattr(jobs, "free_bytes", lambda: 10 * 1024**3)
+		assert jobs.space_problem(1024**3, "take this recording") is None
+
+	def test_the_margin_is_required_on_top_of_the_asked_for_size(self, monkeypatch):
+		# Exactly the requested size free is still a refusal: the wav, the
+		# thumbnails and the result files all land after the thing being
+		# measured, which is the whole reason for the margin.
+		monkeypatch.setattr(jobs, "free_bytes", lambda: 1024**3)
+		assert jobs.space_problem(1024**3, "take this recording") is not None
+
+	def test_the_message_names_both_numbers_and_what_failed(self, monkeypatch):
+		monkeypatch.setattr(jobs, "free_bytes", lambda: 2 * 1024**3)
+		problem = jobs.space_problem(5 * 1024**3, "render this episode")
+		assert "render this episode" in problem
+		assert "6.0GB" in problem and "2.0GB" in problem
+
+	def test_free_bytes_works_before_the_jobs_directory_exists(self, tmp_path, monkeypatch):
+		# First run on a fresh machine: neither jobs/ nor the data directory
+		# is there yet, and shutil.disk_usage needs a path that exists.
+		monkeypatch.setattr(jobs, "JOBS_DIR", tmp_path / "not" / "created" / "yet")
+		assert jobs.free_bytes() > 0

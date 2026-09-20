@@ -206,6 +206,13 @@ render rather than failing 15 minutes into one.
 parameter — forcing one was measured to invent speakers (see STATUS.md), so
 nothing downstream accepts it any more.
 
+Refused with a **507** when the disk can't hold the upload, by the
+`RefuseUploadsThatWontFit` middleware rather than by this endpoint: FastAPI
+resolves `file: UploadFile` before calling the path function, so a check
+inside it would run only after Starlette had already spooled the whole body
+to a temp file. `/process/local` and `/export` check the same way in their
+own bodies, where there's no body to spool first.
+
 Internally, transcription+diarization and face detection run concurrently in
 threads (OpenCV and CTranslate2 both release the GIL, so they genuinely
 overlap: 13s vs 16s sequential on a 60s clip); lip-sync/voice matching runs
@@ -511,6 +518,11 @@ server/
 │   ├── trim.py                   # dead-air/filler-word ranges to cut, and caption remapping
 │   │                              # for a trimmed timeline
 │   ├── progress.py               # in-memory per-job stage progress, polled by the UI
+│   ├── jobs.py                   # the on-disk job store under jobs/{id}/: the input, the
+│   │                              # result, the waveform and thumbnails -- what lets a job
+│   │                              # outlive its request and an episode reopen without
+│   │                              # reprocessing. Also the free-space check the endpoints
+│   │                              # refuse on, and the one thing evicted (the extracted wav)
 │   └── render.py                 # /export's render pipeline: segment construction,
 │                                  # bust-shot/composite crop math, caption burn-in,
 │                                  # dead-air/filler cutting, ffmpeg orchestration
@@ -828,9 +840,14 @@ truth kept current as the pipeline changes — the list below matches it:
   the same video reruns detection from scratch; there's no caching or
   project-file concept yet (Recordly-style `.recordly` project persistence
   was noted as a nice-to-have, not built).
-- **No pre-flight disk-space check for large exports** — a multi-GB upload
-  plus its extracted audio plus a same-or-larger rendered output can
-  transiently need significant temp disk space. Not guarded against.
+- **Disk space is checked, but against a fixed margin.** `/process`,
+  `/process/local` and `/export` refuse with a 507 rather than filling the
+  disk partway through. The part each request can measure is exact — an
+  upload's `Content-Length`, a recording's size on disk — but the extracted
+  audio, the thumbnails and any overshoot on the render share one 1GB
+  margin (`jobs.SPACE_MARGIN_BYTES`) instead of being worked out per
+  episode. A recording long enough to need more wav than that would still
+  get through; at ~115MB/hour that is about a nine-hour episode.
 - **macOS only so far.** Nothing is knowingly platform-specific, but nothing
   else has been tried.
 

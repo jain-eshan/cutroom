@@ -1092,6 +1092,48 @@ the founder's call, to find testers and contributors early:
   - The `make_latest` finding above is now written down in `release.yml`
     next to the `verify` job, since publishing the draft stays manual.
 
+- **Disk safety for long episodes, 2026-09-20.** Two of the known
+  limitations below, both of which bite hardest on exactly the multi-GB,
+  hour-long recording this project is built for, and neither of which had
+  been touched.
+  - **Nothing checked for free space.** A full disk surfaced as an `OSError`
+    mid-write, with a part-written input left behind, or as a render dying
+    at minute twelve of fifteen. `/process`, `/process/local` and `/export`
+    now refuse up front with a **507** naming what it needs and what's free.
+    Each caller passes a size it actually knows -- an upload's
+    `Content-Length`, a recording's size on disk -- rather than a guess
+    scaled off one; the only estimated part is a 1GB margin covering the
+    wav, the thumbnails and the render's own overshoot.
+  - **The upload check had to be middleware, not an endpoint check.**
+    Written first inside `process_endpoint`, where it was useless: FastAPI
+    resolves `file: UploadFile` *before* calling the path function, so
+    Starlette had already spooled the whole body to a temp file by the time
+    any line of the endpoint ran -- 5GB written in the course of trying not
+    to write 5GB. Caught by testing it rather than assuming. It's an ASGI
+    middleware now, alongside `ReportUnexpectedErrors`, and the test proves
+    the ordering: a body that can't be parsed as multipart still comes back
+    507 rather than 422, which it only can if nothing tried to read it.
+  - **`server/jobs/` now drops the extracted wav.** 16kHz mono PCM, about
+    115MB per hour of episode, and nothing reads it once the pipeline ends
+    -- `/export` renders from the original recording and cuts dead air from
+    word timings, and the timeline's waveform was already reduced to peaks
+    and saved. It goes in `_run_pipeline`'s `finally`, so the paths that
+    return early don't strand it. Deliberately the *only* eviction here:
+    saved episodes are the user's own recordings and edits, the upload
+    screen already has a per-episode Delete with a confirm, and a tool that
+    quietly deletes someone's work to reclaim space is a worse bug than the
+    one being fixed.
+  - Verified beyond the suite passing: neutering `discard_wav` and re-running
+    the pipeline leaves the wav behind, so that test fails against the
+    pre-fix code rather than passing vacuously; `space_problem` refuses a
+    10TB ask and passes a 1GB one against this machine's real free space.
+    226 backend tests (was 211), 89 frontend, `tsc`, `oxlint` and the build
+    clean.
+  - Not done: the per-episode disk cost is still unbounded in aggregate --
+    nothing removes old episodes, by design. If that becomes a real problem
+    the answer is showing what they cost and making the existing Delete easy
+    to find, not automatic eviction.
+
 ## Known limitations
 
 - **Zooming into a wide shot is inherently soft.** Framing now matches
@@ -1137,8 +1179,13 @@ the founder's call, to find testers and contributors early:
   episode length. On the 53-minute episode that separates the four
   participants (>99% of frames) from the six junk clusters (<0.4%) with three
   orders of magnitude to spare.
-- **No pre-flight disk-space check.** A multi-GB upload plus extracted audio
-  plus a same-or-larger render can transiently need a lot of temp space.
+- ~~**No pre-flight disk-space check.**~~ Added 2026-09-20: `/process`,
+  `/process/local` and `/export` each refuse with a 507 naming both numbers
+  when the space they need isn't free. What's still true is that the need is
+  only *mostly* known in advance — an upload's `Content-Length` and a
+  recording's size on disk are exact, but the wav, the thumbnails and the
+  render's own overshoot sit inside a fixed 1GB margin rather than being
+  computed per episode.
 - **macOS only so far.** Nothing is knowingly platform-specific, but nothing
   else has been tried.
 
