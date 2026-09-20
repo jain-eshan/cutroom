@@ -21,6 +21,7 @@ from pipeline.render import (
 	RenderSegment,
 	Track,
 	_progress_fraction,
+	_segment_filter,
 	_segments_are_contiguous,
 	_source_audio_codec,
 	build_render_segments,
@@ -438,3 +439,53 @@ class TestSourceAudioCodec:
 		monkeypatch.setattr(subprocess, "run", fake_run)
 		assert _source_audio_codec(tmp_path / "clip.mp4") == "aac"
 		assert seen["timeout"] is not None
+
+
+class TestSegmentFilterPanes:
+	"""The pane each person is rendered into, asserted through the filter
+	graph `_segment_filter` builds.
+
+	`exportPanes` in src/lib/faceCrop.ts is a port of this arithmetic, used by
+	the live preview so that what an editor frames is what ffmpeg renders. The
+	same literal sizes are asserted in src/lib/faceCrop.test.ts, so a change
+	to either side without the other fails a test on that side."""
+
+	@staticmethod
+	def _filter(count: int, frame_w: int = 1920, frame_h: int = 1080) -> str:
+		bbox = BBox(x=900, y=400, width=80, height=110)
+		seg = RenderSegment(
+			start=0.0,
+			end=1.0,
+			layout="split" if count > 1 else "zoom",
+			speaker_bboxes=[(i, bbox) for i in range(count)],
+		)
+		return _segment_filter(0, seg, frame_w, frame_h)
+
+	def test_one_person_renders_into_the_whole_frame(self):
+		assert "scale=1920:1080" in self._filter(1)
+
+	def test_two_people_split_the_frame_into_equal_columns(self):
+		graph = self._filter(2)
+		assert graph.count("scale=960:1080") == 2
+		assert "hstack=inputs=2" in graph
+
+	def test_three_people_get_the_speaker_focus_layout(self):
+		graph = self._filter(3)
+		# side_w = 1920 - int(1920 * 0.68) = 615; side_h = 1080 // 2 = 540;
+		# column_h = 540 * 2 = 1080; main_w = 1920 - 615 = 1305.
+		assert "scale=1305:1080" in graph
+		assert graph.count("scale=615:540") == 2
+		assert "vstack=inputs=2" in graph
+
+	def test_four_people_stack_three_down_the_side(self):
+		graph = self._filter(4)
+		assert "scale=1305:1080" in graph
+		assert graph.count("scale=615:360") == 3
+		assert "vstack=inputs=3" in graph
+
+	def test_a_frame_height_that_does_not_divide_evenly_still_stacks_exactly(self):
+		# 1079 // 3 = 359, so the side column is 1077 tall and the main pane
+		# has to match it -- hstack refuses two inputs of different heights.
+		graph = self._filter(4, frame_h=1079)
+		assert "scale=1305:1077" in graph
+		assert graph.count("scale=615:359") == 3
