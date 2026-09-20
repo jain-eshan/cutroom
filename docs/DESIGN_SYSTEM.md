@@ -83,6 +83,24 @@ Where this differs from `Screens Corrected`, on purpose:
   three people on camera, because it keeps the editable start/end times.
   The Episode group never wraps into it.
 
+## Exception: the landing page's illustrated demo
+
+The design system says "no illustrations", and the marketing site's demo
+video is meant to be real footage. There is no real footage yet, so the
+landing page keeps one illustration: the animated podcast set in
+`site/src/Scene.tsx`, in the hero and in "It cuts to whoever's talking".
+
+The move onto the site kit (2026-09-19) removed it, following the rule, and
+left two empty striped boxes on the public page. On 2026-09-20 the founder
+chose to put it back until real footage exists. Only the artwork is
+off-system; the frames around it use the tokens. The page labels it as an
+illustration. It is removed the day a clip everyone in it has agreed to
+publish exists. The recipe and the checklist for removing it are in
+[site/README.md](../site/README.md), "The hero demo".
+
+This is the founder's waiver, not a change to the rule: elsewhere in the
+product and the site the rule stands.
+
 ## What's implemented (Foundation phase)
 
 - **Token layer** — `src/index.css`'s `@theme` block. Every semantic color
