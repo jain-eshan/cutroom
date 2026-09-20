@@ -1091,6 +1091,16 @@ the founder's call, to find testers and contributors early:
     wrong.
   - The `make_latest` finding above is now written down in `release.yml`
     next to the `verify` job, since publishing the draft stays manual.
+- **v0.3.2, 2026-09-20.** Minor in substance, patch in number: the first
+  build anyone can install and use without a Hugging Face account, plus the
+  credits sheet that attribution requires, plus the fix above. Nothing in it
+  is new since the two entries above -- this is the release that carries
+  them, cut so the first long-episode test runs on a build without the
+  account step rather than on v0.3.0, which still has the Intel `ffprobe`.
+  - **The first tag on the draft-first workflow.** The entry above could
+    not verify that a real `--publish always` takes the find branch against
+    a pre-created draft; this tag is that test, and the `verify` job is what
+    says whether it held.
 
 ## Known limitations
 
