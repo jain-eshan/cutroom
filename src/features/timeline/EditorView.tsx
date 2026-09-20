@@ -2,10 +2,13 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { getProgress, getWaveform, timelineThumbnailUrl, type BBox, type DetectFacesResponse, type Health, type OverlapWindow, type Person, type Turn, type Word } from "@/lib/api";
 import type { CastResult } from "@/features/faces/CastScreen";
 import { DUO_SPLIT_MAX, exportPanes, fitBox, personCrop } from "@/lib/faceCrop";
+import { buildCaptionCues, cueAt } from "@/lib/captions";
+import { occurrencesOf, recased, wordAt, wordRoot, wordSlice } from "@/lib/transcript";
 import { TimelineTray } from "@/features/timeline/TimelineTray";
 import {
 	FRAMING_STYLE_LABELS,
 	LAYOUT_LABELS,
+	framingStyleRule,
 	MAX_CROP_NUDGE,
 	type FramingRegion,
 	type FramingStyle,
@@ -16,7 +19,7 @@ import {
 	framesSomeoneElse,
 	orderBySeat,
 	otherSpeakerNear,
-	reconcileWithStyle,
+	applyStyleWithin,
 	regionAt,
 	resizeRegion,
 	resolveFraming,
@@ -34,8 +37,10 @@ import {
 } from "@/features/timeline/timelineView";
 import { Button, CheckMark, PlayButton, SectionLabel, Triangle } from "@/components/ui";
 
-// Pane cap is 3 -- see docs/design/handoff README, speaker colour tokens.
-const SPEAKER_DOT = ["bg-s1", "bg-s2", "bg-s3"];
+// One per person, not per pane: the handoff's palette stops at three because
+// that is the composite pane cap, but these identify who is speaking, and a
+// four-person show has four. See `--color-s4` in src/index.css.
+const SPEAKER_DOT = ["bg-s1", "bg-s2", "bg-s3", "bg-s4"];
 
 /** Enough to take a real slip back, not so much it holds every drag frame forever. */
 const HISTORY_LIMIT = 200;
@@ -172,6 +177,127 @@ function CroppedVideo({
 				</span>
 			)}
 		</div>
+	);
+}
+
+/**
+ * The line being spoken, word by word, with the current one lit.
+ *
+ * Only this line is split into words. The reference episode has 8,824 of
+ * them, and a span each would put the whole transcript's worth in the DOM to
+ * light up one; every other line stays a single text node.
+ *
+ * The words are the transcript's own, so on the rare line where a word
+ * straddles a turn boundary this shows the word-joined text rather than
+ * `turn.text`. Measured on the reference episode: 38 of 40 lines are
+ * identical either way, and where they differ the words are the more
+ * accurate answer, since the turn's text is assembled from them.
+ *
+ * Plain spans rather than buttons: this sits inside the line's own button,
+ * and a button inside a button is invalid. The line stays keyboard-reachable;
+ * seeking to an individual word is a pointer shortcut on top of that, not the
+ * only way to get there -- the arrows and ↑/↓ already move the playhead.
+ */
+function SpokenLine({
+	turn,
+	words,
+	at,
+	onSeek,
+	onCorrect,
+}: {
+	turn: Turn;
+	words: Word[];
+	/** The playhead, from `timeupdate`, which browsers fire about four times a
+	 * second. Measured over nine seconds of the reference episode: 15 of the
+	 * 20 words spoken were lit, so the highlight follows the line and steps
+	 * over the occasional short word.
+	 *
+	 * A `requestAnimationFrame` loop reading `video.currentTime` is the
+	 * obvious way to close that gap and measurably made it worse -- 7 words
+	 * of the same 20. The editor manages about 4fps while playing a cropped
+	 * shot (21 frames in 9s, 95th-percentile frame gap 1.0s), because that
+	 * decodes a second 1080p stream of the same recording alongside the
+	 * first. Asking for frames that aren't coming, and re-rendering to ask,
+	 * only took time from the thread that owed them. The cadence here is a
+	 * symptom of that; see docs/STATUS.md. */
+	at: number;
+	onSeek: (t: number) => void;
+	/** Correct this word, and optionally every other word that reads the
+	 * same. `null` for `at` means this line is shown for editing rather than
+	 * because it is being spoken, so nothing is lit. */
+	onCorrect: (index: number, text: string) => void;
+}) {
+	const [editing, setEditing] = useState<number | null>(null);
+	const [draft, setDraft] = useState("");
+	const [from, to] = useMemo(() => wordSlice(words, turn.start, turn.end), [words, turn.start, turn.end]);
+	// Bounded to this line, so where two people overlap a line never lights up
+	// a word from the other one's.
+	const current = wordAt(words, at, from, to);
+	if (from >= to) return turn.text;
+
+	return (
+		<>
+			{words.slice(from, to).map((word, i) => {
+				const index = from + i;
+				if (index === editing) {
+					const commit = () => {
+						const text = draft.trim();
+						if (text && text !== word.text.trim()) onCorrect(index, text);
+						setEditing(null);
+					};
+					return (
+						<Fragment key={index}>
+							{i > 0 && " "}
+							<input
+								// eslint-disable-next-line jsx-a11y/no-autofocus -- opened by
+								// a double-click on this exact word; focusing anything else
+								// would be the wrong answer.
+								autoFocus
+								value={draft}
+								size={Math.max(4, draft.length)}
+								onClick={(e) => e.stopPropagation()}
+								onChange={(e) => setDraft(e.target.value)}
+								onBlur={commit}
+								onKeyDown={(e) => {
+									e.stopPropagation();
+									if (e.key === "Enter") commit();
+									if (e.key === "Escape") setEditing(null);
+								}}
+								title="Enter to save, Escape to cancel"
+								className="rounded-[3px] bg-well px-1 text-accent-text outline-none"
+							/>
+						</Fragment>
+					);
+				}
+				return (
+					<Fragment key={index}>
+						{i > 0 && " "}
+						<span
+							onClick={(e) => {
+								// The line's own click would seek to its start, which is
+								// the opposite of asking for this word.
+								e.stopPropagation();
+								onSeek(word.start);
+							}}
+							onDoubleClick={(e) => {
+								e.stopPropagation();
+								setDraft(word.text.trim());
+								setEditing(index);
+							}}
+							title="Double-click to correct this word"
+							// The wash alone is 9% accent, which is right for a drop zone
+							// and too quiet for the one word you are meant to be reading.
+							// Accent ink carries it; both tokens already exist.
+							className={`cursor-text rounded-[3px] ${
+								index === current ? "bg-accent-wash font-medium text-accent-text" : ""
+							}`}
+						>
+							{word.text.trim()}
+						</span>
+					</Fragment>
+				);
+			})}
+		</>
 	);
 }
 
@@ -382,10 +508,13 @@ export function EditorView({
 	overlapWindows,
 	faces,
 	cast,
+	onCastChange,
+	onWordEditsChange,
 	health,
 	regions,
 	onRegionsChange,
 	captionsEnabled,
+	onCaptionsChange,
 	missingRecording,
 	onRelink,
 	trimDeadAirEnabled,
@@ -408,12 +537,20 @@ export function EditorView({
 	overlapWindows: OverlapWindow[];
 	faces: DetectFacesResponse;
 	cast: CastResult;
+	/** Rename a person after the cast screen. Names reach the transcript, the
+	 * lane labels, the shot chips and the export's decision log, and until
+	 * this existed a name set once could never be corrected. */
+	onCastChange: (cast: CastResult) => void;
+	/** Merged into the corrections already recorded. A `null` replacement
+	 * removes that word's correction, putting the original back. */
+	onWordEditsChange: (edits: Record<number, string | null>) => void;
 	health: Health | null;
 	/** Owned by App, so a trip to the publish screen and back keeps them. */
 	regions: FramingRegion[];
 	onRegionsChange: React.Dispatch<React.SetStateAction<FramingRegion[]>>;
 	/** Shown here; chosen on the publish screen. */
 	captionsEnabled: boolean;
+	onCaptionsChange: (on: boolean) => void;
 	/** Where the recording was when this project was saved, when it isn't
 	 * there now. Shown so the file being asked for is named, not guessed at. */
 	missingRecording?: string | null;
@@ -437,14 +574,6 @@ export function EditorView({
 		[turns, overlapWindows, cast.speakerToPerson, faces.people, framingStyle],
 	);
 
-	// The style control's own change handler: unlike "Reset to suggested"
-	// (a deliberate full reset the editor explicitly asks for), switching
-	// style should never discard a shot the editor made -- see
-	// reconcileWithStyle's own comment for why this isn't just `edit(suggested)`.
-	function changeFramingStyle(style: FramingStyle) {
-		onFramingStyleChange(style);
-		edit(reconcileWithStyle(regions, turns, overlapWindows, cast.speakerToPerson, faces.people, style));
-	}
 	// Lines worth a second look: no face to frame, or talking over someone
 	// else. The transcript already marks these; this is the same test, kept
 	// as start times so the playhead can step between them in order.
@@ -460,6 +589,8 @@ export function EditorView({
 	);
 	const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
 	const [selectedTurn, setSelectedTurn] = useState<number | null>(null);
+	/** The far end of a Shift-clicked range; equal to `selectedTurn` for one line. */
+	const [selectedTurnEnd, setSelectedTurnEnd] = useState<number | null>(null);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [playing, setPlaying] = useState(false);
 	// server/jobs/ has no eviction policy (see STATUS.md's Known
@@ -481,6 +612,28 @@ export function EditorView({
 	// null while the whole episode is on screen, so the timeline keeps fitting
 	// when the file's real length arrives.
 	const [zoomed, setZoomed] = useState<TimeSpan | null>(null);
+	const [showSpeakerLanes, setShowSpeakerLanes] = useState(true);
+	const [explainTrim, setExplainTrim] = useState(false);
+	/** A correction that turned out to be repeated, and whether the offer to
+	 * fix the rest has been taken. */
+	const [alsoSeen, setAlsoSeen] = useState<{ was: string; now: string; others: number[]; applied?: boolean } | null>(
+		null,
+	);
+	// Built once per episode, not per frame: 8,824 words on the reference
+	// recording, and this runs against every `timeupdate`.
+	const captionCues = useMemo(() => buildCaptionCues(words), [words]);
+	/** The line being spoken now. Distinct from `targetTurnIndex`, which
+	 * prefers the selection: that is what "+ Close-up" should act on, but not
+	 * what the transcript should be following. */
+	const playingTurn = turns.findIndex((t) => t.start <= currentTime && currentTime < t.end);
+	const playingRef = useRef<HTMLButtonElement>(null);
+
+	// Keep the spoken line on screen. `block: "nearest"` only scrolls when it
+	// has gone out of view, so reading ahead isn't yanked back on every line,
+	// and it fires on the line changing rather than on every timeupdate.
+	useEffect(() => {
+		playingRef.current?.scrollIntoView({ block: "nearest" });
+	}, [playingTurn]);
 	const view = zoomed ?? { start: 0, end: duration };
 	// Undo covers framing edits. It lives with the editor, so it starts fresh
 	// after a trip to the publish screen.
@@ -563,10 +716,115 @@ export function EditorView({
 
 	/** Who spoke a turn: their face's name, or failing that whatever the
 	 * editor called a voice we never saw on camera. */
-	function speakerName(turn: Turn): string {
-		const personId = cast.speakerToPerson[turn.speaker];
+	/** The colour that stands for whoever this voice belongs to.
+	 *
+	 * Keyed to the person, not the voice. Diarisation routinely splits one
+	 * person into several voices -- the reference episode is six voices for
+	 * four people -- so colouring by voice gave the same human two colours in
+	 * the timeline and two dot colours in the transcript, which reads as two
+	 * different people. Falls back to the voice's own id only for a voice no
+	 * face was ever matched to, where there is no person to key on. */
+	function colourOfSpeaker(speaker: number): string {
+		const personId = cast.speakerToPerson[speaker];
+		const seat = personId === undefined ? -1 : faces.people.findIndex((p) => p.id === personId);
+		const index = seat >= 0 ? seat : faces.people.length + speaker;
+		return SPEAKER_DOT[index % SPEAKER_DOT.length];
+	}
+
+	/**
+	 * One lane per person, not per voice.
+	 *
+	 * The same split that gave one person two colours also gave them two
+	 * lanes, labelled with the same name twice -- on the reference episode,
+	 * "Person 1" and "Person 2" each appeared twice in a list of six. A voice
+	 * is a thing the pipeline found; a person is what an editor is looking
+	 * for, and the lanes are read as "who is talking". A voice no face was
+	 * matched to keeps its own lane, because there is no person to fold it
+	 * into.
+	 */
+	/** Record a transcription correction, optionally everywhere the same word
+	 * was heard. Corrections live beside the edit rather than in the words, so
+	 * the pipeline's own output is never rewritten and the original is always
+	 * recoverable -- and so an autosave carries a handful of replacements
+	 * instead of the whole transcript. */
+	/**
+	 * Correct one word, then offer the rest.
+	 *
+	 * Offering rather than doing: the same sound is not always the same word,
+	 * and a bulk rewrite nobody asked for is the kind of thing found weeks
+	 * later. Offering rather than a shortcut, because the first version put
+	 * this on Shift-Enter and a keystroke named only in a tooltip may as well
+	 * not exist -- the same way the zoom controls and the captions toggle
+	 * didn't.
+	 */
+	function correctWord(index: number, text: string) {
+		// Taken exactly as typed: you could see its punctuation in the box.
+		onWordEditsChange({ [index]: text });
+		const others = occurrencesOf(words, words[index].text).filter((i) => i !== index);
+		setAlsoSeen(others.length > 0 ? { was: wordRoot(words[index].text), now: text, others } : null);
+	}
+
+	/** Apply the offer, remembering what to put back if it was wrong. */
+	function correctEverywhere() {
+		if (!alsoSeen) return;
+		// Each occurrence keeps its own punctuation, possessive and case:
+		// "Pacto's" becomes "Practo's", "PACTO." becomes "PRACTO.".
+		onWordEditsChange(Object.fromEntries(alsoSeen.others.map((i) => [i, recased(words[i].text, alsoSeen.now)])));
+		setAlsoSeen({ ...alsoSeen, applied: true });
+	}
+
+	function undoEverywhere() {
+		if (!alsoSeen?.applied) return;
+		// Back to whatever each of them said before, which for a word nobody
+		// had touched is its original -- `undefined` clears the correction.
+		onWordEditsChange(Object.fromEntries(alsoSeen.others.map((i) => [i, null])));
+		setAlsoSeen(null);
+	}
+
+	const speakerLanes = useMemo(() => {
+		const voices = [...new Set(turns.map((t) => t.speaker))].sort((a, b) => a - b);
+		const byPerson = new Map<number, number[]>();
+		const unmatched: number[] = [];
+		for (const voice of voices) {
+			const personId = cast.speakerToPerson[voice];
+			if (personId === undefined) unmatched.push(voice);
+			else byPerson.set(personId, [...(byPerson.get(personId) ?? []), voice]);
+		}
+		// `nameOf`/`nameOfSpeaker`/`colourOfSpeaker` say the same things, but
+		// they are rebuilt every render, so depending on them would defeat this
+		// memo -- and listing them would hide what it actually depends on,
+		// which is `cast` and the people. Same rules, read straight from those.
+		const people = faces.people;
+		const colourFor = (personId: number | null, voice: number) => {
+			const seat = personId === null ? -1 : people.findIndex((p) => p.id === personId);
+			return SPEAKER_DOT[(seat >= 0 ? seat : people.length + voice) % SPEAKER_DOT.length];
+		};
+		return [
+			...orderBySeat([...byPerson.keys()], people).map((personId) => ({
+				key: `person-${personId}`,
+				personId,
+				name: cast.names[personId] || `Person ${personId + 1}`,
+				colour: colourFor(personId, byPerson.get(personId)![0]),
+				voices: byPerson.get(personId)!,
+			})),
+			...unmatched.map((voice) => ({
+				key: `voice-${voice}`,
+				personId: null,
+				name: cast.voiceNames[voice] || "Nobody",
+				colour: colourFor(null, voice),
+				voices: [voice],
+			})),
+		];
+	}, [turns, cast, faces.people]);
+
+	function nameOfSpeaker(speaker: number): string {
+		const personId = cast.speakerToPerson[speaker];
 		if (personId !== undefined) return nameOf(personId);
-		return cast.voiceNames[turn.speaker] || "Nobody";
+		return cast.voiceNames[speaker] || "Nobody";
+	}
+
+	function speakerName(turn: Turn): string {
+		return nameOfSpeaker(turn.speaker);
 	}
 
 	/** Page the timeline so `t` is on screen, if it's zoomed in. Called wherever
@@ -583,11 +841,39 @@ export function EditorView({
 		if (video) video.currentTime = t;
 	}
 
-	function selectTurn(index: number) {
+	/** Click picks a line; Shift-click reaches back to the last one picked, so
+	 * a stretch of the conversation can be framed as a stretch. The transcript
+	 * is where a section *is* -- an introduction, a long answer, the bit where
+	 * everyone talks at once -- which is why the range is chosen here rather
+	 * than by dragging a span on the timeline. */
+	function selectTurn(index: number, extend = false) {
+		if (extend && selectedTurn !== null) {
+			setSelectedTurnEnd(index);
+			return;
+		}
 		setSelectedTurn(index);
+		setSelectedTurnEnd(index);
 		seek(turns[index].start);
 		const covering = regionAt(regions, turns[index].start + 0.01);
 		setSelectedRegionId(covering?.id ?? null);
+	}
+
+	/** The stretch the framing choice applies to: the selected lines, or the
+	 * whole episode when none are. "The whole episode" is not a separate mode,
+	 * just the stretch you get by default. */
+	const selectedSpan = useMemo(() => {
+		if (selectedTurn === null || selectedTurnEnd === null) return null;
+		const [a, b] = [Math.min(selectedTurn, selectedTurnEnd), Math.max(selectedTurn, selectedTurnEnd)];
+		if (!turns[a] || !turns[b]) return null;
+		return { from: a, to: b, start: turns[a].start, end: turns[b].end };
+	}, [selectedTurn, selectedTurnEnd, turns]);
+
+	/** Re-suggest a stretch (or the episode) under `style`. Shots made by hand
+	 * survive either way -- see `applyStyleWithin`. */
+	function frameAs(style: FramingStyle) {
+		onFramingStyleChange(style);
+		const span = selectedSpan ?? { start: 0, end: duration || Infinity };
+		edit(applyStyleWithin(regions, turns, overlapWindows, cast.speakerToPerson, faces.people, style, span));
 	}
 
 	function togglePlay() {
@@ -921,6 +1207,8 @@ export function EditorView({
 							const overlap = overlapFor(overlapWindows, t.start, t.end);
 							const assigned = cast.speakerToPerson[t.speaker] ?? null;
 							const selected = i === selectedTurn;
+							const inRange = selectedSpan !== null && i >= selectedSpan.from && i <= selectedSpan.to;
+							const spoken = i === playingTurn;
 							const needsAttention = assigned === null;
 							// The left rail carries state: selection over overlap over a missing face.
 							const rail = selected
@@ -934,13 +1222,14 @@ export function EditorView({
 								<button
 									type="button"
 									key={i}
-									onClick={() => selectTurn(i)}
+									ref={spoken ? playingRef : undefined}
+									onClick={(e) => selectTurn(i, e.shiftKey)}
 									className={`flex flex-col border-l-[3px] px-[17px] text-left ${rail} ${
 										selected ? "gap-[7px] bg-sel pt-3 pb-[13px]" : "gap-1 py-[10px]"
-									}`}
+									} ${inRange && !selected ? "bg-sel" : ""}`}
 								>
 									<span className="flex flex-wrap items-center gap-[7px]">
-										<span className={`h-[7px] w-[7px] shrink-0 rounded-full ${SPEAKER_DOT[t.speaker % SPEAKER_DOT.length]}`} />
+										<span className={`h-[7px] w-[7px] shrink-0 rounded-full ${colourOfSpeaker(t.speaker)}`} />
 										<span className={`text-meta leading-none font-semibold ${selected ? "text-text" : "text-text2"}`}>
 											{speakerName(t)}
 										</span>
@@ -962,7 +1251,19 @@ export function EditorView({
 											</span>
 										)}
 									</span>
-									<span className={`text-pretty ${selected ? "text-body text-text" : "text-ui text-text3"}`}>{t.text}</span>
+									<span className={`text-pretty ${selected ? "text-body text-text" : "text-ui text-text3"}`}>
+										{spoken || selected ? (
+											<SpokenLine
+												turn={t}
+												words={words}
+												at={spoken ? currentTime : -1}
+												onSeek={seek}
+												onCorrect={correctWord}
+											/>
+										) : (
+											t.text
+										)}
+									</span>
 									<span className="flex items-center gap-[7px] text-mono-sm text-text3">
 										<span className={`h-[9px] w-[9px] shrink-0 rounded-[2px] ${reasonSwatch(i)}`} />
 										{reasonFor(i)}
@@ -971,6 +1272,43 @@ export function EditorView({
 							);
 						})}
 					</div>
+
+					{alsoSeen && (
+						<div className="flex shrink-0 flex-col gap-[9px] border-t border-line bg-chrome px-[17px] py-3">
+							{alsoSeen.applied ? (
+								<>
+									<p className="text-meta text-pretty text-text2">
+										Fixed “{alsoSeen.was}” in {alsoSeen.others.length} more{" "}
+										{alsoSeen.others.length === 1 ? "place" : "places"}.
+									</p>
+									<span className="flex gap-[7px]">
+										<Button size="sm" variant="quiet" onClick={undoEverywhere}>
+											Undo those
+										</Button>
+										<Button size="sm" variant="quiet" onClick={() => setAlsoSeen(null)}>
+											Keep
+										</Button>
+									</span>
+								</>
+							) : (
+								<>
+									<p className="text-meta text-pretty text-text2">
+										“{alsoSeen.was}” is said in {alsoSeen.others.length} other{" "}
+										{alsoSeen.others.length === 1 ? "place" : "places"}. Fix {alsoSeen.others.length === 1 ? "it" : "them"}{" "}
+										too?
+									</p>
+									<span className="flex gap-[7px]">
+										<Button size="sm" onClick={correctEverywhere}>
+											Fix all {alsoSeen.others.length}
+										</Button>
+										<Button size="sm" variant="quiet" onClick={() => setAlsoSeen(null)}>
+											Just this one
+										</Button>
+									</span>
+								</>
+							)}
+						</div>
+					)}
 				</aside>
 
 				<main className="flex min-h-0 flex-1 flex-col gap-[13px] px-5 py-[18px]">
@@ -1109,6 +1447,36 @@ export function EditorView({
 							)}
 							<span className={pill}>{faces.frameWidth > 0 ? `${faces.frameWidth}×${faces.frameHeight}` : "audio only"}</span>
 						</div>
+						{/* What the export will burn in, grouped by the same rules
+						    (`buildCaptionCues` ports `build_caption_cues`) and placed
+						    where `write_ass` puts it: bottom-centre, 7% up from the
+						    bottom, 4.5% of frame height. Sized off the stage so it
+						    holds at any window size, and shown only when the export
+						    would actually produce them. */}
+						{captionsEnabled && captionsAvailable && stageSize.height > 0 && (() => {
+							const cue = cueAt(captionCues, currentTime);
+							if (!cue) return null;
+							return (
+								<span
+									className="pointer-events-none absolute left-1/2 max-w-[86%] -translate-x-1/2 text-center font-semibold text-balance text-white"
+									style={{
+										bottom: stageSize.height * 0.07,
+										fontSize: stageSize.height * 0.045,
+										lineHeight: 1.2,
+										// `write_ass` draws a 0.3%-of-height outline, not a
+										// box; four shadows is the closest CSS equivalent.
+										textShadow: Array.from({ length: 4 }, (_, i) => {
+											const r = Math.max(1, stageSize.height * 0.003);
+											const angle = (i * Math.PI) / 2;
+											return `${Math.round(Math.cos(angle) * r)}px ${Math.round(Math.sin(angle) * r)}px 0 #000`;
+										}).join(", "),
+									}}
+								>
+									{cue.text}
+								</span>
+							);
+						})()}
+
 						<span className={`pointer-events-none absolute right-[14px] bottom-[14px] ${pill}`}>{formatTime(currentTime)}</span>
 					</div>
 					</div>
@@ -1119,9 +1487,24 @@ export function EditorView({
 							{formatTime(currentTime)} / {formatTime(duration)}
 							{rate !== 1 && <span className="ml-2 text-accent-text">{rate}×</span>}
 						</span>
-						<span className="ml-auto rounded-control bg-control px-[11px] py-2 text-mono-sm leading-none font-medium text-text2">
+						{/* This read as a button and wasn't one: a status line about the
+						    export, next to a preview that never drew a caption. Now it
+						    toggles, and what it toggles is visible. */}
+						<Button
+							size="sm"
+							variant="quiet"
+							className="ml-auto"
+							onClick={() => onCaptionsChange(!captionsEnabled)}
+							disabled={!captionsAvailable}
+							aria-pressed={captionsAvailable && captionsEnabled}
+							title={
+								captionsAvailable
+									? "Show captions here and burn them into the export. Cut from the word timings, so they land where the words do."
+									: "This ffmpeg was built without subtitle support, so captions can't be burned in."
+							}
+						>
 							{captionsAvailable ? (captionsEnabled ? "Captions on" : "Captions off") : "No captions"}
-						</span>
+						</Button>
 					</div>
 				</main>
 			</div>
@@ -1148,6 +1531,23 @@ export function EditorView({
 						</Button>
 					</span>
 					<span className="ml-auto flex items-center gap-1">
+						{/* Named, and with the span it is showing. At full view both
+						    "−" and "Show all" are correctly disabled, which left three
+						    grey buttons and no hint that the timeline zooms at all --
+						    a founder testing session reported zoom and scroll as
+						    missing features when both had shipped. */}
+						<span className="mr-1 font-mono text-mono-xs leading-none text-text3">
+							Zoom · {zoomed ? `${formatTime(view.end - view.start)} shown` : "whole episode"}
+						</span>
+						<Button
+							size="sm"
+							variant="quiet"
+							onClick={() => setShowSpeakerLanes((on) => !on)}
+							aria-pressed={showSpeakerLanes}
+							title="Show or hide the lane per speaker under the framing timeline."
+						>
+							{showSpeakerLanes ? "Hide speakers" : "Show speakers"}
+						</Button>
 						<Button
 							size="sm"
 							variant="quiet"
@@ -1212,6 +1612,9 @@ export function EditorView({
 					words={words}
 					selectedRegionId={selectedRegionId}
 					currentTime={currentTime}
+					lanes={speakerLanes}
+					onRenamePerson={(personId, name) => onCastChange({ ...cast, names: { ...cast.names, [personId]: name } })}
+					showSpeakerLanes={showSpeakerLanes}
 					nameOf={(id) => nameOf(id)}
 					waveform={waveform}
 					thumbnailUrls={Array.from({ length: thumbnailCount }, (_, i) => timelineThumbnailUrl(jobId, i))}
@@ -1227,7 +1630,7 @@ export function EditorView({
 
 			{/* Split in two: what's selected on the left, the episode's own
 			    controls on the right, and Export as the one accent action, last. */}
-			<div className="flex shrink-0 items-center gap-[14px] border-t border-line bg-chrome px-[14px] py-[11px]">
+			<div className="relative flex shrink-0 items-center gap-[14px] border-t border-line bg-chrome px-[14px] py-[11px]">
 				<div className="flex min-w-0 flex-1 flex-wrap items-center gap-[9px]">
 					<SectionLabel className="shrink-0">Selected</SectionLabel>
 					{selectedRegion ? (
@@ -1255,9 +1658,10 @@ export function EditorView({
 							onSetPeople={(personIds) => setRegionPeople(selectedRegion.id, personIds)}
 						/>
 					) : (
-						<span className="text-fine text-text3">
+						<span className="text-fine text-pretty text-text3">
 							Nothing yet. Pick a shot on the timeline to move its edges, or a line in the transcript to jump
-							there. Edges snap to the nearest word; hold Option to place one freely.
+							there. Edges snap to the nearest word; hold Option to place one freely. Shift-click a second
+							line to frame that whole stretch at once.
 						</span>
 					)}
 				</div>
@@ -1265,27 +1669,44 @@ export function EditorView({
 				<span className="w-px shrink-0 self-stretch bg-line" />
 
 				<div className="flex shrink-0 items-center gap-[9px]">
-					<SectionLabel>Episode</SectionLabel>
-					<label
-						className="relative inline-flex items-center gap-[5px] rounded-control border border-line bg-raised py-2 pr-6 pl-[11px] text-mono-sm leading-none font-medium text-text2 hover:bg-control"
-						title="How much automatic framing this episode gets. Wide only suggests nothing; Gentle cuts only for longer stretches; Dynamic uses every rule. A manual + Close-up or + Both on screen always works, and switching never touches a shot you made."
+					{/* One control, whatever it is pointed at. A style was a property
+					    of the episode, and it isn't one: an introduction, a long
+					    answer and the moment everyone talks at once want different
+					    framing. "Whole episode" is just what it applies to when no
+					    lines are picked. */}
+					<SectionLabel>Frame</SectionLabel>
+					<span
+						className="rounded-chip border border-line bg-raised px-[9px] py-[6px] font-mono text-mono-xs leading-none text-text2"
+						title={
+							selectedSpan
+								? "Shift-click another line in the transcript to stretch this, or click one line to shrink it."
+								: "Pick a line in the transcript, and Shift-click another, to frame just that stretch."
+						}
 					>
-						Framing:
-						<select
-							value={framingStyle}
-							onChange={(e) => changeFramingStyle(e.target.value as FramingStyle)}
-							className="appearance-none bg-transparent font-medium text-text2 outline-none"
-						>
-							{(Object.keys(FRAMING_STYLE_LABELS) as FramingStyle[]).map((style) => (
-								<option key={style} value={style}>
-									{FRAMING_STYLE_LABELS[style]}
-								</option>
-							))}
-						</select>
-						<span className="pointer-events-none absolute right-[10px] text-text3">
-							<Triangle direction="down" size={4} />
-						</span>
-					</label>
+						{/* Where, not just how much: "6 lines · 0:50" leaves you guessing
+						    which fifty seconds you are about to reframe. */}
+						{selectedSpan
+							? `${selectedSpan.to - selectedSpan.from + 1} ${
+									selectedSpan.to > selectedSpan.from ? "lines" : "line"
+								} · ${formatTime(selectedSpan.start)}–${formatTime(selectedSpan.end)}`
+							: "Whole episode"}
+					</span>
+					<span className="flex gap-[5px]">
+						{(Object.keys(FRAMING_STYLE_LABELS) as FramingStyle[]).map((style) => (
+							<Button
+								key={style}
+								size="sm"
+								// The last one applied stays marked, so the control says
+								// what the episode was last framed as without pretending
+								// to be a mode.
+								variant={style === framingStyle ? "secondary" : "quiet"}
+								onClick={() => frameAs(style)}
+								title={framingStyleRule(style)}
+							>
+								{FRAMING_STYLE_LABELS[style]}
+							</Button>
+						))}
+					</span>
 					<button
 						type="button"
 						role="checkbox"
@@ -1297,6 +1718,26 @@ export function EditorView({
 						<CheckMark checked={trimDeadAirEnabled} size={15} />
 						Trim dead air
 					</button>
+					<button
+						type="button"
+						onClick={() => setExplainTrim((on) => !on)}
+						aria-expanded={explainTrim}
+						aria-label="What does trimming dead air do?"
+						className="flex h-6 w-6 items-center justify-center rounded-control border border-line bg-raised text-text3 hover:bg-control"
+					>
+						?
+					</button>
+					{/* Above the bar rather than in it: this is a sentence, and a
+					    sentence in a row of controls either stretches the row or
+					    wraps it. Nothing below moves when it opens. */}
+					{explainTrim && (
+						<p className="absolute right-5 bottom-full z-10 mb-2 w-[420px] rounded-card border border-line bg-raised px-[14px] py-3 text-meta text-pretty text-text2 shadow-lg">
+							Cuts a pause longer than a beat down to a beat, and removes standalone filler words —
+							um, uh, hmm. Deliberately narrow: words that are only sometimes filler (“like”, “so”,
+							“right”) are left alone, because there’s no way to tell one from the other and cutting
+							the wrong one removes meaning. Nothing else in the audio is touched.
+						</p>
+					)}
 					<span className="flex gap-1.5">
 						<Button size="sm" variant="quiet" onClick={undo} disabled={history.past.length === 0} title="Undo (⌘Z)">
 							Undo

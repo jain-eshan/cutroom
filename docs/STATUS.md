@@ -792,6 +792,57 @@ the founder's call, to find testers and contributors early:
    for the next one. This is where the first real customer quotes come from,
    and everything below needs them.
 
+### Found 2026-09-20, not yet placed
+
+- **The two non-wide framing styles produce nearly the same edit, and both
+  are heavier than a podcast edit usually is.** Measured by running
+  `suggestRegions` over the reference episode (53 min, four people, 117
+  lines):
+
+  | Style | Shots | On a face | Median close-up |
+  |---|---|---|---|
+  | Wide only | 0 | 0% | — |
+  | Gentle | 33 | 93% | 51s |
+  | Dynamic | 37 | 95% | 47s |
+
+  Gentle and Dynamic differ by four shots and two points of screen time.
+  They are presented as a meaningful choice and are not one. Worse, both
+  hold a single face for a median of about 50 seconds and cut roughly once
+  every 96 seconds, where a talking-head podcast typically cuts every 5-15.
+  - The naming work done on 2026-09-20 makes this visible rather than
+    fixing it: the choices now say "cut in after 12 seconds" and "after 4
+    seconds", so the fact that they land in the same place is at least
+    legible. The rules themselves are the open question.
+  - What is probably wrong is not the threshold but the hold: a shot runs
+    until the next shot or a 3s silence (`holdUntil`), so once the camera
+    is in it rarely comes out. Returning to wide on a natural beat -- a
+    question, a laugh, a change of subject -- is the thing that would make
+    "Gentle" gentle.
+  - Both thresholds are recorded in the code as "a starting point, not a
+    measurement", pending a reference edit to measure against
+    (EDGE_CASES.md section 5). This is the evidence that the measurement is
+    now worth doing.
+
+- **The editor runs at about 4fps while a cropped shot plays.** Measured in
+  a browser on the reference episode: 21 frames in 9 seconds, median frame
+  gap 33ms but a 95th percentile of 1.0s. The cause is structural rather
+  than a slow render -- a close-up or composite mounts a second `<video>` on
+  the same recording (`CroppedVideo` in `EditorView.tsx`), so two 1080p
+  streams of a 14 Mbps source decode at once and stay in sync with each
+  other.
+  - Found while building the transcript's word highlight, which is limited
+    by it: the highlight advances on `timeupdate` (~4Hz) and lights 15 of
+    the 20 words spoken in a nine-second stretch. A `requestAnimationFrame`
+    loop reading `video.currentTime` was the obvious fix and made it worse,
+    7 of 20 -- asking for frames that aren't coming, and re-rendering to ask,
+    only takes time from the thread that owes them.
+  - Not addressed here, because the fix is a design question, not a tuning
+    one: one decode driving several crops (canvas, or `requestVideoFrameCallback`
+    into a `<canvas>` per pane) rather than one `<video>` per pane. Worth
+    measuring in the packaged app first -- these numbers are from a dev
+    server proxying a 5.3GB file over HTTP range requests, and a local file
+    may do better.
+
 ### Then, ordered by what the host test shows
 
 - **Batched processing for long recordings**, if the wait loses people. The

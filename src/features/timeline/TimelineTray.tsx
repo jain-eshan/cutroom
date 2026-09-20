@@ -12,7 +12,14 @@ import {
 	type TimeSpan,
 } from "@/features/timeline/timelineView";
 
-const SPEAKER_LANE = ["bg-s1", "bg-s2", "bg-s3"];
+/** Room for a name beside each lane. The lanes are time-aligned with the
+ * ruler and the framing lane above them, so this is the detail column's own
+ * left padding rather than a separate column: percentage positions inside
+ * each row are relative to the content box, which excludes padding, so every
+ * row stays aligned with no second set of widths to keep in sync. The
+ * playhead is the one exception -- absolute positioning is relative to the
+ * padding box -- so it is placed in pixels. */
+const LANE_LABEL_W = 92;
 
 /** How near, on screen, a dragged edge has to come to a word, a turn, another
  * shot's edge or the playhead before it snaps there. */
@@ -45,6 +52,9 @@ export function TimelineTray({
 	selectedRegionId,
 	currentTime,
 	nameOf,
+	lanes,
+	onRenamePerson,
+	showSpeakerLanes,
 	waveform,
 	thumbnailUrls,
 	onViewChange,
@@ -62,6 +72,19 @@ export function TimelineTray({
 	selectedRegionId: string | null;
 	currentTime: number;
 	nameOf: (personId: number) => string;
+	/** One lane per person, with the voices that turned out to be them. A
+	 * voice no face was matched to gets a lane of its own and a null
+	 * `personId`, since there is nobody to rename. */
+	lanes: { key: string; personId: number | null; name: string; colour: string; voices: number[] }[];
+	/** Rename a person from their lane. Until this existed, a name could only
+	 * be set on the cast screen and never corrected -- and the names are all
+	 * over the editor now. */
+	onRenamePerson: (personId: number, name: string) => void;
+	/** Who is talking, under the framing that covers them. Hideable because on
+	 * a four-person show it is four more rows between the framing lane and the
+	 * bottom of the window, and an editor working on framing alone doesn't
+	 * need them. */
+	showSpeakerLanes: boolean;
 	/** The episode's amplitude envelope, or null until it's fetched. Shown
 	 * behind the speaker lanes as a shared reference -- there's one audio
 	 * track, not one per person. */
@@ -195,7 +218,6 @@ export function TimelineTray({
 	// thumbnails, so the overview reads as the episode with a decision
 	// colour over it, not just a strip of colour.
 	const overviewTint = thumbnailUrls.length > 0 ? "opacity-70" : "";
-	const speakers = [...new Set(turns.map((t) => t.speaker))].sort((a, b) => a - b);
 
 	const { major, minor } = rulerStep(width > 0 ? span / width : span);
 	const perMajor = Math.round(major / minor);
@@ -262,7 +284,11 @@ export function TimelineTray({
 				/>
 			</div>
 
-			<div ref={setDetail} className="relative flex flex-col gap-2">
+			<div
+				ref={setDetail}
+				className="relative flex flex-col gap-2"
+				style={{ paddingLeft: LANE_LABEL_W }}
+			>
 				{/* Ruler: drag along it to scrub. */}
 				<div
 					onPointerDown={(e) => {
@@ -370,9 +396,31 @@ export function TimelineTray({
 
 				{/* Speaker lanes -- who is actually talking, under the framing that
 				    covers them, so a region's disagreement with the speech is visible. */}
+				{showSpeakerLanes && (
 				<div className="flex flex-col gap-1">
-					{speakers.map((speaker, i) => (
-						<div key={speaker} className="relative h-[15px] w-full overflow-hidden rounded-chip bg-track">
+					{lanes.map((lane) => (
+						<div key={lane.key} className="relative h-[15px] w-full rounded-chip bg-track">
+							{/* In the column's own padding, so naming a lane costs no
+							    timeline width and covers none of it. Without this the
+							    lanes were four unlabelled stripes: the only thing saying
+							    which was whose was a colour, and the colours ran out. */}
+							<span
+								className="absolute top-0 -left-[92px] flex h-full w-[84px] items-center gap-[5px] overflow-hidden"
+								title={lane.personId === null ? lane.name : `${lane.name} — click to rename`}
+							>
+								<span className={`h-[7px] w-[7px] shrink-0 rounded-full ${lane.colour}`} />
+								{lane.personId === null ? (
+									<span className="truncate font-mono text-mono-xs leading-none text-text3">{lane.name}</span>
+								) : (
+									<input
+										value={lane.name}
+										onChange={(e) => onRenamePerson(lane.personId as number, e.target.value)}
+										aria-label={`Name for ${lane.name}`}
+										className="min-w-0 flex-1 truncate rounded-[3px] bg-transparent font-mono text-mono-xs leading-none text-text3 outline-none hover:bg-control focus:bg-well focus:text-text"
+									/>
+								)}
+							</span>
+							<span className="absolute inset-0 overflow-hidden rounded-chip">
 							{waveformBars.length > 0 && (
 								<div className="pointer-events-none absolute inset-0 flex items-end gap-px opacity-35">
 									{waveformBars.map((amplitude, j) => (
@@ -385,23 +433,29 @@ export function TimelineTray({
 								</div>
 							)}
 							{turns
-								.filter((t) => t.speaker === speaker && inView(t))
+								.filter((t) => lane.voices.includes(t.speaker) && inView(t))
 								.map((t) => (
 									<div
-										key={`${speaker}-${t.start}`}
-										className={`absolute inset-y-0 ${SPEAKER_LANE[i % SPEAKER_LANE.length]}`}
+										key={`${lane.key}-${t.start}`}
+										className={`absolute inset-y-0 ${lane.colour}`}
 										style={{ left: `${at(t.start)}%`, width: `${at(t.end) - at(t.start)}%` }}
 									/>
 								))}
+							</span>
 						</div>
 					))}
 				</div>
+				)}
 
 				{/* Playhead, across the ruler and every lane. */}
-				{currentTime >= view.start && currentTime <= view.end && (
+				{currentTime >= view.start && currentTime <= view.end && width > 0 && (
 					<div
 						className="pointer-events-none absolute top-0 bottom-0 w-[2px] bg-handle"
-						style={{ left: `${at(currentTime)}%` }}
+						// Pixels, not a percentage: absolute positioning resolves
+						// against the padding box, which includes the label gutter,
+						// while every row's percentages resolve against the content
+						// box. `width` is the content width the ResizeObserver reports.
+						style={{ left: LANE_LABEL_W + (at(currentTime) / 100) * width }}
 					>
 						<div className="absolute top-0 -left-[4px] h-[8px] w-[10px] bg-handle [clip-path:polygon(0_0,100%_0,50%_100%)]" />
 					</div>

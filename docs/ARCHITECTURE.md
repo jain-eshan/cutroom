@@ -408,12 +408,15 @@ src/
 │   ├── ui.tsx                       # design-system primitives + AppWindow, the title bar every stage sits in
 │   ├── Logo.tsx                     # Cutroom SVG mark (design's assets/logo), tiny at <=20px
 │   ├── Credits.tsx                  # who made the bundled models and ffmpeg, and under which licence
+│   ├── UsageData.tsx                # turning the opt-in usage counts on or off after the first run
 │   └── ThemeSwitcher.tsx            # System/Light/Dark segmented control
 ├── lib/
 │   ├── api.ts                       # typed fetch wrappers for /health, /process, /progress, /export
 │   ├── faceCrop.ts                  # bbox → CSS zoom transform math + pixel-space crop math
+│   ├── telemetry.ts                 # the opt-in usage counts: the whole sender, and the complete list of events
 │   └── theme.ts                     # `useThemeMode` — dark by default, saves only an explicit choice
 ├── features/
+│   ├── setup/TelemetryConsent.tsx   # the first-run usage-data question, asked before the setup gate
 │   ├── setup/SetupGate.tsx          # status rows: this window, the service, speaker models, captions
 │   ├── upload/UploadScreen.tsx      # file picker + real drag-and-drop (idle / error states)
 │   ├── upload/ProcessingFailed.tsx  # stopped partway: how far it got, the raw error, try again
@@ -678,10 +681,18 @@ design, including why each piece works the way it does:
 | `typescript` | type safety across the whole frontend, including the API response shapes |
 | `oxlint` | linting — fast, Rust-based; caught a real bug during development (see below) |
 | `@fontsource-variable/instrument-sans` / `@fontsource-variable/jetbrains-mono` | self-hosted brand typefaces — see [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) |
+| `@vercel/analytics` | **website only** — cookieless page views and page speed |
+| `posthog-js` | **website only** — the waitlist and download funnel, loaded on demand so it stays out of the page's own bundle |
 
 Deliberately small. No router (single linear screen flow doesn't need
 one), no state management library (one `useState` in `App.tsx` covers it),
 no UI component library yet (plain Tailwind classes).
+
+Neither analytics package is imported by the app, and that is deliberate
+rather than incidental: the app's own usage counts are hand-written in
+`src/lib/telemetry.ts` so that everything it can ever send is readable in one
+file, which an SDK's settings can never demonstrate as convincingly. See
+[PRIVACY.md](../PRIVACY.md).
 
 ### Backend (`server/pyproject.toml`)
 

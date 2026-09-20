@@ -10,7 +10,8 @@ out who's speaking, and cuts in close on them. Then it hands you every
 decision to change.
 
 [Website](https://cutroom-ruddy.vercel.app) · [Join the waitlist](https://cutroom-ruddy.vercel.app/#waitlist) ·
-[Quick start](#quick-start) · [Contributing](CONTRIBUTING.md) · [Docs](docs/README.md)
+[Quick start](#quick-start) · [Contributing](CONTRIBUTING.md) · [Docs](docs/README.md) ·
+[Privacy](PRIVACY.md)
 
 [![CI](https://github.com/jain-eshan/cutroom/actions/workflows/ci.yml/badge.svg)](https://github.com/jain-eshan/cutroom/actions/workflows/ci.yml)
 ![Status: developer preview](https://img.shields.io/badge/status-developer%20preview-f0883e)
@@ -47,6 +48,11 @@ ends up cutting it by hand.
 Cutroom works out who's talking from the recording itself: whose voice it is,
 and whose lips are moving. Everything runs locally. Your recording is never
 uploaded anywhere, and there's no account, subscription or server.
+
+The app can send a handful of anonymous counts — whether the install
+finished, whether an export did — if you say yes to the question it asks on
+first run. It's off until you do, it never carries anything from your
+recording, and every event it can send is listed in [PRIVACY.md](PRIVACY.md).
 
 ## What works today
 
@@ -337,6 +343,9 @@ Help is very welcome, from code to reports of edits it got wrong. Start with
   building, with a suggested order
 - [docs/STATUS.md](docs/STATUS.md): the roadmap
 - [docs/README.md](docs/README.md): a map of all the documentation
+
+What leaves your machine, and what never does, is in
+[PRIVACY.md](PRIVACY.md).
 
 Security problems: please report them privately, as described in
 [SECURITY.md](SECURITY.md).

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CastScreen, type CastResult } from "@/features/faces/CastScreen";
 import { NoFacesScreen } from "@/features/faces/NoFacesScreen";
 import { AppWindow } from "@/components/ui";
 import { PublishScreen } from "@/features/publish/PublishScreen";
 import { SetupGate } from "@/features/setup/SetupGate";
+import { TelemetryConsent } from "@/features/setup/TelemetryConsent";
 import { EditorView } from "@/features/timeline/EditorView";
 import { suggestRegions } from "@/features/timeline/regions";
 import type { FramingRegion, FramingStyle } from "@/features/timeline/types";
@@ -13,7 +14,9 @@ import { UploadScreen } from "@/features/upload/UploadScreen";
 import { chooseProjectSavePath, chooseRecording, getLocalPath, hasElectronBridge } from "@/lib/electron";
 import { fixtureCast, fixtureData, FIXTURE_FILE_NAME, FIXTURE_JOB_ID, isFixtureMode } from "@/lib/fixture";
 import { EDIT_VERSION, editFingerprint, restorableEdit, type SavedEdit } from "@/lib/savedEdit";
+import { applyWordEdits, type WordEdits } from "@/lib/transcript";
 import { useThemeMode } from "@/lib/theme";
+import { getConsent, platform, track } from "@/lib/telemetry";
 import {
 	deleteJob,
 	getJob,
@@ -142,6 +145,11 @@ type Status =
  * change. A `pagehide` flush covers even that -- see the autosave effect. */
 const AUTOSAVE_DEBOUNCE_MS = 700;
 
+// Stable identities, so the screens that have no transcript yet don't get a
+// fresh empty array on every render.
+const NO_TURNS: Turn[] = [];
+const NO_WORDS: Word[] = [];
+
 /** `?fixture` in the dev server's URL skips straight to this instead of
  * `checking` -- see src/lib/fixture.ts. */
 function fixtureStatus(): Status {
@@ -164,6 +172,12 @@ function fixtureStatus(): Status {
 
 function App() {
 	const [themeMode, setThemeMode] = useThemeMode();
+	// The telemetry question, asked once and before the setup gate: giving up
+	// part-way through the install is the thing most worth knowing about, and
+	// asking afterwards would only ever hear from the installs that worked.
+	// Never in fixture mode, which is a dev shortcut and shouldn't have a
+	// question standing in front of it.
+	const [asked, setAsked] = useState(() => isFixtureMode() || getConsent() !== "unasked");
 	const [status, setStatus] = useState<Status>(() => (isFixtureMode() ? fixtureStatus() : { state: "checking" }));
 	// What the local install can actually do, learned at the setup gate and
 	// carried forward so later screens can say so before a render, not after.
@@ -186,6 +200,10 @@ function App() {
 				)
 			: [],
 	);
+	// Transcription corrections, by word index. Kept apart from the words
+	// themselves so an autosave carries a handful of replacements rather than
+	// the reference episode's 550KB of timings.
+	const [wordEdits, setWordEdits] = useState<WordEdits>({});
 	const [captions, setCaptions] = useState(false);
 	const [trimDeadAir, setTrimDeadAir] = useState(false);
 	const [uploadFraction, setUploadFraction] = useState(0);
@@ -202,6 +220,23 @@ function App() {
 	// Read from inside handleFile's catch, where the progress state would be
 	// the stale value captured when the upload began.
 	const lastPosition = useRef(0);
+	// When the app really started for this person -- the moment the telemetry
+	// card is answered, not mount, so time spent reading it isn't counted as
+	// time spent installing.
+	const openedAt = useRef(Date.now());
+
+	useEffect(() => {
+		if (!asked) return;
+		openedAt.current = Date.now();
+		track({ name: "app_opened", platform: platform(), version: __APP_VERSION__ });
+	}, [asked]);
+
+	// The transcript as corrected. The editor reads it, and so does Publish --
+	// captions are cut from these words, so a correction that stopped at the
+	// screen would be a correction that never reached the export.
+	const rawTurns = "turns" in status ? status.turns : NO_TURNS;
+	const rawWords = "words" in status ? status.words : NO_WORDS;
+	const transcript = useMemo(() => applyWordEdits(rawTurns, rawWords, wordEdits), [rawTurns, rawWords, wordEdits]);
 
 	const processingJobId = status.state === "processing" ? status.jobId : null;
 	const processingStartedAt = status.state === "processing" ? status.startedAt : null;
@@ -229,6 +264,7 @@ function App() {
 			framingStyle,
 			captions,
 			trimDeadAir,
+			wordEdits,
 			savedAt: Date.now(),
 		};
 		const fingerprint = editFingerprint(edit);
@@ -256,7 +292,7 @@ function App() {
 			clearTimeout(timer);
 			window.removeEventListener("pagehide", flush);
 		};
-	}, [editSessionId, editCast, regions, framingStyle, captions, trimDeadAir]);
+	}, [editSessionId, editCast, regions, framingStyle, captions, trimDeadAir, wordEdits]);
 
 	/** Save the open episode as a `.cutroom` file the user keeps.
 	 *
@@ -353,6 +389,7 @@ function App() {
 			setFramingStyle(saved.framingStyle);
 			setCaptions(saved.captions);
 			setTrimDeadAir(saved.trimDeadAir);
+			setWordEdits(saved.wordEdits);
 			// Seeded here rather than left null, so reopening an episode and
 			// changing nothing doesn't write an identical edit straight back.
 			lastSaved.current = editFingerprint({ version: EDIT_VERSION, ...saved, savedAt: 0 });
@@ -408,6 +445,9 @@ function App() {
 				lastPosition.current = p.position;
 				if (p.error) {
 					const fileName = processingFileName ?? "the recording";
+					// How far it got, never what it said: a pipeline message
+					// carries the path of the recording that caused it.
+					track({ name: "processing_failed", reached: p.position });
 					rememberActiveJob(null);
 					notifyIfHidden("Cutroom hit a problem", `${fileName}: ${p.error}`);
 					setStatus({ state: "failed", file: null, fileName, message: p.error, reached: p.position });
@@ -415,6 +455,11 @@ function App() {
 					const fileName = processingFileName ?? "the recording";
 					notifyIfHidden("Cutroom is ready", `${fileName} finished processing.`);
 					const result = await getJob(processingJobId);
+					track({
+						name: "processing_finished",
+						seconds: Math.round((Date.now() - (processingStartedAt ?? Date.now())) / 1000),
+						people: result.faces.people.length,
+					});
 					enterCast(processingJobId, fileName, result);
 				}
 			} catch {
@@ -427,7 +472,7 @@ function App() {
 			cancelled = true;
 			clearInterval(id);
 		};
-	}, [processingJobId, processingFileName]);
+	}, [processingJobId, processingFileName, processingStartedAt]);
 
 	useEffect(() => {
 		if (processingStartedAt === null) return;
@@ -439,6 +484,11 @@ function App() {
 	// new function every render would restart that timer on every poll.
 	const handleReady = useCallback((result: Health) => {
 		setHealth(result);
+		track({
+			name: "setup_ready",
+			seconds: Math.round((Date.now() - openedAt.current) / 1000),
+			captions: result.captions,
+		});
 		refreshSavedEpisodes();
 
 		// A job from before the tab closed or refreshed -- reconnect instead
@@ -478,6 +528,7 @@ function App() {
 		lastPosition.current = 0;
 		rememberActiveJob(active);
 		setStatus({ state: "processing", ...active });
+		track({ name: "processing_started" });
 		try {
 			// The desktop app can read the recording where it already is; a
 			// plain browser has no filesystem access and has to upload it.
@@ -491,6 +542,7 @@ function App() {
 			// The rest happens in the poll above once the background job
 			// reports done -- /process itself only confirms the upload landed.
 		} catch (err) {
+			track({ name: "processing_failed", reached: lastPosition.current });
 			rememberActiveJob(null);
 			setStatus({
 				state: "failed",
@@ -536,7 +588,9 @@ function App() {
 	}
 
 	let screen: React.ReactNode;
-	if (status.state === "checking") {
+	if (!asked) {
+		screen = <TelemetryConsent onAnswered={() => setAsked(true)} />;
+	} else if (status.state === "checking") {
 		screen = <SetupGate onReady={handleReady} />;
 	} else if (status.state === "failed") {
 		screen = (
@@ -622,8 +676,8 @@ function App() {
 			<EditorView
 				videoUrl={status.videoUrl}
 				jobId={status.sessionId}
-				turns={status.turns}
-				words={status.words}
+				turns={transcript.turns}
+				words={transcript.words}
 				overlapWindows={status.overlapWindows}
 				faces={status.faces}
 				cast={status.cast}
@@ -631,6 +685,20 @@ function App() {
 				regions={regions}
 				onRegionsChange={setRegions}
 				captionsEnabled={captions}
+				onCaptionsChange={setCaptions}
+				onCastChange={(cast) => setStatus((current) => ("cast" in current ? { ...current, cast } : current))}
+				onWordEditsChange={(edits) =>
+					setWordEdits((current) => {
+						const next = { ...current };
+						for (const [index, text] of Object.entries(edits)) {
+							// null puts the original back, rather than recording an
+							// empty correction over it.
+							if (text === null) delete next[Number(index)];
+							else next[Number(index)] = text;
+						}
+						return next;
+					})
+				}
 				missingRecording={missingRecording}
 				onRelink={hasElectronBridge() ? handleRelink : undefined}
 				trimDeadAirEnabled={trimDeadAir}
@@ -645,8 +713,8 @@ function App() {
 			<PublishScreen
 				fileName={status.fileName}
 				sessionId={status.sessionId}
-				turns={status.turns}
-				words={status.words}
+				turns={transcript.turns}
+				words={transcript.words}
 				faces={status.faces}
 				regions={regions}
 				duration={status.duration}

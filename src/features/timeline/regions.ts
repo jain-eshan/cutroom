@@ -5,6 +5,10 @@ import type { BBox, OverlapWindow, Person, Turn } from "@/lib/api";
 // its own, so this is the one import in the module graph that has to be
 // resolvable without Vite.
 import { bboxAtTime, isVisibleAt } from "../../lib/faceCrop.ts";
+// Relative for the same reason as faceCrop.ts above: this is a *value*
+// import, so unlike the type-only line below it survives to runtime, and
+// these tests run under Node's own resolution.
+import { FRAMING_STYLE_MIN_LINE_S } from "./types.ts";
 import type { FramingRegion, FramingStyle, RegionLayout } from "@/features/timeline/types";
 
 /** Shorter than this and a region is a flash rather than a shot, and the drag
@@ -26,26 +30,6 @@ const MIN_OVERLAP_FOR_COMPOSITE_S = 2;
 /** Gap below which two same-subject regions are treated as touching. Turn
  * boundaries land on transcription timings, which are not exact to the frame. */
 const JOIN_EPSILON_S = 0.05;
-
-/** A line said in a gap, with nobody else holding the floor, needs to be at
- * least this long to earn a shot of its own. Anything shorter is a "right" or
- * a one-word answer, and cutting to it costs two cuts to show half a second of
- * someone (EDGE_CASES.md A2, the case the founder reported). This is the
- * `dynamic` style's threshold; `gentle` uses a higher one below.
- *
- * Product call, 2026-09-17, from a range of 3-5s. The 1.5s the document
- * originally proposed was judged too low. Not measured against a professional
- * edit yet, unlike framing.py's crop sizes -- see EDGE_CASES.md section 5 for
- * what measuring it would look like. */
-const MIN_LINE_FOR_SHOT_S = 4;
-
-/** `gentle`'s threshold: "close-ups only for longer stretches, and wide
- * through quick exchanges" (EDGE_CASES.md rule 8). Roughly 3x dynamic's
- * cutoff -- high enough that a normal back-and-forth exchange stays wide and
- * only a genuinely substantial turn earns a close-up, without being so high
- * that gentle just becomes wideOnly in practice. Product call, 2026-09-17,
- * same caveat as MIN_LINE_FOR_SHOT_S: a starting point, not a measurement. */
-const GENTLE_MIN_LINE_FOR_SHOT_S = 12;
 
 /** More people talking at once than this, and the suggestion is wide rather
  * than a composite (EDGE_CASES.md C3, decided 2026-09-18) -- past three, a
@@ -313,7 +297,11 @@ export function suggestRegions(
 	// every suggested shot by hand; a manual "+ Close-up" or "+ Both on
 	// screen" still works, since this only ever governs what's *suggested*.
 	if (style === "wideOnly") return [];
-	const minLineForShot = style === "gentle" ? GENTLE_MIN_LINE_FOR_SHOT_S : MIN_LINE_FOR_SHOT_S;
+	// A line shorter than this, with nobody else holding the floor, is a
+	// "right" or a one-word answer: cutting to it costs two cuts to show half
+	// a second of someone (EDGE_CASES.md A2). The number is the style -- see
+	// FRAMING_STYLE_MIN_LINE_S, which the labels are written from too.
+	const minLineForShot = FRAMING_STYLE_MIN_LINE_S[style] ?? Infinity;
 
 	// Rule 4/A5: a takeover is one cut, on the new speaker's first word, not
 	// the both-on-screen composite -- classified up front, per window, so it
@@ -424,6 +412,56 @@ export function suggestRegions(
  * region's hole into it and drop the region back in, so a user shot always
  * wins wherever it sits.
  */
+/** Clip a region to a span, or drop it if it falls outside. */
+function clipTo(region: FramingRegion, span: { start: number; end: number }): FramingRegion[] {
+	const start = Math.max(region.start, span.start);
+	const end = Math.min(region.end, span.end);
+	return end - start > MIN_REGION_S ? [{ ...region, start, end }] : [];
+}
+
+/**
+ * Re-suggest one stretch of the episode under `style`, leaving the rest alone.
+ *
+ * The episode-wide version of this (`reconcileWithStyle`) is the same thing
+ * with the span set to the whole episode, and it existed first because the
+ * style started as a property of the episode. It isn't one. An editor frames
+ * an introduction differently from a long answer and differently again from
+ * the moment everyone talks at once -- so the choice belongs to a stretch,
+ * and "the whole episode" is just the stretch you get when nothing is
+ * selected.
+ *
+ * Suggestions are generated over the *whole* transcript and then clipped,
+ * rather than generated from the span's turns alone: the rules read across
+ * turn boundaries -- who was already holding the floor, whether a line is an
+ * interjection in a longer exchange -- and a span's first line would
+ * otherwise be judged as if the conversation began there.
+ *
+ * Shots the editor placed by hand survive, inside the span and out. Changing
+ * how a stretch is framed is a statement about what to suggest, never about
+ * what they already decided.
+ */
+export function applyStyleWithin(
+	regions: FramingRegion[],
+	turns: Turn[],
+	overlapWindows: OverlapWindow[],
+	speakerToPerson: Record<number, number>,
+	people: Person[],
+	style: FramingStyle,
+	span: { start: number; end: number },
+): FramingRegion[] {
+	const userRegions = regions.filter((r) => r.source === "user");
+	const outside = regions.filter((r) => r.source !== "user").flatMap((r) => subtract(r, [span]));
+	const inside = suggestRegions(turns, overlapWindows, speakerToPerson, people, style).flatMap((r) =>
+		clipTo(r, span),
+	);
+
+	let result = [...outside, ...inside];
+	for (const userRegion of userRegions) {
+		result = [...result.flatMap((existing) => subtract(existing, [userRegion])), userRegion];
+	}
+	return result.sort((a, b) => a.start - b.start);
+}
+
 export function reconcileWithStyle(
 	regions: FramingRegion[],
 	turns: Turn[],

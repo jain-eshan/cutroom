@@ -9,6 +9,7 @@ import {
 	type Word,
 } from "@/lib/api";
 import { chooseExportPath, hasElectronBridge, showItemInFolder } from "@/lib/electron";
+import { track } from "@/lib/telemetry";
 import { formatDuration } from "@/lib/format";
 import { Button, ButtonLink, CheckMark, CommandBlock, RawMessage, Screen, ScreenHeading, SectionLabel } from "@/components/ui";
 import type { FramingRegion } from "@/features/timeline/types";
@@ -177,6 +178,10 @@ export function PublishScreen({
 				const blob = await exportVideo(sessionId, regionArgs, turnArgs, faces, words, burnCaptions, trimDeadAir);
 				setRender({ status: "done", filename, save: { kind: "download", url: URL.createObjectURL(blob) } });
 			}
+			// One event for both routes: a saved file and a downloaded one are
+			// the same outcome, and this one is the only real proof that
+			// Cutroom worked for somebody.
+			track({ name: "export_finished", captions: burnCaptions, trimDeadAir, shots: regions.length });
 		} catch (err) {
 			setRender({
 				status: "error",

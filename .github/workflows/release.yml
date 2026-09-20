@@ -116,11 +116,19 @@ jobs:
         run: npm run dist:mac -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PostHog's write-only ingest key, from the repository's Actions variables
+          # (Settings > Secrets and variables > Actions > Variables). Unset, the
+          # app's opt-in usage counts stay dormant. See PRIVACY.md.
+          VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
       - name: Build installer (Windows)
         if: runner.os == 'Windows'
         run: npm run dist:win -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PostHog's write-only ingest key, from the repository's Actions variables
+          # (Settings > Secrets and variables > Actions > Variables). Unset, the
+          # app's opt-in usage counts stay dormant. See PRIVACY.md.
+          VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
 
   # The check that used to be a note telling a human to run `gh api` by hand
   # before publishing. A green Release run now means one release for the tag

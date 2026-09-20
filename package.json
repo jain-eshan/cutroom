@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:qa": "VITE_API_URL=http://localhost:3466 CUTROOM_SERVICE_PORT=8793 CUTROOM_DATA_DIR=$PWD/server/qa-data vite --port 3466 --strictPort",
+    "dev:qa": "VITE_API_URL=http://localhost:3466 CUTROOM_SERVICE_PORT=8793 CUTROOM_DATA_DIR=$PWD/server/qa-data FFMPEG_BINARY=$(node -p \"require('ffmpeg-static')\") FFPROBE_BINARY=$(node -p \"require('ffprobe-static').path\") vite --port 3466 --strictPort",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "node --test 'src/**/*.test.ts' 'scripts/**/*.test.mjs'",
@@ -22,8 +22,10 @@
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@fontsource-variable/instrument-sans": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@vercel/analytics": "^2.0.1",
     "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.3.0",
+    "posthog-js": "^1.434.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

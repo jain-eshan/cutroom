@@ -15,6 +15,7 @@ behind those two.
 | [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) | How the Cutroom design handoff was implemented: tokens, theming, logo, screens, and the deviations from the design with reasons. |
 | [PRODUCT.md](PRODUCT.md) | What Cutroom is, who it's for, and what it deliberately isn't. |
 | [BUSINESS_MODEL.md](BUSINESS_MODEL.md) | Why it's free, local and open source, and stays that way. |
+| [../PRIVACY.md](../PRIVACY.md) | What leaves your machine and what never does: the app's opt-in usage counts, event by event, and the website's analytics. |
 | [MARKET_RESEARCH.md](MARKET_RESEARCH.md) | The other tools that edit podcast video, and where Cutroom differs. |
 
 ## Historical: design records
