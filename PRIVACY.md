@@ -73,6 +73,8 @@ visits like one.
   banner.
 - **PostHog** — clicks on the download and GitHub buttons, and whether the
   waitlist section was reached and filled in. Session recording is off.
+- **Google Analytics** — page views and visitor counts. Unlike the tools
+  above it sets cookies, so the site is no longer cookie-free.
 - **Amplitude** — one page-view event per visit. Autocapture and session
   replay are off.
 - **Tally** — the waitlist form itself, when it's open. Your email is used to
