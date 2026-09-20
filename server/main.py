@@ -19,13 +19,12 @@ from starlette.background import BackgroundTask
 from pipeline.audio import NoAudioTrack, extract_wav
 from pipeline.captions import CaptionCue, build_caption_cues, write_ass
 from pipeline.diarize import (
-	MISSING_TOKEN_MESSAGE,
+	MISSING_MODEL_MESSAGE,
 	Diarization,
 	DiarizationUnavailable,
 	diarization_configured,
 	diarize,
 )
-from pipeline.hf_token import check_access, save_token, token_format_problem
 from pipeline.faces import BBox, detect_and_track_faces, get_video_dimensions, get_video_duration
 from pipeline.fuse import fuse
 from pipeline import jobs
@@ -60,8 +59,9 @@ from pipeline.turns import build_turns
 from pipeline.waveform import compute_timeline_thumbnails, compute_waveform_peaks
 
 # Explicit rather than dotenv's search-upward default: in a packaged install
-# the token is saved beside the rest of this install's data, not next to the
-# source. Same file as before in dev, where DATA_DIR is server/ itself.
+# any settings live beside the rest of this install's data, not next to the
+# source. Same file as before in dev, where DATA_DIR is server/ itself. Only
+# FFMPEG_BINARY is read from it now; HF_TOKEN is no longer used anywhere.
 load_dotenv(DATA_DIR / ".env")
 
 app = FastAPI(title="Cutroom processing service")
@@ -240,24 +240,6 @@ async def delete_job_endpoint(job_id: str) -> dict[str, bool]:
 		with contextlib.suppress(asyncio.CancelledError):
 			await task
 	jobs.delete_job(job_id)
-	return {"ok": True}
-
-
-@app.post("/setup/hf-token")
-async def setup_hf_token(token: str = Body(..., embed=True)) -> dict[str, bool]:
-	"""Take the Hugging Face token from the setup screen.
-
-	Checked with Hugging Face first -- including whether the account accepted
-	the model licence, which the /health presence check can't see -- and only
-	saved to the data directory's .env once it can actually load the model.
-	Applied to this process immediately, so there's nothing to restart. The
-	token is never echoed back or logged.
-	"""
-	token = token.strip()
-	problem = token_format_problem(token) or await asyncio.to_thread(check_access, token)
-	if problem:
-		raise HTTPException(400, problem)
-	save_token(token, DATA_DIR / ".env")
 	return {"ok": True}
 
 
@@ -469,7 +451,7 @@ async def process_endpoint(file: UploadFile, jobId: str | None = None) -> dict:
 	# Before the upload is saved, not after transcription: diarisation runs
 	# second, so a missing token used to surface minutes into the job.
 	if not diarization_configured():
-		raise HTTPException(400, MISSING_TOKEN_MESSAGE)
+		raise HTTPException(400, MISSING_MODEL_MESSAGE)
 
 	job_id = jobId or str(uuid.uuid4())
 	report(job_id, "transcribe", "receiving upload")
@@ -498,7 +480,7 @@ async def process_local_endpoint(path: str = Body(..., embed=True), jobId: str |
 	other app with the file open.
 	"""
 	if not diarization_configured():
-		raise HTTPException(400, MISSING_TOKEN_MESSAGE)
+		raise HTTPException(400, MISSING_MODEL_MESSAGE)
 
 	source = Path(path)
 	if not source.is_file():

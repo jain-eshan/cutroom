@@ -36,8 +36,8 @@ Effectively zero recurring cost, because there's no infrastructure:
 - **No API costs.** Every model (Whisper, the diarization model, the face
   and lip-sync models) runs locally after a one-time download — no
   per-request cloud API bill for transcription, diarization, or anything
-  else. The one external dependency, `pyannote`'s diarization model, needs
-  a free Hugging Face account and token, not a paid one.
+  else. None of them needs an account: the diarization weights ship inside
+  the app, and the rest download from public repositories.
 - **The real cost is development time** and, during development, the
   compute used to run and measure the pipeline against real footage (see
   [STATUS.md](STATUS.md)'s "Measured, not asserted" section for what that
@@ -67,12 +67,16 @@ Kept short and explicitly speculative — none of this is planned, it's the
 honest answer to "what would make you reconsider":
 
 - If the [target validation user](PRODUCT.md#who-its-for) test (a
-  non-technical podcast host, unassisted) shows that local setup — `uv`,
-  `ffmpeg`, a Hugging Face token, running two services — is the actual
-  blocker to anyone but the builder using this, a hosted "just works"
-  version aimed at removing that friction becomes a more serious
-  conversation. That's a UX problem with a cloud-shaped solution, not a
-  monetization strategy arrived at first.
+  non-technical podcast host, unassisted) shows that getting it installed at
+  all is the actual blocker to anyone but the builder using this, a hosted
+  "just works" version aimed at removing that friction becomes a more
+  serious conversation. There is less of that friction than there was: the
+  desktop build ships `ffmpeg` and the speaker model, installs `uv` itself,
+  and asks for no accounts, so there's no terminal and nothing to sign up
+  for. What's left is still real, though — a download to find and run, and a
+  Mac build that isn't code-signed, so Gatekeeper blocks it until you
+  right-click and choose Open. That's a UX problem with a cloud-shaped
+  solution, not a monetization strategy arrived at first.
 - Even in that scenario, the more likely shape is "self-hosted stays free
   and canonical; a hosted convenience layer is a separate, optional thing
   people pay for if they want it" (an open-core-style split) rather than

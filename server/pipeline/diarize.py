@@ -1,11 +1,27 @@
-import os
 import threading
 from dataclasses import dataclass
 
 import soundfile as sf
 
+from .paths import SERVER_DIR
+
 DIARIZATION_MODEL = "pyannote/speaker-diarization-community-1"
 DIARIZATION_SETUP_URL = f"https://huggingface.co/{DIARIZATION_MODEL}"
+
+# Ships with the app, like the YuNet detector: six files, 31MB, and every one
+# of them inside that single repo -- community-1's own config.yaml refers to
+# `$model/segmentation`, `$model/embedding` and `$model/plda`, all relative to
+# itself, so there is nothing left to fetch once the folder is on disk.
+#
+# It used to download from Hugging Face on first use, which is the only reason
+# this app ever asked for a token: the repo is gated behind a form, so running
+# it meant creating an account, accepting the terms and pasting a token in
+# before anything could be edited. community-1 is CC-BY-4.0, which allows
+# redistribution with attribution (see NOTICE.md beside the weights), so the
+# app ships them and credits pyannote instead of sending every new person
+# through a sign-up. Nothing here reads HF_TOKEN any more.
+BUNDLED_MODEL_DIR = SERVER_DIR / ".models" / "diarization"
+BUNDLED_CONFIG = BUNDLED_MODEL_DIR / "config.yaml"
 
 # An overlap shorter than this is real speech but not an edit. community-1
 # resolves overlap far more finely than the old detector did -- on a 10-minute
@@ -44,28 +60,28 @@ class Diarization:
 
 
 class DiarizationUnavailable(Exception):
-	"""Raised when the diarisation model cannot run: no HF_TOKEN, or the model
-	fails to load. Unlike the old optional overlap detection, this is fatal --
-	without speaker turns there is nothing to edit."""
+	"""Raised when the diarisation model cannot run: the bundled weights are
+	missing, or the model fails to load. Unlike the old optional overlap
+	detection, this is fatal -- without speaker turns there is nothing to
+	edit."""
 
 
-MISSING_TOKEN_MESSAGE = (
-	"HF_TOKEN is not set. Speaker diarisation needs a Hugging Face access "
-	"token: create one at https://huggingface.co/settings/tokens, accept the "
-	f"model licence at {DIARIZATION_SETUP_URL}, then set HF_TOKEN in "
-	"server/.env and restart the service."
+MISSING_MODEL_MESSAGE = (
+	f"The speaker detection model is missing from this install. It should be at "
+	f"{BUNDLED_MODEL_DIR}. Reinstall Cutroom, or download "
+	f"{DIARIZATION_MODEL} into that folder."
 )
 
 
 def diarization_configured() -> bool:
-	"""Whether the token diarisation needs is set at all.
+	"""Whether the bundled model is actually on disk.
 
-	This can't prove the model licence was accepted -- that only shows when
-	the model loads -- but it catches the common case (no token) before a
-	multi-minute transcription instead of after it. Cheap enough to call on
-	every health poll.
+	Always true in a sound install -- the weights ship with the app. It stays
+	a check rather than an assumption because a partial download, a blocked
+	copy or a hand-assembled install would otherwise fail minutes into a job
+	instead of before it starts. Cheap enough to call on every health poll.
 	"""
-	return bool(os.environ.get("HF_TOKEN"))
+	return BUNDLED_CONFIG.exists()
 
 
 _pipeline = None
@@ -73,13 +89,6 @@ _pipeline = None
 # two jobs racing on a fresh install could both see _pipeline as None and
 # both load community-1 (several hundred MB) at once.
 _lock = threading.Lock()
-
-
-def forget_pipeline() -> None:
-	"""Drop the loaded model, so the next job loads it with the current token."""
-	global _pipeline
-	with _lock:
-		_pipeline = None
 
 
 def _best_device():
@@ -99,25 +108,20 @@ def _get_pipeline(on_loading=None):
 	if _pipeline is not None:
 		return _pipeline
 	if not diarization_configured():
-		raise DiarizationUnavailable(MISSING_TOKEN_MESSAGE)
+		raise DiarizationUnavailable(MISSING_MODEL_MESSAGE)
 	with _lock:
 		if _pipeline is None:
-			token = os.environ["HF_TOKEN"]
 			from pyannote.audio import Pipeline
 
-			# community-1 is several hundred MB; whether this run downloads it
-			# or loads it from cache isn't distinguished here, same reasoning
-			# as transcribe.py's model load -- either way it's a real pause
-			# that needs a label, not a guess about which case this is.
+			# Reading 31MB off local disk, not downloading it, so this label no
+			# longer has to hedge about which of the two is happening.
 			if on_loading is not None:
-				on_loading("loading the diarisation model (downloads once, the first time)")
+				on_loading("loading the speaker detection model")
 			try:
-				pipeline = Pipeline.from_pretrained(DIARIZATION_MODEL, token=token)
+				pipeline = Pipeline.from_pretrained(BUNDLED_CONFIG)
 			except Exception as err:
 				raise DiarizationUnavailable(
-					f"Could not load {DIARIZATION_MODEL}: {err}. The licence at "
-					f"{DIARIZATION_SETUP_URL} has to be accepted by the account the token "
-					"belongs to."
+					f"Could not load the speaker detection model from {BUNDLED_MODEL_DIR}: {err}"
 				) from err
 			pipeline.to(_best_device())
 			_pipeline = pipeline

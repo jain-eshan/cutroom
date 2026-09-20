@@ -41,7 +41,6 @@ You need:
 - **[uv](https://docs.astral.sh/uv/)**, which installs Python 3.12 and the
   service's packages for you
 - **ffmpeg** on your `PATH` (`brew install ffmpeg`)
-- **A free Hugging Face account**, for the speaker detection model
 
 Then:
 
@@ -53,9 +52,10 @@ npm run dev
 ```
 
 Open http://localhost:3460. `npm run dev` starts both the app and the local
-processing service, and the setup screen walks you through the Hugging Face
-token. The [README](README.md) has the full first-run walkthrough and a
-troubleshooting section.
+processing service, and the setup screen waits for them and then moves on by
+itself — there's no account to make and nothing to paste in. The
+[README](README.md) has the full first-run walkthrough and a troubleshooting
+section.
 
 You don't need a real recording to work on most of the app: see
 [Testing without real footage](#testing-without-real-footage).
@@ -70,7 +70,7 @@ src/                    The app: React 19, TypeScript, Tailwind CSS v4, Vite
   App.tsx               The screen-by-screen state machine (setup → drop-in →
                         processing → cast → editor → publish)
   features/
-    setup/              Setup screen: waits for the service, takes the HF token
+    setup/              Setup screen: waits for the service and the models
     upload/             Drop-in screen, processing progress, failure screen
     faces/              Naming the cast, one voice at a time
     timeline/           The editor
@@ -97,7 +97,6 @@ server/                 The processing service: Python 3.12, FastAPI, uv
     render.py           Shots → an ffmpeg filter graph → the MP4
     captions.py         Burned-in captions from word timings
     trim.py             Dead air and filler-word cutting
-    hf_token.py         Checking and saving the Hugging Face token
     progress.py         Per-stage progress for the processing screen
   tests/                pytest suite
 
@@ -136,8 +135,8 @@ several. Anything no shot covers is the wide shot. Don't reintroduce per-turn
 layouts.
 
 **Recordings never leave the machine.** No uploads, no analytics, no cloud
-APIs. The only network calls are one-time model downloads and the Hugging Face
-token check.
+APIs. The only network calls are one-time model downloads and, in a packaged
+build, the update check.
 
 **Numbers must be measured.** Framing proportions, thresholds and claims in
 the docs or on the website come from measurements on real recordings, noted
@@ -169,8 +168,8 @@ npm run site:build                  # build the website
 uv run --directory server pytest    # processing service tests
 ```
 
-The backend tests need no network, model weights, ffmpeg, GPU or token, so
-they run anywhere.
+The backend tests need no network, model weights, ffmpeg or GPU, so they run
+anywhere.
 
 ### Writing tests
 

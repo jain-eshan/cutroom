@@ -2,9 +2,9 @@
 
 Two kinds of file live under `server/`, and until now they were mixed
 together: the ones that ship with the app and never change (Python source,
-the YuNet face-detection model), and the ones created while someone uses it
-(saved episodes, the Hugging Face token, downloaded model weights, decision
-logs).
+the YuNet face-detection model, the bundled diarisation weights), and the
+ones created while someone uses it (saved episodes, downloaded model weights,
+decision logs).
 
 That distinction doesn't matter when you run `npm run dev` -- `server/` is
 just a working directory. It matters a lot in the packaged desktop app,
