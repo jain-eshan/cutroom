@@ -56,6 +56,18 @@ class TestHasAudio:
 		with pytest.raises(UnreadableRecording, match="FFPROBE_BINARY"):
 			has_audio(tmp_path / "clip.mp4")
 
+	def test_an_ffprobe_that_exists_but_cannot_run_raises_unreadable_not_a_traceback(self, monkeypatch, tmp_path):
+		# The v0.3.0 crash: the bundled ffprobe was an x86_64 build sitting in
+		# the arm64 directory, so exec failed with errno 86 on any Mac without
+		# Rosetta. That is a plain OSError, not a FileNotFoundError, so the
+		# old catch missed it and the raw traceback reached the user.
+		def raise_bad_cpu(*a, **k):
+			raise OSError(86, "Bad CPU type in executable", "ffprobe")
+
+		monkeypatch.setattr(subprocess, "run", raise_bad_cpu)
+		with pytest.raises(UnreadableRecording, match="FFPROBE_BINARY"):
+			has_audio(tmp_path / "clip.mp4")
+
 	def test_a_hung_ffprobe_times_out_instead_of_blocking_forever(self, monkeypatch, tmp_path):
 		def raise_timeout(*a, **k):
 			raise subprocess.TimeoutExpired(cmd=["ffprobe"], timeout=k.get("timeout"))
