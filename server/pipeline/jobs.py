@@ -162,6 +162,69 @@ def delete_job(job_id: str) -> None:
 	shutil.rmtree(job_dir(job_id), ignore_errors=True)
 
 
+def discard_wav(job_id: str) -> None:
+	"""Drop the extracted audio once the pipeline is done with it.
+
+	`audio.wav` is 16kHz mono PCM -- about 115MB per hour of episode -- and
+	nothing reads it after the pipeline finishes. `/export` renders from the
+	original recording and cuts dead air from word timings, not from the
+	audio; the waveform the timeline draws was already reduced to peaks and
+	saved by `save_waveform`. Keeping it meant every saved episode carried a
+	derived file a tenth of a gigabyte in size that could be regenerated from
+	the input in seconds, and `jobs/` has no eviction.
+
+	Deliberately built from `job_dir`, which does not create anything, rather
+	than `wav_path`, which does: this runs in `_run_pipeline`'s `finally`,
+	including when the task was cancelled by `DELETE /jobs/{id}` having just
+	removed the directory. Going through `_ensure_dir` there would recreate
+	the very directory the delete was for -- the same trap `main.py` already
+	cancels the task to avoid.
+	"""
+	(job_dir(job_id) / "audio.wav").unlink(missing_ok=True)
+
+
+# Headroom beyond whatever a request can measure exactly, for the extracted
+# wav (~115MB/hour), the timeline thumbnails, the result files, and not
+# backing the whole machine into a wall. A 53-minute 1080p episode needs
+# about 100MB of that; the rest is deliberate slack, because running out of
+# disk halfway through a 15-minute render costs far more than refusing a job
+# that would probably have fitted.
+SPACE_MARGIN_BYTES = 1024**3
+
+
+def free_bytes() -> int:
+	"""Free space on the filesystem the jobs directory lives on.
+
+	Walks up to the nearest directory that exists: on a first run neither
+	`jobs/` nor the data directory is there yet, and `disk_usage` needs a
+	real path."""
+	path = JOBS_DIR
+	while not path.exists() and path.parent != path:
+		path = path.parent
+	return shutil.disk_usage(path).free
+
+
+def space_problem(needed: int, what: str) -> str | None:
+	"""None if `needed` bytes (plus margin) are free, otherwise what to say.
+
+	Callers pass a size they actually know -- an upload's `Content-Length`,
+	a recording's size on disk -- rather than a guess scaled off one, so the
+	only estimated part of this is the margin above.
+	"""
+	required = needed + SPACE_MARGIN_BYTES
+	free = free_bytes()
+	if free >= required:
+		return None
+	return (
+		f"Not enough disk space to {what}. It needs about {_gb(required)} free "
+		f"and there is {_gb(free)}. Free some space and try again."
+	)
+
+
+def _gb(n: int) -> str:
+	return f"{n / 1024**3:.1f}GB"
+
+
 # Waveform peaks and timeline thumbnails aren't part of `result.json` --
 # they're fetched from their own endpoints during processing, the same way
 # face thumbnails are (see progress.py). Persisting them here too is what

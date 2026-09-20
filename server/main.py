@@ -108,6 +108,38 @@ class ReportUnexpectedErrors:
 			await response(scope, receive, send)
 
 
+class RefuseUploadsThatWontFit:
+	"""Turn away a `/process` upload the disk can't hold, before reading it.
+
+	This has to be middleware rather than a check inside the endpoint.
+	FastAPI resolves `file: UploadFile` before it calls the path function, so
+	by the time any line of `process_endpoint` runs, Starlette has already
+	read the whole body into a `SpooledTemporaryFile` -- in memory up to 1MB,
+	then rolled over to a real file in the system temp directory. For a 5GB
+	recording that is 5GB written to disk before the endpoint gets a word in,
+	which is exactly the thing being prevented. Here, the body has not been
+	touched yet: only the headers have arrived.
+
+	`Content-Length` is the browser's own count of what it is about to send,
+	so the size is measured rather than guessed; a request without one (a
+	chunked upload -- nothing in this app sends one) is let through rather
+	than refused on a number that isn't there.
+	"""
+
+	def __init__(self, app):
+		self.app = app
+
+	async def __call__(self, scope, receive, send):
+		if scope["type"] == "http" and scope["method"] == "POST" and scope["path"] == "/process":
+			headers = {k.decode(): v.decode() for k, v in scope["headers"]}
+			declared = headers.get("content-length", "")
+			problem = jobs.space_problem(int(declared) if declared.isdigit() else 0, "take this recording")
+			if problem:
+				await JSONResponse({"detail": problem}, status_code=507)(scope, receive, send)
+				return
+		await self.app(scope, receive, send)
+
+
 @app.exception_handler(ValueError)
 async def _value_error_handler(request, err: ValueError) -> JSONResponse:
 	"""A malformed job id (`pipeline.jobs.job_dir`'s validation) is a bad
@@ -117,6 +149,7 @@ async def _value_error_handler(request, err: ValueError) -> JSONResponse:
 
 
 app.add_middleware(ReportUnexpectedErrors)
+app.add_middleware(RefuseUploadsThatWontFit)
 app.add_middleware(
 	CORSMiddleware,
 	allow_origins=["http://localhost:3460", "http://127.0.0.1:3460"],
@@ -434,6 +467,14 @@ async def _run_pipeline(job_id: str, input_path: Path, filename: str) -> None:
 		# request. This is that same guarantee for a background one.
 		logging.getLogger("uvicorn.error").exception("Background job %s failed", job_id)
 		report_error(job_id, f"{type(err).__name__}: {err}")
+	finally:
+		# Every way out of this function is the end of the pipeline -- success,
+		# a reported failure, an unexpected one, or cancellation by `DELETE
+		# /jobs/{id}` -- and nothing reads the wav afterwards. A `finally`
+		# rather than a line after `save_result` so the ~115MB/hour isn't
+		# stranded by the paths that return early. See `jobs.discard_wav` for
+		# why it must not go through `wav_path`.
+		jobs.discard_wav(job_id)
 
 
 @app.post("/process")
@@ -485,6 +526,14 @@ async def process_local_endpoint(path: str = Body(..., embed=True), jobId: str |
 	source = Path(path)
 	if not source.is_file():
 		raise HTTPException(400, f"No such file: {path}")
+
+	# Nothing is copied here, so the recording's own size isn't the cost --
+	# the extracted wav and the thumbnails are, which is what the margin
+	# covers. Still worth refusing up front rather than failing on the wav
+	# write a minute in.
+	problem = jobs.space_problem(0, "process this recording")
+	if problem:
+		raise HTTPException(507, problem)
 
 	job_id = jobId or str(uuid.uuid4())
 	report(job_id, "transcribe", "reading the recording")
@@ -575,6 +624,17 @@ async def export_endpoint(
 	input_path = jobs.input_path(jobId)
 	if input_path is None:
 		raise HTTPException(404, "No uploaded recording found for that job. Try exporting from the editor again.")
+
+	# Same reasoning as the libass check above -- refuse before ~15 minutes of
+	# work rather than during it. The render is written to a temp directory
+	# under the data directory first even when `outputPath` sends it elsewhere
+	# afterwards, so this is the filesystem that has to hold it. The source's
+	# own size is the estimate: same resolution and stream-copied audio, and
+	# the one full-length measurement (5.3GB in, 3.5GB out) came in under it,
+	# so it errs high rather than inventing a compression ratio.
+	problem = jobs.space_problem(input_path.stat().st_size, "render this episode")
+	if problem:
+		raise HTTPException(507, problem)
 
 	# Not a `with tempfile.TemporaryDirectory()` -- FileResponse below streams
 	# the output from disk *after* this function returns, so the directory
