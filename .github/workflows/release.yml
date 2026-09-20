@@ -9,32 +9,76 @@ on:
     tags: ["v*"]
 
 jobs:
+  # Create the one draft release up front, before any builder can race for
+  # it. This is what stops a tag turning into two drafts; everything below
+  # just uploads into the draft this job guarantees exists.
+  #
+  # electron-builder's GitHub publisher does find-or-create: it GETs
+  # /repos/OWNER/REPO/releases, returns the first draft whose tag matches,
+  # and POSTs a new release when it finds none. The create half is the only
+  # part that isn't idempotent, and pre-creating the draft means it never
+  # runs -- both jobs, and every publisher inside them, take the find half.
+  #
+  # Why the earlier max-parallel theory was wrong: the race is not between
+  # the mac and Windows jobs, it is INSIDE a single job, so no amount of
+  # ordering could have fixed it. app-builder-lib caches publishers in a Map
+  # keyed by publish config, but `getOrCreatePublisher` awaits
+  # `createPublisher()` (which reads the release body off disk) BEFORE it
+  # writes the Map entry. Two artifacts finishing in the same tick both miss
+  # the empty cache, both build a publisher, and each publisher owns its own
+  # lazily-resolved release -- so each does its own find-or-create, both find
+  # nothing, and both create a draft. The v0.3.1 mac job log shows it
+  # directly: `publishing publisher=Github` twice 0.3ms apart, then
+  # `creating GitHub release reason=release doesn't exist` twice 24ms apart,
+  # triggered by the mac .zip and its .blockmap being scheduled together.
+  # That is also why the split was never clean per-platform -- the mac zip's
+  # blockmap went to the second draft while the rest of the mac assets went
+  # to the first, and the Windows job (starting 3s after the mac job ended,
+  # confirmed sequential in the Actions log) then joined the second.
+  draft:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create the draft release for this tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        # Title and empty body match what electron-builder's createRelease
+        # would have set (name = version, no body), so a pre-created draft
+        # is indistinguishable from one it made itself. Re-runnable: an
+        # existing draft is reused rather than duplicated.
+        run: |
+          set -euo pipefail
+          # electron-builder never reads github.ref_name -- it builds its own
+          # tag as "v" + package.json's version and looks that up. Pinning
+          # this draft to the pushed tag introduces a dependency between the
+          # two that didn't exist before, so fail here, in seconds, rather
+          # than let a mismatch send the builders off to create their own
+          # release four minutes from now.
+          V=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$V" ]; then
+            echo "::error::tag $TAG does not match package.json version $V (expected tag v$V)"
+            exit 1
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Draft for $TAG already exists, reusing it."
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --draft --title "${TAG#v}" --notes ""
+          fi
+
   release:
+    needs: draft
     permissions:
       contents: write
     strategy:
-      # One platform at a time: electron-builder's GitHub publish looks for
-      # an existing draft release for the tag and adds its assets to it,
-      # rather than creating a new one, only if that draft already exists
-      # by the time it runs. Two platforms publishing in parallel raced this
-      # check and created two separate draft releases instead of one.
-      #
-      # max-parallel: 1 does NOT fully close this -- on the v0.2.0 tag, the
-      # two jobs still ran fully sequentially (confirmed from the Actions
-      # log) and still ended up as two separate draft releases both tagged
-      # v0.2.0, one holding the mac assets and the other the Windows ones.
-      # Root cause not found (electron-builder's GitHub publisher not
-      # reliably finding the other job's already-created draft, for reasons
-      # this comment can't yet explain). Until this is actually fixed:
-      # after tagging a release, check `gh api repos/OWNER/REPO/releases`
-      # for exactly one release per tag with all 8 expected assets
-      # (dmg/dmg.blockmap, mac zip/zip.blockmap, exe/exe.blockmap,
-      # latest.yml, latest-mac.yml) before publishing (undrafting) it --
-      # don't assume the workflow going green means the release is whole.
-      # Recurred on v0.3.0 (2026-09-19): fixed by hand, uploading the
-      # smaller draft's assets onto the other via the GitHub API, checking
-      # each latest*.yml's sha512 against its installer, then deleting the
-      # empty duplicate. See docs/STATUS.md's v0.3.0 entry.
+      # max-parallel: 1 is NOT what fixes the duplicate-draft problem -- see
+      # the `draft` job above for what does and why ordering never could.
+      # It is kept only because running the two builds in parallel has not
+      # been proven safe on a real tag yet; once one tag lands cleanly it
+      # can go, and the release gets about 90 seconds faster.
       max-parallel: 1
       matrix:
         include:
@@ -77,3 +121,62 @@ jobs:
         run: npm run dist:win -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The check that used to be a note telling a human to run `gh api` by hand
+  # before publishing. A green Release run now means one release for the tag
+  # holding all 8 expected assets, or it means a failed job saying which.
+  #
+  # Publishing the draft is still manual and still needs TWO PATCHes, not
+  # one: `gh api --method PATCH .../releases/<id> -f draft=false
+  # -f make_latest=true` silently ignores make_latest, so the release goes
+  # live but /releases/latest/ keeps pointing at the old tag and
+  # electron-updater clients never see the new version. Send draft=false
+  # first, then make_latest=true on its own.
+  verify:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Exactly one release for the tag, with all 8 assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # One id per line, so --paginate can't skew the count the way a
+          # jq `length` over each page would.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            -q '.[] | select(.tag_name == env.TAG) | .id' > ids.txt
+          n=$(wc -l < ids.txt | tr -d ' ')
+          if [ "$n" -ne 1 ]; then
+            echo "::error::expected exactly 1 release for $TAG, found $n"
+            cat ids.txt
+            exit 1
+          fi
+          id=$(cat ids.txt)
+
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$id/assets" \
+            -q '.[].name' | sort > got.txt
+          printf '%s\n' \
+            "Cutroom-${TAG#v}-arm64-mac.zip" \
+            "Cutroom-${TAG#v}-arm64-mac.zip.blockmap" \
+            "Cutroom-arm64.dmg" \
+            "Cutroom-arm64.dmg.blockmap" \
+            "Cutroom-Setup.exe" \
+            "Cutroom-Setup.exe.blockmap" \
+            "latest-mac.yml" \
+            "latest.yml" | sort > want.txt
+
+          extra=$(comm -13 want.txt got.txt)
+          if [ -n "$extra" ]; then
+            echo "::warning::unexpected assets on release $id:"
+            echo "$extra"
+          fi
+          missing=$(comm -23 want.txt got.txt)
+          if [ -n "$missing" ]; then
+            echo "::error::release $id is missing assets:"
+            echo "$missing"
+            exit 1
+          fi
+          echo "Release $id for $TAG has all 8 expected assets."
