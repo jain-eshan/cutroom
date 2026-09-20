@@ -12,6 +12,7 @@ import { ProcessingScreen } from "@/features/upload/ProcessingScreen";
 import { UploadScreen } from "@/features/upload/UploadScreen";
 import { getLocalPath } from "@/lib/electron";
 import { fixtureCast, fixtureData, FIXTURE_FILE_NAME, FIXTURE_JOB_ID, isFixtureMode } from "@/lib/fixture";
+import { EDIT_VERSION, editFingerprint, restorableEdit, type SavedEdit } from "@/lib/savedEdit";
 import { useThemeMode } from "@/lib/theme";
 import {
 	deleteJob,
@@ -21,6 +22,7 @@ import {
 	listJobs,
 	processVideo,
 	processVideoAtPath,
+	saveEdit,
 	type DetectFacesResponse,
 	type Health,
 	type JobProgress,
@@ -33,9 +35,9 @@ import {
 
 // Enough to reconnect a job in progress, or to know there's a finished one
 // worth fetching, after a reload -- not a full "what screen were you on"
-// record. A resumed job always lands back on Cast: cheap to redo, and one
-// path serves both "you refreshed the tab" and "you reopened a saved
-// episode from last week" instead of two.
+// record. Where a resumed job lands is decided by whether the server has a
+// saved edit for it (see `restorableEdit`), which is the same answer whether
+// you refreshed the tab or reopened an episode from last week.
 const ACTIVE_JOB_KEY = "cutroom.activeJob";
 
 interface ActiveJob {
@@ -132,12 +134,21 @@ type Status =
 			duration: number;
 	  };
 
+/** Long enough that dragging a shot edge is one save rather than sixty,
+ * short enough that quitting straight after a change can only lose that one
+ * change. A `pagehide` flush covers even that -- see the autosave effect. */
+const AUTOSAVE_DEBOUNCE_MS = 700;
+
 /** `?fixture` in the dev server's URL skips straight to this instead of
  * `checking` -- see src/lib/fixture.ts. */
 function fixtureStatus(): Status {
 	return {
 		state: "editing",
-		videoUrl: "",
+		// `?video=` points the fixture at a real recording, so the cropped
+		// panes actually mount and the preview can be checked against what the
+		// export produces. Without one the editor still loads, just with an
+		// empty plate -- which is all the fixture ever gave before.
+		videoUrl: new URLSearchParams(window.location.search).get("video") ?? "",
 		fileName: FIXTURE_FILE_NAME,
 		sessionId: FIXTURE_JOB_ID,
 		turns: fixtureData.turns,
@@ -186,6 +197,57 @@ function App() {
 	const processingStartedAt = status.state === "processing" ? status.startedAt : null;
 	const processingFileName = status.state === "processing" ? status.fileName : null;
 
+	// Everything the editor decides, mirrored to the job on disk. The
+	// pipeline's own output has survived a quit since saved episodes landed;
+	// the editing on top of it never did, so reopening an episode meant
+	// redoing every shot by hand.
+	const editSessionId = status.state === "editing" || status.state === "publishing" ? status.sessionId : null;
+	const editCast = status.state === "editing" || status.state === "publishing" ? status.cast : null;
+	// What was last written, so an unchanged render doesn't write again. The
+	// timestamp is left out of the comparison -- including it would make every
+	// save look like a change and loop.
+	const lastSaved = useRef<string | null>(null);
+
+	useEffect(() => {
+		// The fixture's job id exists only in the browser; there is nothing on
+		// the server to save it to.
+		if (!editSessionId || !editCast || isFixtureMode()) return;
+		const edit: SavedEdit<FramingRegion, FramingStyle> = {
+			version: EDIT_VERSION,
+			cast: editCast,
+			regions,
+			framingStyle,
+			captions,
+			trimDeadAir,
+			savedAt: Date.now(),
+		};
+		const fingerprint = editFingerprint(edit);
+		if (fingerprint === lastSaved.current) return;
+
+		const write = () => {
+			lastSaved.current = fingerprint;
+			// Quiet on failure: losing one autosave isn't worth interrupting
+			// someone mid-edit, and clearing the fingerprint means the next
+			// change retries rather than assuming this one landed.
+			void saveEdit(editSessionId, edit).catch(() => {
+				if (lastSaved.current === fingerprint) lastSaved.current = null;
+			});
+		};
+
+		const timer = setTimeout(write, AUTOSAVE_DEBOUNCE_MS);
+		// Quitting inside the debounce window would otherwise lose that last
+		// change -- the one most likely to be the reason someone is quitting.
+		const flush = () => {
+			clearTimeout(timer);
+			write();
+		};
+		window.addEventListener("pagehide", flush);
+		return () => {
+			clearTimeout(timer);
+			window.removeEventListener("pagehide", flush);
+		};
+	}, [editSessionId, editCast, regions, framingStyle, captions, trimDeadAir]);
+
 	function refreshSavedEpisodes() {
 		listJobs()
 			.then(setSavedEpisodes)
@@ -194,15 +256,40 @@ function App() {
 
 	/** Everything that follows a finished job's result, whether it just
 	 * finished, survived a reload, or is a saved episode from last week --
-	 * one path for all three, since none of them keep the editor's edits. */
+	 * one path for all three. A job with a saved edit reopens straight into
+	 * the editor with that edit; one without starts at Cast, as every job
+	 * did before edits were saved. */
 	function enterCast(jobId: string, fileName: string, result: {
 		turns: Turn[];
 		overlapWindows: OverlapWindow[];
 		words: Word[];
 		faces: DetectFacesResponse;
 		match: MatchResult;
+		edit?: SavedEdit | null;
 	}) {
 		const videoUrl = jobMediaUrl(jobId);
+		const saved = restorableEdit(result.edit);
+		if (saved && result.faces.people.length > 0) {
+			setRegions(saved.regions);
+			setFramingStyle(saved.framingStyle);
+			setCaptions(saved.captions);
+			setTrimDeadAir(saved.trimDeadAir);
+			// Seeded here rather than left null, so reopening an episode and
+			// changing nothing doesn't write an identical edit straight back.
+			lastSaved.current = editFingerprint({ version: EDIT_VERSION, ...saved, savedAt: 0 });
+			setStatus({
+				state: "editing",
+				videoUrl,
+				fileName,
+				sessionId: jobId,
+				turns: result.turns,
+				overlapWindows: result.overlapWindows,
+				words: result.words,
+				faces: result.faces,
+				cast: saved.cast,
+			});
+			return;
+		}
 		if (result.faces.people.length === 0) {
 			setStatus({
 				state: "noFaces",

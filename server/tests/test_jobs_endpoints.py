@@ -213,7 +213,9 @@ class TestSavedEpisodes:
 		assert len(listed) == 1 and listed[0]["jobId"] == "j" and listed[0]["filename"] == "ep.mp4"
 		# The filename rides along on the result too -- a resumed session has
 		# no browser-held upload left to read it from.
-		assert client.get("/jobs/j").json() == {"turns": ["x"], "filename": "ep.mp4"}
+		# `edit` is null until someone opens it in the editor -- see
+		# TestJobEditPersistence.
+		assert client.get("/jobs/j").json() == {"turns": ["x"], "filename": "ep.mp4", "edit": None}
 
 	def test_reopening_an_unknown_job_404s(self, client):
 		assert client.get("/jobs/nobody").status_code == 404
@@ -401,3 +403,67 @@ class TestExportProgress:
 		)
 		assert response.status_code == 500
 		assert client.get("/export/progress/j").json() == {"fraction": 0.0}
+
+
+class TestJobEditPersistence:
+	"""Autosave: the editor's own work survives quitting.
+
+	Before this, `server/jobs/` held everything the pipeline produced and
+	nothing the editor did, so reopening a saved episode meant redoing every
+	shot by hand -- on a 53-minute episode, an afternoon."""
+
+	EDIT = {
+		"cast": {"speakerToPerson": {"0": 1}, "names": {"1": "Siddharth"}},
+		"regions": [{"id": "r1", "start": 1.0, "end": 4.0, "layout": "zoom", "personIds": [1], "source": "user"}],
+		"framingStyle": "gentle",
+		"captions": True,
+		"trimDeadAir": False,
+	}
+
+	def _finished_job(self, job_id="job-1"):
+		jobs.save_result(job_id, "episode.mp4", {"turns": [], "overlapWindows": [], "words": [], "faces": {}, "match": {}})
+		return job_id
+
+	def test_a_job_nobody_has_edited_reports_no_edit(self, client):
+		job_id = self._finished_job()
+		assert client.get(f"/jobs/{job_id}").json()["edit"] is None
+
+	def test_a_saved_edit_comes_back_with_the_job(self, client):
+		job_id = self._finished_job()
+		assert client.put(f"/jobs/{job_id}/edit", json=self.EDIT).status_code == 200
+		assert client.get(f"/jobs/{job_id}").json()["edit"] == self.EDIT
+
+	def test_saving_again_replaces_rather_than_merges(self, client):
+		job_id = self._finished_job()
+		client.put(f"/jobs/{job_id}/edit", json=self.EDIT)
+		client.put(f"/jobs/{job_id}/edit", json={"regions": [], "framingStyle": "wideOnly"})
+		saved = client.get(f"/jobs/{job_id}").json()["edit"]
+		assert saved == {"regions": [], "framingStyle": "wideOnly"}
+		# Whole-document, so a key the new edit leaves out is really gone --
+		# a merge would silently resurrect shots the editor deleted.
+		assert "cast" not in saved
+
+	def test_an_edit_does_not_touch_the_pipeline_result(self, client):
+		job_id = self._finished_job()
+		before = jobs.load_result(job_id)
+		client.put(f"/jobs/{job_id}/edit", json=self.EDIT)
+		assert jobs.load_result(job_id) == before
+
+	def test_an_edit_for_a_job_that_does_not_exist_is_refused(self, client):
+		assert client.put("/jobs/nope/edit", json=self.EDIT).status_code == 404
+
+	def test_a_job_id_that_is_not_a_path_is_refused(self, client):
+		# `validate_job_id` guards the whole module; this is the one new way in.
+		assert client.put("/jobs/..%2F..%2Fetc/edit", json=self.EDIT).status_code in (404, 422)
+
+	def test_deleting_a_job_takes_its_edit_with_it(self, client):
+		job_id = self._finished_job()
+		client.put(f"/jobs/{job_id}/edit", json=self.EDIT)
+		client.delete(f"/jobs/{job_id}")
+		assert jobs.load_edit(job_id) is None
+
+	def test_a_truncated_edit_file_reads_as_no_edit_rather_than_crashing(self):
+		job_id = self._finished_job()
+		jobs.save_edit(job_id, self.EDIT)
+		(jobs.job_dir(job_id) / "edit.json").write_text('{"regions": [')
+		assert jobs.load_edit(job_id) is None

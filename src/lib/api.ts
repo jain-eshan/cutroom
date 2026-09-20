@@ -1,3 +1,5 @@
+import type { SavedEdit } from "@/lib/savedEdit";
+
 export interface Turn {
 	speaker: number;
 	start: number;
@@ -54,6 +56,21 @@ export interface ProcessResponse {
 	/** Only present from `getJob` -- a resumed or reopened session has no
 	 * browser-held upload left to read this from. */
 	filename?: string;
+	/** The editor's saved work, or null for a job nobody has edited yet.
+	 * Only present from `getJob`. */
+	edit?: SavedEdit | null;
+}
+
+/** Save the editor's work in progress. Called on a debounce, and deliberately
+ * quiet on failure: losing one autosave is not worth interrupting someone
+ * mid-edit over, and the next change tries again a second later. */
+export async function saveEdit<Region, Style>(jobId: string, edit: SavedEdit<Region, Style>): Promise<void> {
+	const res = await fetch(new URL(`/jobs/${jobId}/edit`, API_BASE), {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(edit),
+	});
+	if (!res.ok) throw new Error(`Could not save the edit (${res.status})`);
 }
 
 export interface BBox {

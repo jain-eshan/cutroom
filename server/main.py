@@ -214,7 +214,26 @@ def get_job_endpoint(job_id: str) -> dict:
 	result = jobs.load_result(job_id)
 	if result is None:
 		raise HTTPException(404, "No finished job with that id.")
-	return {**result, "filename": jobs.original_filename(job_id)}
+	# `edit` is absent for a job nobody has opened in the editor yet. The app
+	# reads it as "start on the cast screen", which is what every reopened job
+	# did before edits were saved.
+	return {**result, "filename": jobs.original_filename(job_id), "edit": jobs.load_edit(job_id)}
+
+
+@app.put("/jobs/{job_id}/edit")
+def put_job_edit_endpoint(job_id: str, edit: dict = Body(...)) -> dict:
+	"""Save the editor's work in progress, so quitting doesn't lose it.
+
+	Called on a debounce as someone edits, so it has to be cheap and it has to
+	be safe to interrupt: `save_edit` writes to a temp file and renames, so a
+	crash halfway through leaves the previous edit intact rather than a
+	truncated one. Whole-document, not a patch -- the editor holds the state
+	and this is a mirror of it, and reconciling partial updates against a
+	local undo history is a much larger problem than this one."""
+	if jobs.load_result(job_id) is None:
+		raise HTTPException(404, "No finished job with that id.")
+	jobs.save_edit(job_id, edit)
+	return {"saved": True}
 
 
 @app.get("/jobs/{job_id}/media")

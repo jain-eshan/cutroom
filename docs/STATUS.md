@@ -20,8 +20,9 @@ setup screen covers the one-time Hugging Face token.
 3. **Cast** — name each recognised person once. Voices are already matched to
    faces by lip-sync, so this is a confirmation with the uncertain ones
    flagged, not a grid of anonymous voices to work out by ear.
-4. **Edit** — the transcript with real names beside a live preview that uses
-   the same framing maths as the export, and a timeline of framing regions
+4. **Edit** — the transcript with real names beside a live preview that
+   renders the same crop as the export, on a stage sized to the recording's
+   own shape, and a timeline of framing regions
    (close-up, both on screen, wide) whose edges can be dragged independently
    of turn boundaries. The timeline zooms and scrolls, has a ruler and an
    overview strip, snaps edges to words, and has undo and keyboard shortcuts.
@@ -116,6 +117,63 @@ ordering; [ARCHITECTURE.md](ARCHITECTURE.md)'s Roadmap mirrors it.
   A 47-minute, four-person iPhone recording then processed end to end on the
   fixed code: all three stages finished and four people were found. How editing
   and export went on it hasn't been written up yet.
+- **The preview lied about the export, fixed 2026-09-20.** Two separate
+  causes, one symptom. The preview stage set a CSS `aspect-ratio` but sat in
+  a flex column as `flex-1`, and flex wins: the stage was whatever shape the
+  panel left it (measured 1.691 against the source's 1.778), so the wide shot
+  was letterboxed inside the plate while a close-up, cropped to the stage's
+  own shape, filled it edge to edge. That shape then reached `personCrop`,
+  which takes both the crop's aspect *and* its minimum height
+  (`targetHeight / maxUpscale`) from its target pane -- so the crop on screen
+  was not the crop ffmpeg rendered. On a real face from the 53-minute
+  episode: 738.5x415.4 rendered, 726.1x408.5 shown, about 1.7% tight, and
+  every crop nudge inherited it because a nudge is a fraction of the crop's
+  own size. The duo split happened to be right already; the speaker-focus
+  side panes were off by a fraction of a pixel from the integer pane
+  arithmetic.
+  - The stage is now sized with `fitBox` from the source's aspect, and each
+    pane crops against `exportPanes` -- source pixels, a port of
+    `_segment_filter` in `render.py`, including its integer division. Both
+    are in `src/lib/faceCrop.ts`, and the same literal pane sizes are
+    asserted from both sides (`src/lib/faceCrop.test.ts` and
+    `TestSegmentFilterPanes` in `server/tests/test_render.py`), so changing
+    one without the other fails a test on that side.
+  - Verified live against the real 53-minute recording: zero pillarbox at any
+    window size, stage aspect exactly 1.7778 whether the available box was
+    3.274 or 0.9595, and the preview's crop rect equal to the export's.
+    `?video=` was added to the QA fixture (dev-only) so the cropped panes
+    mount against real footage at all -- the fixture had no video, so that
+    whole code path had never been exercised in a browser.
+- **Edits survive quitting, done 2026-09-20.** The pipeline's output has
+  survived a quit since saved episodes landed; the editing on top of it never
+  did, so reopening an episode meant redoing every shot by hand. The editor's
+  state is now mirrored to `jobs/{id}/edit.json` on a ~700ms debounce, with a
+  `pagehide` flush for the change someone makes just before quitting, through
+  a new `PUT /jobs/{job_id}/edit`; `GET /jobs/{job_id}` carries it back and
+  the app reopens straight into the editor.
+  - A separate file from `result.json` on purpose: the result is 2.1MB on a
+    real episode (117 turns, 8,824 word timings) and rewriting it on every
+    shot-edge drag would be both slow and a way to lose the expensive half to
+    a bad write. Writes go through the existing `_atomic_write_text`, so an
+    interrupted save leaves the previous edit intact rather than a truncated
+    one.
+  - Versioned and checked on read (`src/lib/savedEdit.ts`): an edit from a
+    version this build doesn't know opens at Cast rather than being
+    half-read. A bad *framing style* falls back to Gentle instead, since the
+    style only governs suggestions and the shots are the work worth keeping.
+  - Verified over a real socket against an isolated server with its own data
+    directory: saved, read back identically, `result.json` untouched,
+    survived killing and restarting the server, and refused with 404 for a
+    job that doesn't exist. 237 backend tests (was 229), 107 frontend (was
+    89).
+  - Not done, and the other half of this item: an explicit, portable
+    `.cutroom` project file (Save a copy / Open), and a relink prompt for
+    when the recording moves. A project file points at the recording rather
+    than containing it -- the reference episode is 5.3GB, and its source
+    lives in OneDrive, where being moved or evicted to cloud-only is a
+    question of when. Everything a project file needs is already on disk and
+    comes to about 1.5MB for a 53-minute episode (0.5MB gzipped result,
+    40KB waveform, 956KB thumbnails, the edit).
 - **The host test still hasn't happened.** A host is lined up within two weeks.
 
 ### How progress is measured
