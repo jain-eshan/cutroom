@@ -342,16 +342,27 @@ The desktop app serves `dist/` itself, from a small static file server on
 port 3460 -- the same port Vite's dev server uses, so it satisfies
 `server/main.py`'s CORS allowlist without changing it. `scripts/ensure-uv.mjs`
 installs `uv` from astral.sh on first launch if it's missing. `ffmpeg` and
-`ffprobe` ship inside the app via the `ffmpeg-static`/`ffprobe-static` npm
-packages (the same approach Recordly uses) -- `electron/main.mjs` sets
-`FFMPEG_BINARY`/`FFPROBE_BINARY` to their unpacked paths before starting the
-service, which `server/pipeline/ffmpeg.py` already reads. Those binaries are
-native executables, so they're listed in `asarUnpack` (package.json's `build`
-field) to keep them as real files on disk instead of trapped inside the
-`app.asar` archive; each platform's build also excludes the other platforms'
-prebuilt binaries via `mac.files`/`win.files`, since `ffprobe-static` ships
-all six by default. See docs/STATUS.md's desktop app item for what this
-still doesn't cover -- code signing, and more.
+`ffprobe` ship inside the app via the `ffmpeg-static`/`@ffprobe-installer`
+npm packages -- `electron/main.mjs` sets `FFMPEG_BINARY`/`FFPROBE_BINARY` to
+their unpacked paths before starting the service, which
+`server/pipeline/ffmpeg.py` already reads. Those binaries are native
+executables, so they're listed in `asarUnpack` (package.json's `build` field)
+to keep them as real files on disk instead of trapped inside the `app.asar`
+archive.
+
+Both packages resolve exactly one binary, for the machine that ran
+`npm install`, which is why `.github/workflows/release.yml` pins
+`npm_config_arch` per runner. The earlier choice for the probe,
+`ffprobe-static`, instead shipped all six architectures in one tarball and
+picked a directory at runtime -- and the file it keeps under
+`bin/darwin/arm64/` is an x86_64 build, which made every packaged Mac release
+up to v0.3.0 unusable on an Apple Silicon Mac without Rosetta. So
+`scripts/verify-binaries.mjs` now runs as an `afterPack` hook: it reads the
+Mach-O/PE header of every bundled `ffmpeg`/`ffprobe` and fails the build if
+one doesn't match the target architecture, or if either is missing. It reads
+the packed bundle rather than `node_modules`, so it checks what ships. See
+docs/STATUS.md's desktop app item for what this still doesn't cover -- code
+signing, and more.
 
 Packaging is `electron-builder`, configured in package.json's `build` field:
 `npm run dist:mac` / `dist:win` build the frontend then produce a `.dmg`/

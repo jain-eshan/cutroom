@@ -936,6 +936,82 @@ the founder's call, to find testers and contributors early:
   - Not yet verified: the Windows download-and-install path, and
     read-in-place and save-to-folder now that the bridge loads (needs a
     real recording and a Hugging Face token run through the packaged app).
+- **v0.3.1, 2026-09-20: the bundled ffprobe was an Intel binary.** Every
+  packaged Mac build since v0.1.0 shipped an x86_64 `ffprobe` and pointed
+  `FFPROBE_BINARY` at it, so on an Apple Silicon Mac without Rosetta the
+  first file anyone opened died on the first pipeline step with
+  `OSError: [Errno 86] Bad CPU type in executable`. Reported against
+  v0.3.0, but only because v0.3.0's preload fix was the first build that
+  got far enough to run the probe.
+  - **Root cause: `ffprobe-static@3.1.0` keeps an x86_64 build in
+    `bin/darwin/arm64/`.** Not our mistake to make, but ours to catch. The
+    package ships every architecture in one tarball and picks a directory
+    by `os.arch()` at runtime -- release.yml's matrix comment explicitly
+    trusted that design and pinned `npm_config_arch` only for
+    `ffmpeg-static`, which downloads one binary per host arch and was
+    therefore correct all along. Rosetta hid it from anyone who had it
+    installed; a clean macOS 27 install on Apple Silicon does not.
+  - **Fixed by swapping to `@ffprobe-installer/ffprobe`**, which resolves a
+    real per-platform package (`@ffprobe-installer/darwin-arm64`,
+    `win32-x64`) through optional dependencies -- the same shape
+    `ffmpeg-static` already relies on, so the release matrix's existing
+    `npm_config_arch` pin now covers both.
+  - **`scripts/verify-binaries.mjs` (new, an `afterPack` hook) makes this
+    class of bug a build failure.** It reads the Mach-O/PE header of every
+    `ffmpeg`/`ffprobe` inside the packed bundle and fails if any doesn't
+    match the target arch, or if either is missing entirely -- the quieter
+    failure where a glob stops matching or an install script is skipped.
+    Checking the packed output rather than `node_modules` means it tests
+    what actually ships.
+  - **`has_audio` and `_source_audio_codec` caught `FileNotFoundError`, not
+    `OSError`.** A binary that is missing and one that exists but can't be
+    executed are the same problem to whoever is reading the screen, and
+    only the first is a `FileNotFoundError` -- which is why this surfaced
+    as a raw traceback instead of the pipeline's own message. Both widened,
+    with a regression test each that fails on the old catch.
+  - Verified: a local `npm run dist:mac` prints `verify-binaries: 2 bundled
+    binaries are arm64`, both bundled binaries read as arm64, and the
+    packaged `ffprobe` -- the exact path from the crash report -- runs on an
+    M5 and prints its version. The guard was then re-run against that same
+    bundle with `ffprobe-static`'s x86_64 binary put back (fails, naming the
+    file and its arch) and with `ffprobe` removed (fails, naming the
+    missing binary). 224 pytest, 89 node tests, `tsc` and `oxlint` clean.
+  - **Tagged and published 2026-09-20.** The guard ran on both runners and
+    passed: `verify-binaries: 2 bundled binaries are arm64` on macOS,
+    `... are x64` on Windows. That closes the one item this entry left open
+    before the tag -- the Windows installer now sources `ffprobe.exe` from
+    `@ffprobe-installer/win32-x64` rather than the old all-architectures
+    tarball, and nothing had yet watched that path build.
+  - Verified after publishing, against the released artifact rather than
+    the CI log: unpacking `Cutroom-0.3.1-arm64-mac.zip` gives an app
+    reporting 0.3.1 whose bundled `ffmpeg` and `ffprobe` both read as
+    Mach-O arm64, and whose `ffprobe` runs on an M5 and prints its version.
+    sha512 of the dmg, the mac zip and `Setup.exe` each match their
+    `latest*.yml` entry. All four `releases/latest/download/` links and
+    both updater manifests serve 0.3.1.
+  - **The release split into two drafts for the third tag running**
+    (v0.2.0, v0.3.0, v0.3.1). One correction to what the earlier entries
+    assumed: the split is not cleanly per-job. On v0.3.1 the mac
+    `zip.blockmap` landed on the *Windows* draft, so the second draft was
+    created while the mac job was still uploading, and "draft A is mac,
+    draft B is Windows" is not a safe assumption when fixing it by hand.
+    Both drafts report the tagged commit's date as `created_at`, which is
+    what GitHub does for drafts, so that field cannot order them either.
+    Consolidated the usual way: diff the two asset lists, upload whatever
+    is unique to the second onto the first (by release id -- `gh release
+    upload` takes a tag, which is ambiguous with two same-tag releases),
+    check each `latest*.yml` sha512 against its installer, delete the
+    duplicate, publish. release.yml's comment still describes this as open,
+    because it is.
+  - **`make_latest` needs its own API call.** Publishing with
+    `gh api --method PATCH .../releases/<id> -f draft=false -f
+    make_latest=true` silently ignores `make_latest`: the release goes
+    public but `/releases/latest/` keeps pointing at the previous tag, so
+    no `electron-updater` client is ever offered the new version. Send it
+    as a second PATCH, then confirm against the public redirect rather than
+    the API response -- `repos/.../releases/latest` updates first, while the
+    `releases/latest/download/` redirect stays cached on the edge for a
+    minute or two.
 
 ## Known limitations
 

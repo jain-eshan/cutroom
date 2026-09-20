@@ -43,7 +43,12 @@ def has_audio(input_path: Path) -> bool:
 			],
 			check=True, capture_output=True, text=True, timeout=FFPROBE_TIMEOUT_S,
 		)
-	except FileNotFoundError as err:
+	# OSError, not FileNotFoundError: a binary that is missing and one that
+	# exists but cannot be executed -- wrong CPU architecture (errno 86), no
+	# exec bit (errno 13) -- are the same problem to whoever is looking at the
+	# screen, and only the first is a FileNotFoundError. The narrower catch
+	# let a wrong-arch ffprobe escape as a raw traceback instead of this.
+	except OSError as err:
 		raise UnreadableRecording(
 			f"Could not run ffprobe to inspect {input_path.name} ({err}). "
 			"Check FFPROBE_BINARY if it's set in server/.env."

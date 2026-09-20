@@ -8,8 +8,8 @@ import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import ffmpegPath from "ffmpeg-static";
-import ffprobeStatic from "ffprobe-static";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import electronUpdater from "electron-updater";
 import { ensureUv } from "../scripts/ensure-uv.mjs";
@@ -26,17 +26,27 @@ const distDir = path.join(projectRoot, "dist");
 const serviceRoot = app.isPackaged ? process.resourcesPath : projectRoot;
 
 // The one other terminal-requiring step: ffmpeg. Same fix as Recordly's --
-// ffmpeg-static/ffprobe-static ship prebuilt binaries as npm dependencies,
+// ffmpeg-static/@ffprobe-installer ship prebuilt binaries as npm dependencies,
 // unpacked from the asar (see package.json's asarUnpack) so they're real,
 // spawnable files on disk. server/pipeline/ffmpeg.py already reads these
 // env vars instead of assuming "ffmpeg"/"ffprobe" are on PATH.
+//
+// Both resolve one binary for the machine that ran `npm install`, which is
+// why the release workflow pins npm_config_arch per runner. The previous
+// choice here, ffprobe-static, instead shipped every architecture in one
+// tarball and picked a directory at runtime -- and the file it keeps under
+// bin/darwin/arm64/ is an x86_64 build, so on an Apple Silicon Mac without
+// Rosetta every probe died with "Bad CPU type in executable" and no CI
+// signal. scripts/verify-binaries.mjs now fails the build on that mismatch.
+//
 // The packages still compute their path as if it lived inside app.asar --
 // asarUnpack only moves the real file to app.asar.unpacked alongside it, it
 // doesn't rewrite the string -- so swap the prefix back to where the file
 // actually is on disk.
 const unpack = (p) => p.replace("app.asar", "app.asar.unpacked");
+const ffprobePath = ffprobeInstaller.path;
 process.env.FFMPEG_BINARY = app.isPackaged ? unpack(ffmpegPath) : ffmpegPath;
-process.env.FFPROBE_BINARY = app.isPackaged ? unpack(ffprobeStatic.path) : ffprobeStatic.path;
+process.env.FFPROBE_BINARY = app.isPackaged ? unpack(ffprobePath) : ffprobePath;
 
 // Everything the service writes -- saved episodes, downloaded model
 // weights, decision logs, the Python environment itself -- has to land
