@@ -221,6 +221,22 @@ Each landed as its own commit, in the handoff's order.
 
 ## Known, deliberate deviations
 
+- **A fourth speaker colour, `s4`.** The handoff's palette stops at `s3`,
+  annotated "pane cap is 3" -- it was sized to how many people fit on screen
+  in a composite. The speaker lanes and the transcript dots are not panes;
+  they say who is talking, and the reference episode has four people, so the
+  fourth wore the first one's colour in both places. `s4` is
+  `oklch(0.72 0.14 345)` dark / `oklch(0.52 0.14 350)` light, chosen away
+  from the accent's amber and from `s1`-`s3`. Revert it if the palette is
+  fixed upstream; the labels added alongside it already disambiguate the
+  lanes on their own.
+- **Speaker colour is keyed to the person, not the voice.** Diarisation
+  routinely splits one person into several voices -- six for four people on
+  the reference episode -- so colouring by voice gave one human two colours
+  in the timeline and two dot colours in the transcript, which reads as two
+  different people. `colourOfSpeaker` in `EditorView.tsx` resolves the voice
+  to its person first.
+
 - **Drop zone border** is `text3` at 45% instead of the handoff's single
   literal, which was tuned for the dark theme only.
 - **No filename echo on drag-over** — browsers don't expose the file until

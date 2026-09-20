@@ -33,8 +33,10 @@ import {
 } from "@/features/timeline/timelineView";
 import { Button, CheckMark, PlayButton, SectionLabel, Triangle } from "@/components/ui";
 
-// Pane cap is 3 -- see docs/design/handoff README, speaker colour tokens.
-const SPEAKER_DOT = ["bg-s1", "bg-s2", "bg-s3"];
+// One per person, not per pane: the handoff's palette stops at three because
+// that is the composite pane cap, but these identify who is speaking, and a
+// four-person show has four. See `--color-s4` in src/index.css.
+const SPEAKER_DOT = ["bg-s1", "bg-s2", "bg-s3", "bg-s4"];
 
 /** Enough to take a real slip back, not so much it holds every drag frame forever. */
 const HISTORY_LIMIT = 200;
@@ -480,6 +482,7 @@ export function EditorView({
 	// null while the whole episode is on screen, so the timeline keeps fitting
 	// when the file's real length arrives.
 	const [zoomed, setZoomed] = useState<TimeSpan | null>(null);
+	const [showSpeakerLanes, setShowSpeakerLanes] = useState(true);
 	const view = zoomed ?? { start: 0, end: duration };
 	// Undo covers framing edits. It lives with the editor, so it starts fresh
 	// after a trip to the publish screen.
@@ -562,10 +565,29 @@ export function EditorView({
 
 	/** Who spoke a turn: their face's name, or failing that whatever the
 	 * editor called a voice we never saw on camera. */
-	function speakerName(turn: Turn): string {
-		const personId = cast.speakerToPerson[turn.speaker];
+	/** The colour that stands for whoever this voice belongs to.
+	 *
+	 * Keyed to the person, not the voice. Diarisation routinely splits one
+	 * person into several voices -- the reference episode is six voices for
+	 * four people -- so colouring by voice gave the same human two colours in
+	 * the timeline and two dot colours in the transcript, which reads as two
+	 * different people. Falls back to the voice's own id only for a voice no
+	 * face was ever matched to, where there is no person to key on. */
+	function colourOfSpeaker(speaker: number): string {
+		const personId = cast.speakerToPerson[speaker];
+		const seat = personId === undefined ? -1 : faces.people.findIndex((p) => p.id === personId);
+		const index = seat >= 0 ? seat : faces.people.length + speaker;
+		return SPEAKER_DOT[index % SPEAKER_DOT.length];
+	}
+
+	function nameOfSpeaker(speaker: number): string {
+		const personId = cast.speakerToPerson[speaker];
 		if (personId !== undefined) return nameOf(personId);
-		return cast.voiceNames[turn.speaker] || "Nobody";
+		return cast.voiceNames[speaker] || "Nobody";
+	}
+
+	function speakerName(turn: Turn): string {
+		return nameOfSpeaker(turn.speaker);
 	}
 
 	/** Page the timeline so `t` is on screen, if it's zoomed in. Called wherever
@@ -936,7 +958,7 @@ export function EditorView({
 									}`}
 								>
 									<span className="flex flex-wrap items-center gap-[7px]">
-										<span className={`h-[7px] w-[7px] shrink-0 rounded-full ${SPEAKER_DOT[t.speaker % SPEAKER_DOT.length]}`} />
+										<span className={`h-[7px] w-[7px] shrink-0 rounded-full ${colourOfSpeaker(t.speaker)}`} />
 										<span className={`text-meta leading-none font-semibold ${selected ? "text-text" : "text-text2"}`}>
 											{speakerName(t)}
 										</span>
@@ -1147,6 +1169,15 @@ export function EditorView({
 						<Button
 							size="sm"
 							variant="quiet"
+							onClick={() => setShowSpeakerLanes((on) => !on)}
+							aria-pressed={showSpeakerLanes}
+							title="Show or hide the lane per speaker under the framing timeline."
+						>
+							{showSpeakerLanes ? "Hide speakers" : "Show speakers"}
+						</Button>
+						<Button
+							size="sm"
+							variant="quiet"
 							onClick={() => zoomBy(2)}
 							disabled={!zoomed}
 							aria-label="Zoom out"
@@ -1208,6 +1239,9 @@ export function EditorView({
 					words={words}
 					selectedRegionId={selectedRegionId}
 					currentTime={currentTime}
+					nameOfSpeaker={nameOfSpeaker}
+					colourOfSpeaker={colourOfSpeaker}
+					showSpeakerLanes={showSpeakerLanes}
 					nameOf={(id) => nameOf(id)}
 					waveform={waveform}
 					thumbnailUrls={Array.from({ length: thumbnailCount }, (_, i) => timelineThumbnailUrl(jobId, i))}

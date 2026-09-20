@@ -78,6 +78,12 @@
 	--color-s1: oklch(0.74 0.16 52);
 	--color-s2: oklch(0.72 0.13 175);
 	--color-s3: oklch(0.7 0.14 285);
+	/* Fourth speaker. The handoff's palette stops at three, sized to the pane
+	 * cap -- how many people fit on screen at once. These identify people in
+	 * the conversation, which is a different number: the reference episode has
+	 * four, and with three tokens the fourth wore the first one's colour in
+	 * both the timeline lanes and the transcript. See DESIGN_SYSTEM.md. */
+	--color-s4: oklch(0.72 0.14 345);
 
 	--color-plate-a: oklch(0.27 0.008 70);
 	--color-plate-b: oklch(0.23 0.008 70);
@@ -139,6 +145,7 @@
 		--color-s1: oklch(0.56 0.16 45);
 		--color-s2: oklch(0.48 0.12 190);
 		--color-s3: oklch(0.5 0.13 290);
+		--color-s4: oklch(0.52 0.14 350);
 		--color-plate-a: oklch(0.33 0.006 85);
 		--color-plate-b: oklch(0.285 0.006 85);
 		--color-plate-ink: oklch(0.78 0.01 80);
@@ -176,6 +183,7 @@
 	--color-s1: oklch(0.56 0.16 45);
 	--color-s2: oklch(0.48 0.12 190);
 	--color-s3: oklch(0.5 0.13 290);
+	--color-s4: oklch(0.52 0.14 350);
 	--color-plate-a: oklch(0.33 0.006 85);
 	--color-plate-b: oklch(0.285 0.006 85);
 	--color-plate-ink: oklch(0.78 0.01 80);

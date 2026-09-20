@@ -12,7 +12,14 @@ import {
 	type TimeSpan,
 } from "@/features/timeline/timelineView";
 
-const SPEAKER_LANE = ["bg-s1", "bg-s2", "bg-s3"];
+/** Room for a name beside each lane. The lanes are time-aligned with the
+ * ruler and the framing lane above them, so this is the detail column's own
+ * left padding rather than a separate column: percentage positions inside
+ * each row are relative to the content box, which excludes padding, so every
+ * row stays aligned with no second set of widths to keep in sync. The
+ * playhead is the one exception -- absolute positioning is relative to the
+ * padding box -- so it is placed in pixels. */
+const LANE_LABEL_W = 92;
 
 /** How near, on screen, a dragged edge has to come to a word, a turn, another
  * shot's edge or the playhead before it snaps there. */
@@ -45,6 +52,9 @@ export function TimelineTray({
 	selectedRegionId,
 	currentTime,
 	nameOf,
+	nameOfSpeaker,
+	colourOfSpeaker,
+	showSpeakerLanes,
 	waveform,
 	thumbnailUrls,
 	onViewChange,
@@ -62,6 +72,17 @@ export function TimelineTray({
 	selectedRegionId: string | null;
 	currentTime: number;
 	nameOf: (personId: number) => string;
+	/** A voice's name, for the lane labels -- the lanes are one per voice, and
+	 * a voice the pipeline never matched to a face still has a name. */
+	nameOfSpeaker: (speaker: number) => string;
+	/** A voice's colour, keyed to the person it belongs to rather than the
+	 * voice, so one person split into several voices stays one colour. */
+	colourOfSpeaker: (speaker: number) => string;
+	/** Who is talking, under the framing that covers them. Hideable because on
+	 * a four-person show it is four more rows between the framing lane and the
+	 * bottom of the window, and an editor working on framing alone doesn't
+	 * need them. */
+	showSpeakerLanes: boolean;
 	/** The episode's amplitude envelope, or null until it's fetched. Shown
 	 * behind the speaker lanes as a shared reference -- there's one audio
 	 * track, not one per person. */
@@ -262,7 +283,11 @@ export function TimelineTray({
 				/>
 			</div>
 
-			<div ref={setDetail} className="relative flex flex-col gap-2">
+			<div
+				ref={setDetail}
+				className="relative flex flex-col gap-2"
+				style={{ paddingLeft: LANE_LABEL_W }}
+			>
 				{/* Ruler: drag along it to scrub. */}
 				<div
 					onPointerDown={(e) => {
@@ -370,9 +395,24 @@ export function TimelineTray({
 
 				{/* Speaker lanes -- who is actually talking, under the framing that
 				    covers them, so a region's disagreement with the speech is visible. */}
+				{showSpeakerLanes && (
 				<div className="flex flex-col gap-1">
-					{speakers.map((speaker, i) => (
-						<div key={speaker} className="relative h-[15px] w-full overflow-hidden rounded-chip bg-track">
+					{speakers.map((speaker) => (
+						<div key={speaker} className="relative h-[15px] w-full rounded-chip bg-track">
+							{/* In the column's own padding, so naming a lane costs no
+							    timeline width and covers none of it. Without this the
+							    lanes were four unlabelled stripes: the only thing saying
+							    which was whose was a colour, and the colours ran out. */}
+							<span
+								className="absolute top-0 -left-[92px] flex h-full w-[84px] items-center gap-[5px] overflow-hidden"
+								title={nameOfSpeaker(speaker)}
+							>
+								<span className={`h-[7px] w-[7px] shrink-0 rounded-full ${colourOfSpeaker(speaker)}`} />
+								<span className="truncate font-mono text-mono-xs leading-none text-text3">
+									{nameOfSpeaker(speaker)}
+								</span>
+							</span>
+							<span className="absolute inset-0 overflow-hidden rounded-chip">
 							{waveformBars.length > 0 && (
 								<div className="pointer-events-none absolute inset-0 flex items-end gap-px opacity-35">
 									{waveformBars.map((amplitude, j) => (
@@ -389,19 +429,25 @@ export function TimelineTray({
 								.map((t) => (
 									<div
 										key={`${speaker}-${t.start}`}
-										className={`absolute inset-y-0 ${SPEAKER_LANE[i % SPEAKER_LANE.length]}`}
+										className={`absolute inset-y-0 ${colourOfSpeaker(speaker)}`}
 										style={{ left: `${at(t.start)}%`, width: `${at(t.end) - at(t.start)}%` }}
 									/>
 								))}
+							</span>
 						</div>
 					))}
 				</div>
+				)}
 
 				{/* Playhead, across the ruler and every lane. */}
-				{currentTime >= view.start && currentTime <= view.end && (
+				{currentTime >= view.start && currentTime <= view.end && width > 0 && (
 					<div
 						className="pointer-events-none absolute top-0 bottom-0 w-[2px] bg-handle"
-						style={{ left: `${at(currentTime)}%` }}
+						// Pixels, not a percentage: absolute positioning resolves
+						// against the padding box, which includes the label gutter,
+						// while every row's percentages resolve against the content
+						// box. `width` is the content width the ResizeObserver reports.
+						style={{ left: LANE_LABEL_W + (at(currentTime) / 100) * width }}
 					>
 						<div className="absolute top-0 -left-[4px] h-[8px] w-[10px] bg-handle [clip-path:polygon(0_0,100%_0,50%_100%)]" />
 					</div>
