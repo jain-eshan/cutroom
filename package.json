@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:qa": "VITE_API_URL=http://localhost:3466 CUTROOM_SERVICE_PORT=8793 CUTROOM_DATA_DIR=$PWD/server/qa-data vite --port 3466 --strictPort",
+    "dev:qa": "VITE_API_URL=http://localhost:3466 CUTROOM_SERVICE_PORT=8793 CUTROOM_DATA_DIR=$PWD/server/qa-data FFMPEG_BINARY=$(node -p \"require('ffmpeg-static')\") FFPROBE_BINARY=$(node -p \"require('ffprobe-static').path\") vite --port 3466 --strictPort",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "node --test 'src/**/*.test.ts' 'scripts/**/*.test.mjs'",

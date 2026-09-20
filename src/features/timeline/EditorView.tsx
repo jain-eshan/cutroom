@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { getProgress, getWaveform, timelineThumbnailUrl, type BBox, type DetectFacesResponse, type Health, type OverlapWindow, type Person, type Turn, type Word } from "@/lib/api";
 import type { CastResult } from "@/features/faces/CastScreen";
 import { DUO_SPLIT_MAX, exportPanes, fitBox, personCrop } from "@/lib/faceCrop";
+import { buildCaptionCues, cueAt } from "@/lib/captions";
 import { TimelineTray } from "@/features/timeline/TimelineTray";
 import {
 	FRAMING_STYLE_LABELS,
@@ -387,6 +388,7 @@ export function EditorView({
 	regions,
 	onRegionsChange,
 	captionsEnabled,
+	onCaptionsChange,
 	missingRecording,
 	onRelink,
 	trimDeadAirEnabled,
@@ -415,6 +417,7 @@ export function EditorView({
 	onRegionsChange: React.Dispatch<React.SetStateAction<FramingRegion[]>>;
 	/** Shown here; chosen on the publish screen. */
 	captionsEnabled: boolean;
+	onCaptionsChange: (on: boolean) => void;
 	/** Where the recording was when this project was saved, when it isn't
 	 * there now. Shown so the file being asked for is named, not guessed at. */
 	missingRecording?: string | null;
@@ -483,6 +486,9 @@ export function EditorView({
 	// when the file's real length arrives.
 	const [zoomed, setZoomed] = useState<TimeSpan | null>(null);
 	const [showSpeakerLanes, setShowSpeakerLanes] = useState(true);
+	// Built once per episode, not per frame: 8,824 words on the reference
+	// recording, and this runs against every `timeupdate`.
+	const captionCues = useMemo(() => buildCaptionCues(words), [words]);
 	const view = zoomed ?? { start: 0, end: duration };
 	// Undo covers framing edits. It lives with the editor, so it starts fresh
 	// after a trip to the publish screen.
@@ -1127,6 +1133,36 @@ export function EditorView({
 							)}
 							<span className={pill}>{faces.frameWidth > 0 ? `${faces.frameWidth}×${faces.frameHeight}` : "audio only"}</span>
 						</div>
+						{/* What the export will burn in, grouped by the same rules
+						    (`buildCaptionCues` ports `build_caption_cues`) and placed
+						    where `write_ass` puts it: bottom-centre, 7% up from the
+						    bottom, 4.5% of frame height. Sized off the stage so it
+						    holds at any window size, and shown only when the export
+						    would actually produce them. */}
+						{captionsEnabled && captionsAvailable && stageSize.height > 0 && (() => {
+							const cue = cueAt(captionCues, currentTime);
+							if (!cue) return null;
+							return (
+								<span
+									className="pointer-events-none absolute left-1/2 max-w-[86%] -translate-x-1/2 text-center font-semibold text-balance text-white"
+									style={{
+										bottom: stageSize.height * 0.07,
+										fontSize: stageSize.height * 0.045,
+										lineHeight: 1.2,
+										// `write_ass` draws a 0.3%-of-height outline, not a
+										// box; four shadows is the closest CSS equivalent.
+										textShadow: Array.from({ length: 4 }, (_, i) => {
+											const r = Math.max(1, stageSize.height * 0.003);
+											const angle = (i * Math.PI) / 2;
+											return `${Math.round(Math.cos(angle) * r)}px ${Math.round(Math.sin(angle) * r)}px 0 #000`;
+										}).join(", "),
+									}}
+								>
+									{cue.text}
+								</span>
+							);
+						})()}
+
 						<span className={`pointer-events-none absolute right-[14px] bottom-[14px] ${pill}`}>{formatTime(currentTime)}</span>
 					</div>
 					</div>
@@ -1137,9 +1173,24 @@ export function EditorView({
 							{formatTime(currentTime)} / {formatTime(duration)}
 							{rate !== 1 && <span className="ml-2 text-accent-text">{rate}×</span>}
 						</span>
-						<span className="ml-auto rounded-control bg-control px-[11px] py-2 text-mono-sm leading-none font-medium text-text2">
+						{/* This read as a button and wasn't one: a status line about the
+						    export, next to a preview that never drew a caption. Now it
+						    toggles, and what it toggles is visible. */}
+						<Button
+							size="sm"
+							variant="quiet"
+							className="ml-auto"
+							onClick={() => onCaptionsChange(!captionsEnabled)}
+							disabled={!captionsAvailable}
+							aria-pressed={captionsAvailable && captionsEnabled}
+							title={
+								captionsAvailable
+									? "Show captions here and burn them into the export. Cut from the word timings, so they land where the words do."
+									: "This ffmpeg was built without subtitle support, so captions can't be burned in."
+							}
+						>
 							{captionsAvailable ? (captionsEnabled ? "Captions on" : "Captions off") : "No captions"}
-						</span>
+						</Button>
 					</div>
 				</main>
 			</div>

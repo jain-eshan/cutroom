@@ -631,6 +631,7 @@ function App() {
 				regions={regions}
 				onRegionsChange={setRegions}
 				captionsEnabled={captions}
+				onCaptionsChange={setCaptions}
 				missingRecording={missingRecording}
 				onRelink={hasElectronBridge() ? handleRelink : undefined}
 				trimDeadAirEnabled={trimDeadAir}
