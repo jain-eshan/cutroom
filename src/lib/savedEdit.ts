@@ -14,6 +14,7 @@
  */
 import type { CastResult } from "@/features/faces/CastScreen";
 import type { FramingRegion, FramingStyle } from "@/features/timeline/types";
+import type { WordEdits } from "@/lib/transcript";
 
 /** What this build writes. Bump it when a change here can't be understood by
  * the code that reads it. */
@@ -33,6 +34,10 @@ export interface SavedEdit<Region = unknown, Style = string> {
 	framingStyle: Style;
 	captions: boolean;
 	trimDeadAir: boolean;
+	/** Transcription corrections, as word index -> replacement. Absent in an
+	 * edit saved before corrections existed, which is not an error: it means
+	 * nothing was corrected. */
+	wordEdits?: WordEdits;
 	savedAt: number;
 }
 
@@ -42,6 +47,7 @@ export interface RestoredEdit {
 	framingStyle: FramingStyle;
 	captions: boolean;
 	trimDeadAir: boolean;
+	wordEdits: WordEdits;
 }
 
 const FRAMING_STYLES: FramingStyle[] = ["wideOnly", "gentle", "dynamic"];
@@ -69,6 +75,12 @@ export function restorableEdit(edit: SavedEdit | null | undefined): RestoredEdit
 		framingStyle: FRAMING_STYLES.find((style) => style === edit.framingStyle) ?? "gentle",
 		captions: Boolean(edit.captions),
 		trimDeadAir: Boolean(edit.trimDeadAir),
+		// Every value is re-checked: this is a file, and `applyWordEdits`
+		// ignores an index that isn't a word, but a non-string replacement
+		// would reach the DOM.
+		wordEdits: Object.fromEntries(
+			Object.entries(edit.wordEdits ?? {}).filter(([, text]) => typeof text === "string"),
+		),
 	};
 }
 

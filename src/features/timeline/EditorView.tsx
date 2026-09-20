@@ -3,7 +3,7 @@ import { getProgress, getWaveform, timelineThumbnailUrl, type BBox, type DetectF
 import type { CastResult } from "@/features/faces/CastScreen";
 import { DUO_SPLIT_MAX, exportPanes, fitBox, personCrop } from "@/lib/faceCrop";
 import { buildCaptionCues, cueAt } from "@/lib/captions";
-import { wordAt, wordSlice } from "@/lib/transcript";
+import { occurrencesOf, recased, wordAt, wordSlice } from "@/lib/transcript";
 import { TimelineTray } from "@/features/timeline/TimelineTray";
 import {
 	FRAMING_STYLE_LABELS,
@@ -201,6 +201,7 @@ function SpokenLine({
 	words,
 	at,
 	onSeek,
+	onCorrect,
 }: {
 	turn: Turn;
 	words: Word[];
@@ -219,7 +220,13 @@ function SpokenLine({
 	 * symptom of that; see docs/STATUS.md. */
 	at: number;
 	onSeek: (t: number) => void;
+	/** Correct this word, and optionally every other word that reads the
+	 * same. `null` for `at` means this line is shown for editing rather than
+	 * because it is being spoken, so nothing is lit. */
+	onCorrect: (index: number, text: string, everywhere: boolean) => void;
 }) {
+	const [editing, setEditing] = useState<number | null>(null);
+	const [draft, setDraft] = useState("");
 	const [from, to] = useMemo(() => wordSlice(words, turn.start, turn.end), [words, turn.start, turn.end]);
 	// Bounded to this line, so where two people overlap a line never lights up
 	// a word from the other one's.
@@ -228,27 +235,74 @@ function SpokenLine({
 
 	return (
 		<>
-			{words.slice(from, to).map((word, i) => (
-				<Fragment key={from + i}>
-					{i > 0 && " "}
-					<span
-						onClick={(e) => {
-							// The line's own click would seek to its start, which is
-							// the opposite of asking for this word.
-							e.stopPropagation();
-							onSeek(word.start);
-						}}
-						// The wash alone is 9% accent, which is right for a drop zone
-						// and too quiet for the one word you are meant to be reading.
-						// Accent ink carries it; both tokens already exist.
-						className={`cursor-text rounded-[3px] ${
-							from + i === current ? "bg-accent-wash font-medium text-accent-text" : ""
-						}`}
-					>
-						{word.text.trim()}
-					</span>
-				</Fragment>
-			))}
+			{words.slice(from, to).map((word, i) => {
+				const index = from + i;
+				if (index === editing) {
+					const others = occurrencesOf(words, word.text).filter((o) => o !== index);
+					const commit = (everywhere: boolean) => {
+						const text = draft.trim();
+						if (text && text !== word.text.trim()) onCorrect(index, text, everywhere);
+						setEditing(null);
+					};
+					return (
+						<Fragment key={index}>
+							{i > 0 && " "}
+							<input
+								// eslint-disable-next-line jsx-a11y/no-autofocus -- opened by
+								// a double-click on this exact word; focusing anything else
+								// would be the wrong answer.
+								autoFocus
+								value={draft}
+								size={Math.max(4, draft.length)}
+								onClick={(e) => e.stopPropagation()}
+								onChange={(e) => setDraft(e.target.value)}
+								onBlur={() => commit(false)}
+								onKeyDown={(e) => {
+									e.stopPropagation();
+									// Shift-Enter fixes every place the same word was
+									// heard: transcription mishears a name the same way
+									// each time, so one correction is usually all of them.
+									if (e.key === "Enter") commit(e.shiftKey && others.length > 0);
+									if (e.key === "Escape") setEditing(null);
+								}}
+								title={
+									others.length > 0
+										? `Enter to fix this one, Shift-Enter to fix all ${others.length + 1}`
+										: "Enter to save, Escape to cancel"
+								}
+								className="rounded-[3px] bg-well px-1 text-accent-text outline-none"
+							/>
+						</Fragment>
+					);
+				}
+				return (
+					<Fragment key={index}>
+						{i > 0 && " "}
+						<span
+							onClick={(e) => {
+								// The line's own click would seek to its start, which is
+								// the opposite of asking for this word.
+								e.stopPropagation();
+								onSeek(word.start);
+							}}
+							onDoubleClick={(e) => {
+								e.stopPropagation();
+								setDraft(word.text.trim());
+								setEditing(index);
+							}}
+							title="Double-click to correct this word"
+							// The wash alone is 9% accent, which is right for a drop zone
+							// and too quiet for the one word you are meant to be reading.
+							// Accent ink carries it; both tokens already exist.
+							className={`cursor-text rounded-[3px] ${
+								index === current ? "bg-accent-wash font-medium text-accent-text" : ""
+							}`}
+						>
+							{word.text.trim()}
+						</span>
+					</Fragment>
+				);
+			})}
 		</>
 	);
 }
@@ -461,6 +515,7 @@ export function EditorView({
 	faces,
 	cast,
 	onCastChange,
+	onWordEditsChange,
 	health,
 	regions,
 	onRegionsChange,
@@ -492,6 +547,8 @@ export function EditorView({
 	 * lane labels, the shot chips and the export's decision log, and until
 	 * this existed a name set once could never be corrected. */
 	onCastChange: (cast: CastResult) => void;
+	/** Merged into the corrections already recorded. */
+	onWordEditsChange: (edits: Record<number, string>) => void;
 	health: Health | null;
 	/** Owned by App, so a trip to the publish screen and back keeps them. */
 	regions: FramingRegion[];
@@ -691,6 +748,24 @@ export function EditorView({
 	 * matched to keeps its own lane, because there is no person to fold it
 	 * into.
 	 */
+	/** Record a transcription correction, optionally everywhere the same word
+	 * was heard. Corrections live beside the edit rather than in the words, so
+	 * the pipeline's own output is never rewritten and the original is always
+	 * recoverable -- and so an autosave carries a handful of replacements
+	 * instead of the whole transcript. */
+	function correctWord(index: number, text: string, everywhere: boolean) {
+		// The word you actually retyped is taken exactly as typed -- you saw
+		// its punctuation in the box. The others keep their own: "Pacto." is
+		// corrected to "Practo.", not to "Practo".
+		const edits: Record<number, string> = { [index]: text };
+		if (everywhere) {
+			for (const other of occurrencesOf(words, words[index].text)) {
+				if (other !== index) edits[other] = recased(words[other].text, text);
+			}
+		}
+		onWordEditsChange(edits);
+	}
+
 	const speakerLanes = useMemo(() => {
 		const voices = [...new Set(turns.map((t) => t.speaker))].sort((a, b) => a - b);
 		const byPerson = new Map<number, number[]>();
@@ -1130,7 +1205,17 @@ export function EditorView({
 										)}
 									</span>
 									<span className={`text-pretty ${selected ? "text-body text-text" : "text-ui text-text3"}`}>
-										{spoken ? <SpokenLine turn={t} words={words} at={currentTime} onSeek={seek} /> : t.text}
+										{spoken || selected ? (
+											<SpokenLine
+												turn={t}
+												words={words}
+												at={spoken ? currentTime : -1}
+												onSeek={seek}
+												onCorrect={correctWord}
+											/>
+										) : (
+											t.text
+										)}
 									</span>
 									<span className="flex items-center gap-[7px] text-mono-sm text-text3">
 										<span className={`h-[9px] w-[9px] shrink-0 rounded-[2px] ${reasonSwatch(i)}`} />

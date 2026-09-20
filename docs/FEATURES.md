@@ -160,6 +160,20 @@ The timeline works like a video editor's, cut down to what a podcast needs:
 - Keyboard: Space, J (back 5 s), K, L (2×, 4×), the arrows, ↑/↓ between
   shots, Delete and Esc. The Shortcuts button lists them.
 
+The transcript can be corrected. Double-click a word to retype it; the
+timings never move, because the timings were not what was wrong. Where the
+same word was misheard elsewhere -- and it usually was, since transcription
+gets a proper noun wrong the same way every time -- Shift-Enter fixes every
+occurrence at once, each keeping its own punctuation. On the reference
+episode "Practo" is heard as "Pacto" in ten places, spread over four tokens
+because five of them end a clause; one correction fixes nine of them, and
+the possessive "Pacto's" is left as its own word.
+
+Corrections are stored as word index to replacement, beside the edit rather
+than inside the transcript, so the pipeline's own output is never rewritten
+and an autosave carries a handful of replacements instead of 550KB of
+timings. They reach the burned-in captions, which are cut from these words.
+
 The transcript follows the talk. The line being spoken is split into its own
 words, with the one being said lit; it scrolls itself into view when the line
 changes; and clicking a word seeks to exactly that word. Only the spoken line
