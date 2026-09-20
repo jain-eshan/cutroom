@@ -8,7 +8,13 @@ import { spawn } from "node:child_process";
 import net from "node:net";
 
 // Must stay in sync with src/lib/api.ts's API_BASE and server/main.py's port.
-export const SERVICE_PORT = 8787;
+//
+// Overridable so a QA run can have a service of its very own. The reuse below
+// treats any service on this port as interchangeable, which it isn't: a dev
+// service and a packaged install have different data directories, so a QA run
+// sharing 8787 would either adopt someone's real library or be adopted by
+// their app. A separate port keeps the two from ever meeting. See `dev:qa`.
+export const SERVICE_PORT = Number(process.env.CUTROOM_SERVICE_PORT ?? 8787);
 const LOG_LINES = 40;
 // uvicorn's own line announcing it's actually listening.
 const READY_MARKER = "Application startup complete";

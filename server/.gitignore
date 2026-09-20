@@ -5,6 +5,11 @@ __pycache__
 logs/
 # Saved episodes and in-progress uploads (pipeline/jobs.py) -- can be GBs.
 jobs/
+
+# `npm run dev:qa`'s own data directory: its token, its episodes, its
+# decision logs. A QA run keeps its library here so it can never be confused
+# with a real one.
+qa-data/
 # Download on first run -- see pipeline/faces.py and pipeline/lipsync.py
 .models/face_recognition_sface_*.onnx
 .models/lrasd_*.model

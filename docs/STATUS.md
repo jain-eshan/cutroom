@@ -207,10 +207,36 @@ ordering; [ARCHITECTURE.md](ARCHITECTURE.md)'s Roadmap mirrors it.
     timings, 4 people and the edit intact, played the recording through it,
     broke the link the way a synced folder would, got a clean 404, relinked
     and played again. 272 backend tests (was 237), 107 frontend.
-  - Not verified in a browser: "Save a copy" and the relink button. Both are
-    behind a real session, and the service's CORS allowlist is `:3460` only,
-    so a scratch dev server can't reach it -- the same friction every
-    browser check in this document has hit. Worth deciding on separately.
+  - Verified in the real app too, on the real recording, once `npm run dev:qa`
+    existed (below): reopened the episode, added a close-up, watched the
+    autosave land, reloaded into the editor with that shot still marked "You
+    set this to close on Person 1", saved a 1.20MB project from the title
+    bar, and opened it back as a second independent episode -- 117 turns,
+    8,824 words, 4 people, 35 shots with the manual one intact, and the
+    recording relinked on its own. The relink *button* is the one thing still
+    unexercised: it needs Electron's native file picker, so it can only be
+    tested in the packaged app.
+- **`npm run dev:qa`: the app can finally be driven in a browser, 2026-09-20.**
+  Every browser check in this document has hit the same wall -- the service
+  allows `:3460` only, so a dev server on any other port gets blocked by
+  CORS, and 3460 is taken whenever a real install is running. Three prior
+  entries above record working around it rather than fixing it.
+  - Fixed with a Vite dev proxy (`vite.config.ts`) rather than a wider
+    allowlist. The proxy makes the requests same-origin, so the browser never
+    performs a cross-origin check at all and what the shipped service accepts
+    is unchanged. Letting the service answer any localhost origin would mean
+    any page on any local port could drive someone's Cutroom.
+  - QA mode also gets its own service port (`CUTROOM_SERVICE_PORT`) and its
+    own data directory (`server/qa-data`, gitignored), so it can never adopt
+    a real library or be adopted by a running install. That matters more than
+    it sounds: `processing-service.mjs` reuses any service already on its
+    port, and a dev service and a packaged install have *different* data
+    directories -- an app that adopts the wrong one silently shows an empty
+    episode list. Seen live during this session.
+  - The setup gate needs `HF_TOKEN` set to something (it is a presence check;
+    the licence only shows when the model loads). QA mode reads it from
+    `server/qa-data/.env`, so no placeholder token is committed and no real
+    credential is copied around.
 - **The host test still hasn't happened.** A host is lined up within two weeks.
 
 ### How progress is measured

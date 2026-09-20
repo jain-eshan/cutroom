@@ -60,6 +60,23 @@ troubleshooting section.
 You don't need a real recording to work on most of the app: see
 [Testing without real footage](#testing-without-real-footage).
 
+### Running a second copy alongside an install
+
+`npm run dev` wants port 3460, which a running Cutroom install already holds,
+and the service only accepts requests from that port. `npm run dev:qa` runs
+the whole app beside one instead:
+
+```bash
+npm run dev:qa   # http://localhost:3466
+```
+
+It serves on 3466 and proxies the service's routes through the dev server, so
+the requests are same-origin and CORS never applies -- the service's own
+allowlist is left alone. It also runs its own copy of the processing service
+(port 8793) against its own data directory, `server/qa-data`, so it can't see
+or touch a real library, and a real install can't adopt it. Put a Hugging Face
+token in `server/qa-data/.env` to get past the setup screen.
+
 ## How the repository is laid out
 
 Cutroom is two programs that talk over HTTP on your own machine, plus a
