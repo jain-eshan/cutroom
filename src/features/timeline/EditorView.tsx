@@ -460,6 +460,7 @@ export function EditorView({
 	overlapWindows,
 	faces,
 	cast,
+	onCastChange,
 	health,
 	regions,
 	onRegionsChange,
@@ -487,6 +488,10 @@ export function EditorView({
 	overlapWindows: OverlapWindow[];
 	faces: DetectFacesResponse;
 	cast: CastResult;
+	/** Rename a person after the cast screen. Names reach the transcript, the
+	 * lane labels, the shot chips and the export's decision log, and until
+	 * this existed a name set once could never be corrected. */
+	onCastChange: (cast: CastResult) => void;
 	health: Health | null;
 	/** Owned by App, so a trip to the publish screen and back keeps them. */
 	regions: FramingRegion[];
@@ -674,6 +679,53 @@ export function EditorView({
 		const index = seat >= 0 ? seat : faces.people.length + speaker;
 		return SPEAKER_DOT[index % SPEAKER_DOT.length];
 	}
+
+	/**
+	 * One lane per person, not per voice.
+	 *
+	 * The same split that gave one person two colours also gave them two
+	 * lanes, labelled with the same name twice -- on the reference episode,
+	 * "Person 1" and "Person 2" each appeared twice in a list of six. A voice
+	 * is a thing the pipeline found; a person is what an editor is looking
+	 * for, and the lanes are read as "who is talking". A voice no face was
+	 * matched to keeps its own lane, because there is no person to fold it
+	 * into.
+	 */
+	const speakerLanes = useMemo(() => {
+		const voices = [...new Set(turns.map((t) => t.speaker))].sort((a, b) => a - b);
+		const byPerson = new Map<number, number[]>();
+		const unmatched: number[] = [];
+		for (const voice of voices) {
+			const personId = cast.speakerToPerson[voice];
+			if (personId === undefined) unmatched.push(voice);
+			else byPerson.set(personId, [...(byPerson.get(personId) ?? []), voice]);
+		}
+		// `nameOf`/`nameOfSpeaker`/`colourOfSpeaker` say the same things, but
+		// they are rebuilt every render, so depending on them would defeat this
+		// memo -- and listing them would hide what it actually depends on,
+		// which is `cast` and the people. Same rules, read straight from those.
+		const people = faces.people;
+		const colourFor = (personId: number | null, voice: number) => {
+			const seat = personId === null ? -1 : people.findIndex((p) => p.id === personId);
+			return SPEAKER_DOT[(seat >= 0 ? seat : people.length + voice) % SPEAKER_DOT.length];
+		};
+		return [
+			...orderBySeat([...byPerson.keys()], people).map((personId) => ({
+				key: `person-${personId}`,
+				personId,
+				name: cast.names[personId] || `Person ${personId + 1}`,
+				colour: colourFor(personId, byPerson.get(personId)![0]),
+				voices: byPerson.get(personId)!,
+			})),
+			...unmatched.map((voice) => ({
+				key: `voice-${voice}`,
+				personId: null,
+				name: cast.voiceNames[voice] || "Nobody",
+				colour: colourFor(null, voice),
+				voices: [voice],
+			})),
+		];
+	}, [turns, cast, faces.people]);
 
 	function nameOfSpeaker(speaker: number): string {
 		const personId = cast.speakerToPerson[speaker];
@@ -1391,8 +1443,8 @@ export function EditorView({
 					words={words}
 					selectedRegionId={selectedRegionId}
 					currentTime={currentTime}
-					nameOfSpeaker={nameOfSpeaker}
-					colourOfSpeaker={colourOfSpeaker}
+					lanes={speakerLanes}
+					onRenamePerson={(personId, name) => onCastChange({ ...cast, names: { ...cast.names, [personId]: name } })}
 					showSpeakerLanes={showSpeakerLanes}
 					nameOf={(id) => nameOf(id)}
 					waveform={waveform}

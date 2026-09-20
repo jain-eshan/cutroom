@@ -632,6 +632,7 @@ function App() {
 				onRegionsChange={setRegions}
 				captionsEnabled={captions}
 				onCaptionsChange={setCaptions}
+				onCastChange={(cast) => setStatus((current) => ("cast" in current ? { ...current, cast } : current))}
 				missingRecording={missingRecording}
 				onRelink={hasElectronBridge() ? handleRelink : undefined}
 				trimDeadAirEnabled={trimDeadAir}

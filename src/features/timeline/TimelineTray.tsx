@@ -52,8 +52,8 @@ export function TimelineTray({
 	selectedRegionId,
 	currentTime,
 	nameOf,
-	nameOfSpeaker,
-	colourOfSpeaker,
+	lanes,
+	onRenamePerson,
 	showSpeakerLanes,
 	waveform,
 	thumbnailUrls,
@@ -72,12 +72,14 @@ export function TimelineTray({
 	selectedRegionId: string | null;
 	currentTime: number;
 	nameOf: (personId: number) => string;
-	/** A voice's name, for the lane labels -- the lanes are one per voice, and
-	 * a voice the pipeline never matched to a face still has a name. */
-	nameOfSpeaker: (speaker: number) => string;
-	/** A voice's colour, keyed to the person it belongs to rather than the
-	 * voice, so one person split into several voices stays one colour. */
-	colourOfSpeaker: (speaker: number) => string;
+	/** One lane per person, with the voices that turned out to be them. A
+	 * voice no face was matched to gets a lane of its own and a null
+	 * `personId`, since there is nobody to rename. */
+	lanes: { key: string; personId: number | null; name: string; colour: string; voices: number[] }[];
+	/** Rename a person from their lane. Until this existed, a name could only
+	 * be set on the cast screen and never corrected -- and the names are all
+	 * over the editor now. */
+	onRenamePerson: (personId: number, name: string) => void;
 	/** Who is talking, under the framing that covers them. Hideable because on
 	 * a four-person show it is four more rows between the framing lane and the
 	 * bottom of the window, and an editor working on framing alone doesn't
@@ -216,7 +218,6 @@ export function TimelineTray({
 	// thumbnails, so the overview reads as the episode with a decision
 	// colour over it, not just a strip of colour.
 	const overviewTint = thumbnailUrls.length > 0 ? "opacity-70" : "";
-	const speakers = [...new Set(turns.map((t) => t.speaker))].sort((a, b) => a - b);
 
 	const { major, minor } = rulerStep(width > 0 ? span / width : span);
 	const perMajor = Math.round(major / minor);
@@ -397,20 +398,27 @@ export function TimelineTray({
 				    covers them, so a region's disagreement with the speech is visible. */}
 				{showSpeakerLanes && (
 				<div className="flex flex-col gap-1">
-					{speakers.map((speaker) => (
-						<div key={speaker} className="relative h-[15px] w-full rounded-chip bg-track">
+					{lanes.map((lane) => (
+						<div key={lane.key} className="relative h-[15px] w-full rounded-chip bg-track">
 							{/* In the column's own padding, so naming a lane costs no
 							    timeline width and covers none of it. Without this the
 							    lanes were four unlabelled stripes: the only thing saying
 							    which was whose was a colour, and the colours ran out. */}
 							<span
 								className="absolute top-0 -left-[92px] flex h-full w-[84px] items-center gap-[5px] overflow-hidden"
-								title={nameOfSpeaker(speaker)}
+								title={lane.personId === null ? lane.name : `${lane.name} — click to rename`}
 							>
-								<span className={`h-[7px] w-[7px] shrink-0 rounded-full ${colourOfSpeaker(speaker)}`} />
-								<span className="truncate font-mono text-mono-xs leading-none text-text3">
-									{nameOfSpeaker(speaker)}
-								</span>
+								<span className={`h-[7px] w-[7px] shrink-0 rounded-full ${lane.colour}`} />
+								{lane.personId === null ? (
+									<span className="truncate font-mono text-mono-xs leading-none text-text3">{lane.name}</span>
+								) : (
+									<input
+										value={lane.name}
+										onChange={(e) => onRenamePerson(lane.personId as number, e.target.value)}
+										aria-label={`Name for ${lane.name}`}
+										className="min-w-0 flex-1 truncate rounded-[3px] bg-transparent font-mono text-mono-xs leading-none text-text3 outline-none hover:bg-control focus:bg-well focus:text-text"
+									/>
+								)}
 							</span>
 							<span className="absolute inset-0 overflow-hidden rounded-chip">
 							{waveformBars.length > 0 && (
@@ -425,11 +433,11 @@ export function TimelineTray({
 								</div>
 							)}
 							{turns
-								.filter((t) => t.speaker === speaker && inView(t))
+								.filter((t) => lane.voices.includes(t.speaker) && inView(t))
 								.map((t) => (
 									<div
-										key={`${speaker}-${t.start}`}
-										className={`absolute inset-y-0 ${colourOfSpeaker(speaker)}`}
+										key={`${lane.key}-${t.start}`}
+										className={`absolute inset-y-0 ${lane.colour}`}
 										style={{ left: `${at(t.start)}%`, width: `${at(t.end) - at(t.start)}%` }}
 									/>
 								))}
