@@ -569,3 +569,19 @@ class TestProjectEndpoints:
 			files={"faces": ("faces.json", FACES, "application/json")},
 		)
 		assert res.status_code == 404 and "may have moved" in res.json()["detail"]
+
+
+class TestHealthIdentifiesItsLibrary:
+	"""`/health` says which data directory it serves, so the launcher can tell
+	whether a service already on its port is the same install or someone
+	else's -- see `adoptionVerdict` in scripts/processing-service.mjs."""
+
+	def test_health_reports_the_data_directory_it_serves(self, client, monkeypatch, tmp_path):
+		monkeypatch.setattr(main, "DATA_DIR", tmp_path)
+		assert client.get("/health").json()["dataDir"] == str(tmp_path.resolve())
+
+	def test_the_path_is_resolved_so_two_spellings_compare_equal(self, client, monkeypatch, tmp_path):
+		scenic = tmp_path / "sub" / ".." / "sub"
+		(tmp_path / "sub").mkdir()
+		monkeypatch.setattr(main, "DATA_DIR", scenic)
+		assert client.get("/health").json()["dataDir"] == str((tmp_path / "sub").resolve())

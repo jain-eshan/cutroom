@@ -151,6 +151,14 @@ def health() -> dict[str, object]:
 		# edit, so the setup gate won't let anyone past until this is true.
 		"diarization": diarization_configured(),
 		"captions": has_ass_filter(),
+		# Which library this service is serving. `scripts/processing-service.mjs`
+		# adopts a service already running on its port rather than failing on a
+		# taken port, and until this field existed it had no way to tell whether
+		# that service was serving the same episodes -- a dev service and a
+		# packaged install have different data directories, so adopting the
+		# wrong one shows an empty library while reporting that all is well.
+		# Resolved, so two spellings of the same directory still compare equal.
+		"dataDir": str(DATA_DIR.resolve()),
 	}
 
 

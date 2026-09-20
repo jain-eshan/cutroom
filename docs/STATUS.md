@@ -233,6 +233,20 @@ ordering; [ARCHITECTURE.md](ARCHITECTURE.md)'s Roadmap mirrors it.
     port, and a dev service and a packaged install have *different* data
     directories -- an app that adopts the wrong one silently shows an empty
     episode list. Seen live during this session.
+  - **The reuse itself is now checked, not assumed.** `/health` reports the
+    data directory it serves, and the launcher adopts a service already on
+    its port only once that matches its own (`adoptionVerdict` in
+    `scripts/processing-service.mjs`). A mismatch is refused and the setup
+    screen names both libraries, because "wrong service" is not actionable
+    without them. A service too old to answer, or one that can't be reached,
+    is still adopted -- not knowing is not evidence of a mismatch, and
+    refusing on "don't know" would break the second-terminal case the reuse
+    exists for. This was the failure that looked like success: the port
+    answers, `/health` is happy, and the app shows an empty episode list
+    under a green tick. Demonstrated live against a service pointed at a
+    scratch library: refused, with both paths.
+    - `scripts/` had no tests and `npm test` only globbed `src/`; the glob
+      now covers `scripts/**/*.test.mjs` too. 113 frontend tests (was 107).
   - The setup gate needs `HF_TOKEN` set to something (it is a presence check;
     the licence only shows when the model loads). QA mode reads it from
     `server/qa-data/.env`, so no placeholder token is committed and no real
