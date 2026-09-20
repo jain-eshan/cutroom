@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import type { ServerResponse } from 'node:http'
 import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
@@ -58,9 +59,14 @@ function processingService(): Plugin {
   }
 }
 
+const { version } = JSON.parse(readFileSync(path.join(__dirname, 'package.json'), 'utf8'))
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), processingService()],
+  // Telemetry reports which version a failure came from; the preview
+  // updates by hand, so that is not otherwise knowable.
+  define: { __APP_VERSION__: JSON.stringify(version) },
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },

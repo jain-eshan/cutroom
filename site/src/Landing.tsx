@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Logo } from "@/components/Logo";
+import { track } from "./analytics";
 import { Waitlist } from "./Waitlist";
 
 const REPO = "https://github.com/jain-eshan/cutroom";
@@ -42,10 +43,21 @@ function Section({
 }
 
 /** Anything that leaves the page (GitHub, docs) opens in a new tab, so the
- * landing page stays where the visitor left it. */
-function Out({ href, className, children }: { href: string; className?: string; children: React.ReactNode }) {
+ * landing page stays where the visitor left it. `onClick` is for the few
+ * links that are an outcome rather than a detour -- a download, a star. */
+function Out({
+	href,
+	className,
+	onClick,
+	children,
+}: {
+	href: string;
+	className?: string;
+	onClick?: () => void;
+	children: React.ReactNode;
+}) {
 	return (
-		<a href={href} target="_blank" rel="noopener noreferrer" className={className}>
+		<a href={href} target="_blank" rel="noopener noreferrer" onClick={onClick} className={className}>
 			{children}
 			<span className="sr-only"> (opens in a new tab)</span>
 		</a>
@@ -100,6 +112,7 @@ function Nav() {
 				</nav>
 				<Out
 					href={REPO}
+					onClick={() => track({ name: "repo_opened" })}
 					className="ml-auto rounded-[8px] bg-text px-[13px] py-2 text-[12.5px] leading-none font-medium whitespace-nowrap text-bg transition-colors duration-[90ms] ease-linear hover:bg-text2 lg:ml-0"
 				>
 					Star on GitHub
@@ -370,10 +383,18 @@ function Download() {
 					.
 				</p>
 				<div className="mt-6 flex flex-col justify-center gap-[11px] sm:flex-row">
-					<Out href={`${REPO}/releases/latest/download/Cutroom-arm64.dmg`} className={DARK}>
+					<Out
+						href={`${REPO}/releases/latest/download/Cutroom-arm64.dmg`}
+						className={DARK}
+						onClick={() => track({ name: "download_clicked", platform: "mac" })}
+					>
 						Download for Mac
 					</Out>
-					<Out href={`${REPO}/releases/latest/download/Cutroom-Setup.exe`} className={QUIET}>
+					<Out
+						href={`${REPO}/releases/latest/download/Cutroom-Setup.exe`}
+						className={QUIET}
+						onClick={() => track({ name: "download_clicked", platform: "windows" })}
+					>
 						Download for Windows
 					</Out>
 				</div>
@@ -546,10 +567,14 @@ function Closing() {
 					nothing to host, so there's nothing to charge for.
 				</p>
 				<div className="flex flex-col gap-[10px] sm:flex-row">
-					<Out href={`${REPO}/releases/latest/download/Cutroom-arm64.dmg`} className={DARK}>
+					<Out
+						href={`${REPO}/releases/latest/download/Cutroom-arm64.dmg`}
+						className={DARK}
+						onClick={() => track({ name: "download_clicked", platform: "mac" })}
+					>
 						Download for Mac
 					</Out>
-					<Out href={REPO} className={QUIET}>
+					<Out href={REPO} className={QUIET} onClick={() => track({ name: "repo_opened" })}>
 						Star on GitHub
 					</Out>
 				</div>
