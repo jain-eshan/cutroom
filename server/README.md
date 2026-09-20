@@ -18,16 +18,17 @@ Whisper's word-level timestamps (`faster-whisper`) to build dialogue turns.
 This is audio-only — it doesn't know *which face* is speaking. See below for
 how that gets connected.
 
-**Needs a Hugging Face token, no fallback.** community-1 replaced
-`resemblyzer`, which was measured finding two speakers on a real four-person
-episode — a fallback that produces a quietly wrong edit is worse than an
-error that says what to do. Create a token at
-[huggingface.co/settings/tokens](https://huggingface.co/settings/tokens),
-accept the licence at
-[community-1](https://huggingface.co/pyannote/speaker-diarization-community-1),
-then put `HF_TOKEN=...` in `server/.env`. Without it, `/process` returns a
-400 naming both. Runs on GPU (MPS) when available — measured 53s vs 398s on
-CPU for the same 10-minute slice, byte-identical output either way.
+**Bundled, and no fallback.** community-1 replaced `resemblyzer`, which was
+measured finding two speakers on a real four-person episode — a fallback that
+produces a quietly wrong edit is worse than an error that says what to do.
+The weights live in `server/.models/diarization/` (six files, 31MB), so
+nothing is downloaded and no account is involved; they used to come from a
+gated Hugging Face repo, which is why this service once needed `HF_TOKEN`.
+That variable is no longer read anywhere, and one left over in an existing
+`server/.env` is ignored. `/process` still returns a 400 if the weights
+aren't on disk, which now means a damaged install rather than a missing step.
+Runs on GPU (MPS) when available — measured 53s vs 398s on CPU for the same
+10-minute slice, byte-identical output either way.
 
 Turn boundaries right at a speaker change can still be off by a word or so.
 Per-turn correction in the editor exists for this.
@@ -74,7 +75,8 @@ uv run uvicorn main:app --port 8787
 First run downloads the Whisper model (`small` by default, ~500MB), the
 SFace face-recognition weights (~38MB), and the LR-ASD lip-sync weights
 (~3.3MB) — all public, no account needed. The diarization model
-(`pyannote` community-1) is the exception: see above, it needs `HF_TOKEN`.
+(`pyannote` community-1) isn't downloaded at all: it's committed to the repo,
+see above.
 
 ## Overlap detection
 

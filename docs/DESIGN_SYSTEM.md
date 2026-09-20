@@ -124,12 +124,16 @@ Each landed as its own commit, in the handoff's order.
   reports `captions` (whether this ffmpeg has libass, cached for the life of
   the process), and that flows into the editor so captions are refused
   before an export rather than 15 minutes into one. It also reports
-  `diarization` (whether `HF_TOKEN` is set), and the gate won't advance
-  without it, after a real run failed on a missing token six minutes into
-  transcription. The token is pasted into the gate: `POST /setup/hf-token`
-  asks Hugging Face whose token it is, then whether that account accepted the
-  model's terms, and writes `server/.env` itself — no editor, no restart. See
-  the deviations below for how the gate was simplified.
+  `diarization` (whether the speaker model is on disk), and the gate won't
+  advance without it, after a real run failed on a missing model six minutes
+  into transcription. That row used to be a form: the model downloaded from a
+  gated repo, so the gate asked for a Hugging Face token, checked it and the
+  licence, and wrote `server/.env` itself. The weights ship with the app now,
+  so the row only reports "pyannote community-1 · installed", and its one
+  failure state is an install that didn't bring them. Nothing on this screen
+  is asked of the person in front of it now: `npm run dev` starts the
+  processing service (`vite.config.ts`), and with everything in place the
+  gate opens and closes in under a second.
 - **Processing evidence (`2e`)** — `/progress/{job_id}` carries the
   transcript tail as faster-whisper yields it, plus the ids of recognised
   people. Face images come from `GET /progress/{job_id}/face/{person_id}`, so
@@ -246,12 +250,6 @@ Each landed as its own commit, in the handoff's order.
   doesn't have. Without it, a file that fails every time is a dead end.
 - **"Give them a name anyway" is an input inside the "Someone we didn't
   see" cell**, shown when that cell is picked, rather than a separate card.
-- **Nobody has to leave the setup screen** (founder's direction):
-  `npm run dev` starts the processing service (`vite.config.ts`), and the
-  Hugging Face token is pasted into the "Speaker models" row. Creating the
-  token and accepting the model's terms still happen on huggingface.co,
-  because they're on the user's own account. With everything in place the
-  gate opens and closes in under a second.
 - **Audio-only files are only half handled.** The editor no longer collapses
   on a 0×0 frame and Publish says "no video track", but exporting an
   audio-only file through `render.py` hasn't been tried and may fail. If it
@@ -298,6 +296,16 @@ In the handoff's implementation order:
      month" price anchor was dropped for the same reason.
    - "What it can't do yet" lists today's real gaps, and there's no Discord
      link because there's no Discord.
+   - **The handoff's own blocker is resolved** (noted here rather than
+     edited into `design/handoff/README.md`, which is the designer's input
+     document and stays as written). It said per-OS download buttons were
+     untrue until the app was packaged, and that the install path was "uv +
+     ffmpeg + a Hugging Face token + a model licence + two terminal
+     windows". Packaging shipped (2026-09-16) and the page carries real
+     Mac and Windows download links; the token and the model licence went
+     with the bundled weights (2026-09-20), and the build ships its own
+     ffmpeg. What the handoff didn't anticipate is the remaining catch: the
+     Mac build is unsigned, so Gatekeeper blocks it on first open.
 
 ## Frontend testing gap
 

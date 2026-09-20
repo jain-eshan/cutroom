@@ -62,6 +62,10 @@ now, not later.
   current zero-setup story (`uv sync` + run, no accounts anywhere) — for
   everyone who runs this locally, including future public users, not just
   this session. That's a real, permanent tradeoff, not a one-time cost.
+  *It turned out not to be permanent. The model this shipped with,
+  community-1, is CC-BY-4.0, so its weights are now committed to this repo
+  and the account, licence and token steps are all gone. See
+  `server/.models/diarization/NOTICE.md`.*
 - **Also improves:** turn-boundary accuracy (a separately-noted known
   limitation) — `pyannote.audio` is generally more accurate than
   window-clustering at exactly the boundary-timing problem the roadmap
@@ -122,6 +126,10 @@ Everything below (`overlapWindows`, `OverlapWindow`, the render pipeline's
 Hugging Face. Document this in `server/README.md` and the setup section of
 `ARCHITECTURE.md` when this ships — it's a real, permanent change to the
 setup instructions, not a footnote.
+
+*Since undone.* The weights are vendored under CC-BY-4.0 and credited in the
+app, `HF_TOKEN` is read nowhere, and `uv sync` + run with no accounts is the
+setup story again. Both documents named above say so.
 
 ---
 

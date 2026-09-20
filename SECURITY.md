@@ -16,12 +16,11 @@ response window, but security reports are read before anything else.
 - **Recordings stay on your computer.** The app sends the file to its own
   processing service on the same machine. Nothing is uploaded to a server
   this project runs, because there isn't one.
-- **Models are downloaded once.** On first run the service downloads model
-  weights from GitHub and Hugging Face. After that, processing works offline,
-  except for the Hugging Face token check on the setup screen.
-- **Your Hugging Face token** is saved to `server/.env` with owner-only
-  permissions (`0600`). That file is ignored by git. Never commit it, and
-  never paste it into an issue.
+- **Models are downloaded once.** On first run the service downloads the
+  transcription, face-recognition and lip-sync weights from GitHub and
+  Hugging Face. No account or token is involved in any of it, and the speaker
+  detection model isn't downloaded at all — it ships inside the app. After
+  the first run, processing works offline.
 
 ## How the local pieces are exposed
 
@@ -36,5 +35,5 @@ The development setup is meant for one person on their own machine:
   `POST /__service/restart` restarts it. Don't expose the dev server beyond
   your machine, for example with `--host` or a tunnel.
 
-Reports about any of these, and about how recordings or the token are
-handled, are all in scope.
+Reports about any of these, and about how recordings are handled, are all in
+scope.

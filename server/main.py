@@ -59,8 +59,9 @@ from pipeline.turns import build_turns
 from pipeline.waveform import compute_timeline_thumbnails, compute_waveform_peaks
 
 # Explicit rather than dotenv's search-upward default: in a packaged install
-# the token is saved beside the rest of this install's data, not next to the
-# source. Same file as before in dev, where DATA_DIR is server/ itself.
+# any settings live beside the rest of this install's data, not next to the
+# source. Same file as before in dev, where DATA_DIR is server/ itself. Only
+# FFMPEG_BINARY is read from it now; HF_TOKEN is no longer used anywhere.
 load_dotenv(DATA_DIR / ".env")
 
 app = FastAPI(title="Cutroom processing service")

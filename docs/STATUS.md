@@ -10,8 +10,9 @@ export phase see [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md) and
 ## What works end to end, today
 
 Drop in a recording and you get an edited MP4 out. The whole loop runs
-locally, nothing is uploaded anywhere. `npm run dev` starts everything, and a
-setup screen covers the one-time Hugging Face token.
+locally, nothing is uploaded anywhere. `npm run dev` starts everything, and
+there is no account, key or licence to accept: every model the pipeline needs
+either ships with it or downloads by itself.
 
 1. **Upload** — click or drag-and-drop, with real byte-level progress.
 2. **Process** — one upload feeds transcription, speaker diarisation,
@@ -86,8 +87,8 @@ The epic's Next Steps, and where each landed:
 Two things the epic listed as open questions are now answered:
 
 - *"Does the pipeline even surface overlapping speech?"* — it did not. It
-  does now, via `pyannote.audio` overlap detection (optional, needs a free
-  Hugging Face token).
+  does now, via `pyannote.audio` overlap detection, in the same pass that
+  finds the speakers.
 - *"Is the manual face-labelling step fine as-is?"* — no. It asked users to
   map faces to anonymous "Speaker 1" ids they had no way to identify.
   Replaced with naming people and matching voices by ear.
@@ -343,9 +344,9 @@ the founder's call, to find testers and contributors early:
        notifications specific to the packaged app (the web `Notification`
        API from item 5 already works there unmodified -- Electron's
        renderer supports it natively -- but that hasn't been confirmed
-       inside a packaged window), and shipping the `pyannote` weights
-       directly per the licence check two lines down (which would drop the
-       Hugging Face step from the desktop app entirely).
+       inside a packaged window). Shipping the `pyannote` weights directly,
+       per the licence check two lines down, was the third item here and is
+       now done -- see "The Hugging Face step is gone" below.
    - **Reads the recording where it is, done 2026-09-17.** `electron/
      preload.mjs` exposes `webUtils.getPathForFile` through
      `contextBridge` -- it only resolves for a file the user actually
@@ -485,6 +486,68 @@ the founder's call, to find testers and contributors early:
      weights, credit pyannote with a link to the licence, and drop the Hugging
      Face step entirely. This is a reading of the licence, not legal advice:
      confirm before release.
+   - **The Hugging Face step is gone, done 2026-09-20.** The one thing this
+     item had left to do for a non-technical host. Diarisation downloaded
+     `pyannote` community-1 from a gated Hugging Face repo on first use,
+     which is the only reason this app ever wanted a token: running it meant
+     creating an account, accepting the model's terms, creating a read token
+     and pasting it into the setup screen before a single edit could be
+     made. community-1 is CC-BY-4.0, so the weights now ship inside the app
+     the way the YuNet detector already did -- six files, 31MB, and
+     self-contained (its own `config.yaml` names `$model/segmentation`,
+     `$model/embedding` and `$model/plda`, each relative to itself, so
+     nothing is left to fetch). **Only that one model was gated**: Whisper,
+     SFace, LR-ASD and YuNet all ship or download without an account and are
+     untouched, which is why this cost 31MB rather than the several GB the
+     line below assumed.
+     - Deleted with it: `POST /setup/hf-token`, `pipeline/hf_token.py` and
+       its 14 tests, `saveHfToken`, and the setup gate's token form and
+       two-step Hugging Face instructions. `diarization_configured()` now
+       reports whether the weights are on disk rather than whether a token
+       is set -- true in any sound install, kept as a check so a damaged one
+       fails before a job starts rather than minutes in. A stale `HF_TOKEN`
+       in an existing `server/.env` is ignored. Net -33 lines of code.
+     - **The credits screen this needed, built alongside.** CC-BY-4.0 allows
+       the redistribution on condition of attribution, so the credit has to
+       be readable from inside the app, not only in the repository: a
+       "credits" button in the title bar opens a native popover (the same
+       mechanism the editor's Shortcuts sheet uses) crediting
+       pyannote.audio (CC-BY-4.0), Whisper via faster-whisper (MIT), LR-ASD
+       (MIT), YuNet (MIT), SFace (Apache-2.0) and FFmpeg (GPL-3.0). That
+       also closes the Electron shell's outstanding note above that the
+       bundled ffmpeg's licence "should be linked from the app's
+       credits/about, not just sitting in `node_modules`". The reasoning for
+       bundling is recorded in `server/.models/diarization/NOTICE.md`.
+     - Those links needed somewhere to go: `electron/main.mjs` had no
+       `setWindowOpenHandler`, so a `target="_blank"` would have opened a
+       second app window with no address bar and no way back. Latent until
+       now, since the only external links were on the setup screen this
+       change deleted. They open in the system browser now, http(s) only.
+     - Verified against the real pipeline, not only the suite: with
+       `HF_TOKEN` unset, `HF_HUB_OFFLINE=1` and an empty `HF_HOME`,
+       `diarize()` returns the same two speakers on the same clip as the
+       token path did (0.03-6.44, 6.60-11.05 on a two-voice synthetic
+       clip). A real `uvicorn` on an isolated port with no `.env` at all
+       reports `"diarization": true` and 404s the removed endpoint. In a
+       browser, the setup gate shows "pyannote community-1 - installed" and
+       opens the app with nothing asked of anyone; the credits sheet renders
+       all six entries in dark and light and dismisses on Escape.
+     - 209 backend tests (was 222: -14 for the deleted `hf_token` suite, +1
+       net in `test_diarize.py`, which now also asserts the weights are
+       present and that `from_pretrained` is given the local path and no
+       token). 89 frontend tests, `tsc`, `oxlint` and the production build
+       all clean.
+     - **What it costs the download: 29.1MB.** Measured, not estimated, by
+       building the `.dmg` twice on the same machine and the same Electron
+       (44.4.0), once with the weights and once with the folder moved aside:
+       **122.7MB → 151.8MB**. The seven files really are inside the built
+       app, at `Cutroom.app/Contents/Resources/server/.models/diarization/`.
+       Not comparable with the published v0.3.0's 165MB, which was built by
+       CI on a different Electron -- that difference is not this change.
+     - Not verified: the packaged app *running*. The build carries the
+       weights, but nothing has launched it and processed a recording, and
+       the Electron window-open handler needs a packaged window to exercise.
+       This machine's shared instance is in use by another session.
    - **The rest of the licence check, done 2026-09-17.** faster-whisper's
      converted weights (`Systran/faster-whisper-*` on Hugging Face, what
      `transcribe.py`'s `WhisperModel` pulls) are MIT. YuNet
@@ -881,11 +944,15 @@ the founder's call, to find testers and contributors early:
   four people. The real fix is source resolution: shoot 4K, deliver 1080p,
   and punch-ins become genuinely sharp because the crop then holds more real
   pixels than the output needs.
-- **Diarisation now requires a Hugging Face token.** community-1 replaced the
-  token-free `resemblyzer` clustering, which was measured finding two
-  speakers on a four-person episode — a fallback that produces a quietly
-  wrong edit is worse than an error that says what to do, so there is no
-  fallback. `/process` returns a 400 naming the token and the licence page.
+- ~~**Diarisation now requires a Hugging Face token.**~~ Gone, 2026-09-20:
+  the weights ship with the app, so there is no account, licence or token in
+  the way of a first edit. See the desktop-app item above.
+- **Diarisation has no fallback.** community-1 replaced `resemblyzer`
+  clustering, which was measured finding two speakers on a four-person
+  episode — a fallback that produces a quietly wrong edit is worse than an
+  error that says what to do. What is left to go wrong is an install that
+  didn't bring its own model files; `/process` returns a 400 saying so
+  rather than editing without speakers.
 - **Diarisation is still not perfect.** It can mis-assign a turn, and only
   finds speakers who actually speak in the window analysed. This is why
   every shot can be changed in the editor. See

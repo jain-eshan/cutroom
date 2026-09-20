@@ -38,8 +38,8 @@ const unpack = (p) => p.replace("app.asar", "app.asar.unpacked");
 process.env.FFMPEG_BINARY = app.isPackaged ? unpack(ffmpegPath) : ffmpegPath;
 process.env.FFPROBE_BINARY = app.isPackaged ? unpack(ffprobeStatic.path) : ffprobeStatic.path;
 
-// Everything the service writes -- saved episodes, the Hugging Face token,
-// downloaded model weights, the Python environment itself -- has to land
+// Everything the service writes -- saved episodes, downloaded model
+// weights, decision logs, the Python environment itself -- has to land
 // outside the app bundle. macOS replaces the bundle wholesale on update, so
 // anything in there is destroyed on every release, and an app that writes
 // inside its own bundle breaks the signature notarisation checks. Electron

@@ -424,7 +424,6 @@ function DeveloperPreview() {
 								<span className="text-text">ffmpeg</span>. Install <span className="font-mono text-[12.5px]">ffmpeg-full</span>{" "}
 								from Homebrew if you want burned-in captions.
 							</>,
-							<>A free Hugging Face account. The app asks for a token on first run and links you to where to get one.</>,
 							<>About 3 GB of disk for models and packages, and a few minutes for the first start.</>,
 						].map((item, i) => (
 							<li key={i} className="flex gap-3">
