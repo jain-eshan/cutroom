@@ -486,6 +486,7 @@ export function EditorView({
 	// when the file's real length arrives.
 	const [zoomed, setZoomed] = useState<TimeSpan | null>(null);
 	const [showSpeakerLanes, setShowSpeakerLanes] = useState(true);
+	const [explainTrim, setExplainTrim] = useState(false);
 	// Built once per episode, not per frame: 8,824 words on the reference
 	// recording, and this runs against every `timeupdate`.
 	const captionCues = useMemo(() => buildCaptionCues(words), [words]);
@@ -1217,6 +1218,14 @@ export function EditorView({
 						</Button>
 					</span>
 					<span className="ml-auto flex items-center gap-1">
+						{/* Named, and with the span it is showing. At full view both
+						    "−" and "Show all" are correctly disabled, which left three
+						    grey buttons and no hint that the timeline zooms at all --
+						    a founder testing session reported zoom and scroll as
+						    missing features when both had shipped. */}
+						<span className="mr-1 font-mono text-mono-xs leading-none text-text3">
+							Zoom · {zoomed ? `${formatTime(view.end - view.start)} shown` : "whole episode"}
+						</span>
 						<Button
 							size="sm"
 							variant="quiet"
@@ -1308,7 +1317,7 @@ export function EditorView({
 
 			{/* Split in two: what's selected on the left, the episode's own
 			    controls on the right, and Export as the one accent action, last. */}
-			<div className="flex shrink-0 items-center gap-[14px] border-t border-line bg-chrome px-[14px] py-[11px]">
+			<div className="relative flex shrink-0 items-center gap-[14px] border-t border-line bg-chrome px-[14px] py-[11px]">
 				<div className="flex min-w-0 flex-1 flex-wrap items-center gap-[9px]">
 					<SectionLabel className="shrink-0">Selected</SectionLabel>
 					{selectedRegion ? (
@@ -1378,6 +1387,26 @@ export function EditorView({
 						<CheckMark checked={trimDeadAirEnabled} size={15} />
 						Trim dead air
 					</button>
+					<button
+						type="button"
+						onClick={() => setExplainTrim((on) => !on)}
+						aria-expanded={explainTrim}
+						aria-label="What does trimming dead air do?"
+						className="flex h-6 w-6 items-center justify-center rounded-control border border-line bg-raised text-text3 hover:bg-control"
+					>
+						?
+					</button>
+					{/* Above the bar rather than in it: this is a sentence, and a
+					    sentence in a row of controls either stretches the row or
+					    wraps it. Nothing below moves when it opens. */}
+					{explainTrim && (
+						<p className="absolute right-5 bottom-full z-10 mb-2 w-[420px] rounded-card border border-line bg-raised px-[14px] py-3 text-meta text-pretty text-text2 shadow-lg">
+							Cuts a pause longer than a beat down to a beat, and removes standalone filler words —
+							um, uh, hmm. Deliberately narrow: words that are only sometimes filler (“like”, “so”,
+							“right”) are left alone, because there’s no way to tell one from the other and cutting
+							the wrong one removes meaning. Nothing else in the audio is touched.
+						</p>
+					)}
 					<span className="flex gap-1.5">
 						<Button size="sm" variant="quiet" onClick={undo} disabled={history.past.length === 0} title="Undo (⌘Z)">
 							Undo

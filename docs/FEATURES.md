@@ -145,6 +145,10 @@ The timeline works like a video editor's, cut down to what a podcast needs:
 
 - An overview strip of the whole episode above a zoomable detail view. Zoom
   with the buttons, `=` and `−`, or pinch / ⌘-scroll; "Show all" zooms out.
+  The cluster is labelled and shows what it is showing ("Zoom · whole
+  episode", "Zoom · 2:30 shown"), because three quiet buttons -- two of them
+  correctly disabled at full view -- read as dead chrome, and zoom and scroll
+  were both reported as missing features when both had shipped.
 - A timecode ruler to scrub along, and a playhead that pages the view when it
   runs off screen.
 - Shots you pick and drag by either edge. Edges snap to words, line
@@ -155,6 +159,17 @@ The timeline works like a video editor's, cut down to what a podcast needs:
 - Undo and redo with ⌘Z and ⇧⌘Z, or the buttons.
 - Keyboard: Space, J (back 5 s), K, L (2×, 4×), the arrows, ↑/↓ between
   shots, Delete and Esc. The Shortcuts button lists them.
+
+Each speaker lane carries its name, and the lanes hide. Colour identifies the
+*person*, not the voice: diarisation routinely splits one person into several
+voices (six for four people on the reference episode), so colouring by voice
+gave one human two colours and read as two people.
+
+Captions are drawn over the preview when they're on, grouped by the same
+rules the export uses (`buildCaptionCues` ports `build_caption_cues`) and
+placed where `write_ass` puts them. "Captions on" is a real toggle; it used
+to be a status label that looked like a button, beside a preview that never
+drew a caption.
 
 Shipped: split at the playhead (`S`), waveforms on the speaker lanes and
 timeline thumbnails, stepping through the review flags (Tab/Shift+Tab), a
