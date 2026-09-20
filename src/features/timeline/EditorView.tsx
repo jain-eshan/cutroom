@@ -3,6 +3,7 @@ import { getProgress, getWaveform, timelineThumbnailUrl, type BBox, type DetectF
 import type { CastResult } from "@/features/faces/CastScreen";
 import { DUO_SPLIT_MAX, exportPanes, fitBox, personCrop } from "@/lib/faceCrop";
 import { buildCaptionCues, cueAt } from "@/lib/captions";
+import { wordAt, wordSlice } from "@/lib/transcript";
 import { TimelineTray } from "@/features/timeline/TimelineTray";
 import {
 	FRAMING_STYLE_LABELS,
@@ -174,6 +175,81 @@ function CroppedVideo({
 				</span>
 			)}
 		</div>
+	);
+}
+
+/**
+ * The line being spoken, word by word, with the current one lit.
+ *
+ * Only this line is split into words. The reference episode has 8,824 of
+ * them, and a span each would put the whole transcript's worth in the DOM to
+ * light up one; every other line stays a single text node.
+ *
+ * The words are the transcript's own, so on the rare line where a word
+ * straddles a turn boundary this shows the word-joined text rather than
+ * `turn.text`. Measured on the reference episode: 38 of 40 lines are
+ * identical either way, and where they differ the words are the more
+ * accurate answer, since the turn's text is assembled from them.
+ *
+ * Plain spans rather than buttons: this sits inside the line's own button,
+ * and a button inside a button is invalid. The line stays keyboard-reachable;
+ * seeking to an individual word is a pointer shortcut on top of that, not the
+ * only way to get there -- the arrows and ↑/↓ already move the playhead.
+ */
+function SpokenLine({
+	turn,
+	words,
+	at,
+	onSeek,
+}: {
+	turn: Turn;
+	words: Word[];
+	/** The playhead, from `timeupdate`, which browsers fire about four times a
+	 * second. Measured over nine seconds of the reference episode: 15 of the
+	 * 20 words spoken were lit, so the highlight follows the line and steps
+	 * over the occasional short word.
+	 *
+	 * A `requestAnimationFrame` loop reading `video.currentTime` is the
+	 * obvious way to close that gap and measurably made it worse -- 7 words
+	 * of the same 20. The editor manages about 4fps while playing a cropped
+	 * shot (21 frames in 9s, 95th-percentile frame gap 1.0s), because that
+	 * decodes a second 1080p stream of the same recording alongside the
+	 * first. Asking for frames that aren't coming, and re-rendering to ask,
+	 * only took time from the thread that owed them. The cadence here is a
+	 * symptom of that; see docs/STATUS.md. */
+	at: number;
+	onSeek: (t: number) => void;
+}) {
+	const [from, to] = useMemo(() => wordSlice(words, turn.start, turn.end), [words, turn.start, turn.end]);
+	// Bounded to this line, so where two people overlap a line never lights up
+	// a word from the other one's.
+	const current = wordAt(words, at, from, to);
+	if (from >= to) return turn.text;
+
+	return (
+		<>
+			{words.slice(from, to).map((word, i) => (
+				<Fragment key={from + i}>
+					{i > 0 && " "}
+					<span
+						onClick={(e) => {
+							// The line's own click would seek to its start, which is
+							// the opposite of asking for this word.
+							e.stopPropagation();
+							onSeek(word.start);
+						}}
+						// The wash alone is 9% accent, which is right for a drop zone
+						// and too quiet for the one word you are meant to be reading.
+						// Accent ink carries it; both tokens already exist.
+						className={`cursor-text rounded-[3px] ${
+							from + i === current ? "bg-accent-wash font-medium text-accent-text" : ""
+						}`}
+					>
+						{word.text.trim()}
+					</span>
+				</Fragment>
+			))}
+		</>
 	);
 }
 
@@ -490,6 +566,18 @@ export function EditorView({
 	// Built once per episode, not per frame: 8,824 words on the reference
 	// recording, and this runs against every `timeupdate`.
 	const captionCues = useMemo(() => buildCaptionCues(words), [words]);
+	/** The line being spoken now. Distinct from `targetTurnIndex`, which
+	 * prefers the selection: that is what "+ Close-up" should act on, but not
+	 * what the transcript should be following. */
+	const playingTurn = turns.findIndex((t) => t.start <= currentTime && currentTime < t.end);
+	const playingRef = useRef<HTMLButtonElement>(null);
+
+	// Keep the spoken line on screen. `block: "nearest"` only scrolls when it
+	// has gone out of view, so reading ahead isn't yanked back on every line,
+	// and it fires on the line changing rather than on every timeupdate.
+	useEffect(() => {
+		playingRef.current?.scrollIntoView({ block: "nearest" });
+	}, [playingTurn]);
 	const view = zoomed ?? { start: 0, end: duration };
 	// Undo covers framing edits. It lives with the editor, so it starts fresh
 	// after a trip to the publish screen.
@@ -946,6 +1034,7 @@ export function EditorView({
 							const overlap = overlapFor(overlapWindows, t.start, t.end);
 							const assigned = cast.speakerToPerson[t.speaker] ?? null;
 							const selected = i === selectedTurn;
+							const spoken = i === playingTurn;
 							const needsAttention = assigned === null;
 							// The left rail carries state: selection over overlap over a missing face.
 							const rail = selected
@@ -959,6 +1048,7 @@ export function EditorView({
 								<button
 									type="button"
 									key={i}
+									ref={spoken ? playingRef : undefined}
 									onClick={() => selectTurn(i)}
 									className={`flex flex-col border-l-[3px] px-[17px] text-left ${rail} ${
 										selected ? "gap-[7px] bg-sel pt-3 pb-[13px]" : "gap-1 py-[10px]"
@@ -987,7 +1077,9 @@ export function EditorView({
 											</span>
 										)}
 									</span>
-									<span className={`text-pretty ${selected ? "text-body text-text" : "text-ui text-text3"}`}>{t.text}</span>
+									<span className={`text-pretty ${selected ? "text-body text-text" : "text-ui text-text3"}`}>
+										{spoken ? <SpokenLine turn={t} words={words} at={currentTime} onSeek={seek} /> : t.text}
+									</span>
 									<span className="flex items-center gap-[7px] text-mono-sm text-text3">
 										<span className={`h-[9px] w-[9px] shrink-0 rounded-[2px] ${reasonSwatch(i)}`} />
 										{reasonFor(i)}

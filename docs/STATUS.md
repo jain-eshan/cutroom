@@ -782,6 +782,28 @@ the founder's call, to find testers and contributors early:
    for the next one. This is where the first real customer quotes come from,
    and everything below needs them.
 
+### Found 2026-09-20, not yet placed
+
+- **The editor runs at about 4fps while a cropped shot plays.** Measured in
+  a browser on the reference episode: 21 frames in 9 seconds, median frame
+  gap 33ms but a 95th percentile of 1.0s. The cause is structural rather
+  than a slow render -- a close-up or composite mounts a second `<video>` on
+  the same recording (`CroppedVideo` in `EditorView.tsx`), so two 1080p
+  streams of a 14 Mbps source decode at once and stay in sync with each
+  other.
+  - Found while building the transcript's word highlight, which is limited
+    by it: the highlight advances on `timeupdate` (~4Hz) and lights 15 of
+    the 20 words spoken in a nine-second stretch. A `requestAnimationFrame`
+    loop reading `video.currentTime` was the obvious fix and made it worse,
+    7 of 20 -- asking for frames that aren't coming, and re-rendering to ask,
+    only takes time from the thread that owes them.
+  - Not addressed here, because the fix is a design question, not a tuning
+    one: one decode driving several crops (canvas, or `requestVideoFrameCallback`
+    into a `<canvas>` per pane) rather than one `<video>` per pane. Worth
+    measuring in the packaged app first -- these numbers are from a dev
+    server proxying a 5.3GB file over HTTP range requests, and a local file
+    may do better.
+
 ### Then, ordered by what the host test shows
 
 - **Batched processing for long recordings**, if the wait loses people. The

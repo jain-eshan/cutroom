@@ -160,6 +160,11 @@ The timeline works like a video editor's, cut down to what a podcast needs:
 - Keyboard: Space, J (back 5 s), K, L (2×, 4×), the arrows, ↑/↓ between
   shots, Delete and Esc. The Shortcuts button lists them.
 
+The transcript follows the talk. The line being spoken is split into its own
+words, with the one being said lit; it scrolls itself into view when the line
+changes; and clicking a word seeks to exactly that word. Only the spoken line
+is split -- 8,824 words is a lot of spans to carry in order to light one.
+
 Each speaker lane carries its name, and the lanes hide. Colour identifies the
 *person*, not the voice: diarisation routinely splits one person into several
 voices (six for four people on the reference episode), so colouring by voice
