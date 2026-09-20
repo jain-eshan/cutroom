@@ -13,6 +13,7 @@ import {
 import {
 	MIN_REGION_S,
 	addRegion,
+	framesSomeoneElse,
 	orderBySeat,
 	otherSpeakerNear,
 	reconcileWithStyle,
@@ -859,6 +860,9 @@ export function EditorView({
 		}
 		if (region.layout === "split") {
 			return `${region.personIds.map((id) => nameOf(id)).join(" and ")} talk over each other here, so we show both.`;
+		}
+		if (framesSomeoneElse(region, cast.speakerToPerson[turn.speaker])) {
+			return `We stayed on ${nameOf(region.personIds[0])} through ${speakerName(turn)}'s short line.`;
 		}
 		return `${speakerName(turn)} is talking alone here, so we cut in close.`;
 	}
