@@ -18,11 +18,11 @@
     "dist:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "@fontsource-variable/instrument-sans": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.3.0",
-    "ffprobe-static": "^3.1.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
@@ -40,6 +40,8 @@
     "vite": "^8.3.0"
   },
   "allowScripts": {
+    "@ffprobe-installer/darwin-arm64@5.0.1": true,
+    "@ffprobe-installer/win32-x64@5.1.0": true,
     "fsevents@2.3.3": true
   },
   "main": "electron/main.mjs",
@@ -56,14 +58,11 @@
       "scripts/**",
       "package.json",
       "node_modules/ffmpeg-static/**",
-      "node_modules/ffprobe-static/**",
-      "!node_modules/ffprobe-static/bin/linux/**",
-      "!node_modules/ffprobe-static/bin/darwin/x64/**",
-      "!node_modules/ffprobe-static/bin/win32/ia32/**"
+      "node_modules/@ffprobe-installer/**"
     ],
     "asarUnpack": [
       "node_modules/ffmpeg-static/**",
-      "node_modules/ffprobe-static/**"
+      "node_modules/@ffprobe-installer/**"
     ],
     "extraResources": [
       {
@@ -81,6 +80,7 @@
         ]
       }
     ],
+    "afterPack": "scripts/verify-binaries.mjs",
     "afterSign": "scripts/afterSign.mjs",
     "mac": {
       "category": "public.app-category.video",

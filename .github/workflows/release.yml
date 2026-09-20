@@ -39,14 +39,20 @@ jobs:
       matrix:
         include:
           # Must match package.json's build.mac/build.win arch lists.
-          # ffmpeg-static ships one binary per host arch (unlike
-          # ffprobe-static, which bundles every arch and picks one at
-          # runtime) chosen by os.arch() at install time -- left to that
-          # default, this build would happily produce a working installer on
-          # a runner whose default arch doesn't match the app's declared
-          # target, and only fail for a real user, on their machine, with no
-          # CI signal at all. Pinning it here makes that mismatch a CI
-          # failure instead.
+          # ffmpeg-static and @ffprobe-installer both resolve one binary for
+          # the host arch at install time -- left to the runner's default,
+          # this build would happily produce a working installer on a runner
+          # whose arch doesn't match the app's declared target, and only fail
+          # for a real user, on their machine, with no CI signal at all.
+          # Pinning it here makes that mismatch a CI failure instead.
+          #
+          # This used to say ffprobe-static was exempt because it bundles
+          # every arch and picks one at runtime. It does -- and the file it
+          # keeps under bin/darwin/arm64/ is an x86_64 build, so every Mac
+          # release up to v0.3.0 shipped an ffprobe that cannot run on Apple
+          # Silicon without Rosetta. A build-time promise from a dependency
+          # is not a check: scripts/verify-binaries.mjs now reads the arch
+          # off each bundled binary and fails the build on a mismatch.
           - os: macos-latest
             arch: arm64
           - os: windows-latest
