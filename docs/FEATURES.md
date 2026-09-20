@@ -163,11 +163,19 @@ The timeline works like a video editor's, cut down to what a podcast needs:
 The transcript can be corrected. Double-click a word to retype it; the
 timings never move, because the timings were not what was wrong. Where the
 same word was misheard elsewhere -- and it usually was, since transcription
-gets a proper noun wrong the same way every time -- Shift-Enter fixes every
-occurrence at once, each keeping its own punctuation. On the reference
-episode "Practo" is heard as "Pacto" in ten places, spread over four tokens
-because five of them end a clause; one correction fixes nine of them, and
-the possessive "Pacto's" is left as its own word.
+gets a proper noun wrong the same way every time -- the editor is asked
+whether to fix the rest, and can undo that in one go if it was wrong.
+
+Matching ignores punctuation, a possessive and case, because that is the
+shape of the real problem: on the reference episode "Practo" is heard as
+"Pacto" in ten places across four tokens, since five of them end a clause
+and one is possessive. Each occurrence keeps its own: "Pacto." becomes
+"Practo.", "Pacto's" becomes "Practo's", "PACTO" becomes "PRACTO".
+
+Deliberately not phonetic. "Same sound" matching would reach "factor" and
+"actor", which appear in this transcript and are correct, and silently
+rewriting a correct word is worse than leaving a wrong one -- nobody goes
+looking for it.
 
 Corrections are stored as word index to replacement, beside the edit rather
 than inside the transcript, so the pipeline's own output is never rewritten

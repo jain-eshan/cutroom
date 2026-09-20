@@ -11,6 +11,7 @@ import { useState } from "react";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { Logo } from "@/components/Logo";
 import { CreditsSheet } from "@/components/Credits";
+import { UsageDataSheet } from "@/components/UsageData";
 import { hasElectronBridge, openDownloadPage, restartToUpdate, useUpdateState } from "@/lib/electron";
 import type { ThemeMode } from "@/lib/theme";
 
@@ -422,6 +423,18 @@ export function AppWindow({
 						credits
 					</button>
 					<CreditsSheet id="app-credits" />
+					{/* Answered once on the first run; this is where it can be
+					    changed back, because a decision you can't reverse isn't
+					    one. */}
+					<button
+						type="button"
+						popoverTarget="app-usage-data"
+						title="Whether Cutroom sends anonymous usage counts"
+						className="font-mono text-mono-xs leading-none text-text3 hover:text-text2"
+					>
+						usage data
+					</button>
+					<UsageDataSheet id="app-usage-data" />
 					<ThemeSwitcher mode={themeMode} onChange={onThemeModeChange} />
 					{serviceOk !== undefined && (
 						<span

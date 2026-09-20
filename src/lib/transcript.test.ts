@@ -111,40 +111,31 @@ test("an index that isn't a word is ignored rather than crashing", () => {
 	assert.equal(applyWordEdits(LINE, WORDS, { [-1]: "x" }).words, WORDS);
 });
 
-test("every occurrence of a word is found", () => {
-	// The real case: "Practo" is transcribed "Pacto" in all ten places it is
-	// said, so correcting one is almost always correcting all of them.
-	const repeated: Word[] = ["Pacto", "and", "Pacto", "again", "pacto"].map((text, i) => ({
-		text,
-		start: i,
-		end: i + 1,
-	}));
-	assert.deepEqual(occurrencesOf(repeated, "Pacto"), [0, 2]);
-	// Case matters: "pacto" mid-sentence is a different correction from the
-	// capitalised one that starts a sentence.
-	assert.deepEqual(occurrencesOf(repeated, "pacto"), [4]);
-	assert.deepEqual(occurrencesOf(repeated, "  Pacto "), [0, 2]);
-	assert.deepEqual(occurrencesOf(repeated, "   "), []);
+test("occurrences ignore punctuation, a possessive, and case", () => {
+	// The real shape of the problem: ten mishearings of one name across four
+	// tokens, because five of them end a clause and one is a possessive.
+	// Matching the token exactly fixes five and leaves five.
+	const spread: Word[] = ["Pacto", "Pacto,", "Pacto.", "Pacto's", "PACTO", "pacto", "factor"].map(
+		(text, i) => ({ text, start: i, end: i + 1 }),
+	);
+	assert.deepEqual(occurrencesOf(spread, "Pacto"), [0, 1, 2, 3, 4, 5]);
+	// "factor" is not a match. Phonetic matching would reach it, and this
+	// transcript uses it correctly -- silently rewriting a correct word is
+	// worse than leaving a wrong one, because nobody goes looking for it.
+	assert.equal(occurrencesOf(spread, "Pacto").includes(6), false);
+	assert.deepEqual(occurrencesOf(spread, "   "), []);
 });
 
-test("occurrences ignore the punctuation around a word", () => {
-	// The real shape of the problem: ten mishearings of one name, spread over
-	// four tokens because five of them end a clause or a sentence. Matching
-	// the token exactly fixes half and leaves the rest.
-	const spread: Word[] = ["Pacto", "Pacto,", "Pacto.", "Pacto's", "factor"].map((text, i) => ({
-		text,
-		start: i,
-		end: i + 1,
-	}));
-	assert.deepEqual(occurrencesOf(spread, "Pacto"), [0, 1, 2]);
-	// A possessive is its own word and needs its own correction; turning it
-	// into "Practo" would drop the "'s".
-	assert.deepEqual(occurrencesOf(spread, "Pacto's"), [3]);
-});
-
-test("a corrected word keeps the punctuation it had", () => {
+test("a corrected word keeps its punctuation, possessive and capitalisation", () => {
 	assert.equal(recased("Pacto.", "Practo"), "Practo.");
 	assert.equal(recased("Pacto,", "Practo"), "Practo,");
-	assert.equal(recased("Pacto", "Practo."), "Practo");
+	assert.equal(recased("Pacto's", "Practo"), "Practo's");
+	assert.equal(recased("PACTO.", "Practo"), "PRACTO.");
+	assert.equal(recased("pacto", "Practo"), "practo");
 	assert.equal(recased("(Pacto)", "Practo"), "(Practo)");
+	// A typed replacement's own punctuation is dropped in favour of the
+	// occurrence's, or fixing "Pacto," everywhere would put a comma in all of
+	// them.
+	assert.equal(recased("Pacto", "Practo,"), "Practo");
 });
+

@@ -3,7 +3,7 @@ import { getProgress, getWaveform, timelineThumbnailUrl, type BBox, type DetectF
 import type { CastResult } from "@/features/faces/CastScreen";
 import { DUO_SPLIT_MAX, exportPanes, fitBox, personCrop } from "@/lib/faceCrop";
 import { buildCaptionCues, cueAt } from "@/lib/captions";
-import { occurrencesOf, recased, wordAt, wordSlice } from "@/lib/transcript";
+import { occurrencesOf, recased, wordAt, wordRoot, wordSlice } from "@/lib/transcript";
 import { TimelineTray } from "@/features/timeline/TimelineTray";
 import {
 	FRAMING_STYLE_LABELS,
@@ -223,7 +223,7 @@ function SpokenLine({
 	/** Correct this word, and optionally every other word that reads the
 	 * same. `null` for `at` means this line is shown for editing rather than
 	 * because it is being spoken, so nothing is lit. */
-	onCorrect: (index: number, text: string, everywhere: boolean) => void;
+	onCorrect: (index: number, text: string) => void;
 }) {
 	const [editing, setEditing] = useState<number | null>(null);
 	const [draft, setDraft] = useState("");
@@ -238,10 +238,9 @@ function SpokenLine({
 			{words.slice(from, to).map((word, i) => {
 				const index = from + i;
 				if (index === editing) {
-					const others = occurrencesOf(words, word.text).filter((o) => o !== index);
-					const commit = (everywhere: boolean) => {
+					const commit = () => {
 						const text = draft.trim();
-						if (text && text !== word.text.trim()) onCorrect(index, text, everywhere);
+						if (text && text !== word.text.trim()) onCorrect(index, text);
 						setEditing(null);
 					};
 					return (
@@ -256,20 +255,13 @@ function SpokenLine({
 								size={Math.max(4, draft.length)}
 								onClick={(e) => e.stopPropagation()}
 								onChange={(e) => setDraft(e.target.value)}
-								onBlur={() => commit(false)}
+								onBlur={commit}
 								onKeyDown={(e) => {
 									e.stopPropagation();
-									// Shift-Enter fixes every place the same word was
-									// heard: transcription mishears a name the same way
-									// each time, so one correction is usually all of them.
-									if (e.key === "Enter") commit(e.shiftKey && others.length > 0);
+									if (e.key === "Enter") commit();
 									if (e.key === "Escape") setEditing(null);
 								}}
-								title={
-									others.length > 0
-										? `Enter to fix this one, Shift-Enter to fix all ${others.length + 1}`
-										: "Enter to save, Escape to cancel"
-								}
+								title="Enter to save, Escape to cancel"
 								className="rounded-[3px] bg-well px-1 text-accent-text outline-none"
 							/>
 						</Fragment>
@@ -547,8 +539,9 @@ export function EditorView({
 	 * lane labels, the shot chips and the export's decision log, and until
 	 * this existed a name set once could never be corrected. */
 	onCastChange: (cast: CastResult) => void;
-	/** Merged into the corrections already recorded. */
-	onWordEditsChange: (edits: Record<number, string>) => void;
+	/** Merged into the corrections already recorded. A `null` replacement
+	 * removes that word's correction, putting the original back. */
+	onWordEditsChange: (edits: Record<number, string | null>) => void;
 	health: Health | null;
 	/** Owned by App, so a trip to the publish screen and back keeps them. */
 	regions: FramingRegion[];
@@ -625,6 +618,11 @@ export function EditorView({
 	const [zoomed, setZoomed] = useState<TimeSpan | null>(null);
 	const [showSpeakerLanes, setShowSpeakerLanes] = useState(true);
 	const [explainTrim, setExplainTrim] = useState(false);
+	/** A correction that turned out to be repeated, and whether the offer to
+	 * fix the rest has been taken. */
+	const [alsoSeen, setAlsoSeen] = useState<{ was: string; now: string; others: number[]; applied?: boolean } | null>(
+		null,
+	);
 	// Built once per episode, not per frame: 8,824 words on the reference
 	// recording, and this runs against every `timeupdate`.
 	const captionCues = useMemo(() => buildCaptionCues(words), [words]);
@@ -753,17 +751,38 @@ export function EditorView({
 	 * the pipeline's own output is never rewritten and the original is always
 	 * recoverable -- and so an autosave carries a handful of replacements
 	 * instead of the whole transcript. */
-	function correctWord(index: number, text: string, everywhere: boolean) {
-		// The word you actually retyped is taken exactly as typed -- you saw
-		// its punctuation in the box. The others keep their own: "Pacto." is
-		// corrected to "Practo.", not to "Practo".
-		const edits: Record<number, string> = { [index]: text };
-		if (everywhere) {
-			for (const other of occurrencesOf(words, words[index].text)) {
-				if (other !== index) edits[other] = recased(words[other].text, text);
-			}
-		}
-		onWordEditsChange(edits);
+	/**
+	 * Correct one word, then offer the rest.
+	 *
+	 * Offering rather than doing: the same sound is not always the same word,
+	 * and a bulk rewrite nobody asked for is the kind of thing found weeks
+	 * later. Offering rather than a shortcut, because the first version put
+	 * this on Shift-Enter and a keystroke named only in a tooltip may as well
+	 * not exist -- the same way the zoom controls and the captions toggle
+	 * didn't.
+	 */
+	function correctWord(index: number, text: string) {
+		// Taken exactly as typed: you could see its punctuation in the box.
+		onWordEditsChange({ [index]: text });
+		const others = occurrencesOf(words, words[index].text).filter((i) => i !== index);
+		setAlsoSeen(others.length > 0 ? { was: wordRoot(words[index].text), now: text, others } : null);
+	}
+
+	/** Apply the offer, remembering what to put back if it was wrong. */
+	function correctEverywhere() {
+		if (!alsoSeen) return;
+		// Each occurrence keeps its own punctuation, possessive and case:
+		// "Pacto's" becomes "Practo's", "PACTO." becomes "PRACTO.".
+		onWordEditsChange(Object.fromEntries(alsoSeen.others.map((i) => [i, recased(words[i].text, alsoSeen.now)])));
+		setAlsoSeen({ ...alsoSeen, applied: true });
+	}
+
+	function undoEverywhere() {
+		if (!alsoSeen?.applied) return;
+		// Back to whatever each of them said before, which for a word nobody
+		// had touched is its original -- `undefined` clears the correction.
+		onWordEditsChange(Object.fromEntries(alsoSeen.others.map((i) => [i, null])));
+		setAlsoSeen(null);
 	}
 
 	const speakerLanes = useMemo(() => {
@@ -1225,6 +1244,43 @@ export function EditorView({
 							);
 						})}
 					</div>
+
+					{alsoSeen && (
+						<div className="flex shrink-0 flex-col gap-[9px] border-t border-line bg-chrome px-[17px] py-3">
+							{alsoSeen.applied ? (
+								<>
+									<p className="text-meta text-pretty text-text2">
+										Fixed “{alsoSeen.was}” in {alsoSeen.others.length} more{" "}
+										{alsoSeen.others.length === 1 ? "place" : "places"}.
+									</p>
+									<span className="flex gap-[7px]">
+										<Button size="sm" variant="quiet" onClick={undoEverywhere}>
+											Undo those
+										</Button>
+										<Button size="sm" variant="quiet" onClick={() => setAlsoSeen(null)}>
+											Keep
+										</Button>
+									</span>
+								</>
+							) : (
+								<>
+									<p className="text-meta text-pretty text-text2">
+										“{alsoSeen.was}” is said in {alsoSeen.others.length} other{" "}
+										{alsoSeen.others.length === 1 ? "place" : "places"}. Fix {alsoSeen.others.length === 1 ? "it" : "them"}{" "}
+										too?
+									</p>
+									<span className="flex gap-[7px]">
+										<Button size="sm" onClick={correctEverywhere}>
+											Fix all {alsoSeen.others.length}
+										</Button>
+										<Button size="sm" variant="quiet" onClick={() => setAlsoSeen(null)}>
+											Just this one
+										</Button>
+									</span>
+								</>
+							)}
+						</div>
+					)}
 				</aside>
 
 				<main className="flex min-h-0 flex-1 flex-col gap-[13px] px-5 py-[18px]">

@@ -75,46 +75,74 @@ export function wordAt(words: Word[], t: number, from = 0, to = words.length): n
  */
 export type WordEdits = Record<number, string>;
 
-/** A token split into the punctuation around it and the word itself:
- * `"Pacto,"` is `["", "Pacto", ","]`. An apostrophe inside a word stays part
- * of it, so `"Pacto's"` is one word and not a match for `"Pacto"` -- it needs
- * its own correction, and silently turning it into `"Practo"` would lose the
- * possessive. */
+/**
+ * A token split into the four things a correction has to put back:
+ * `"(Pacto's)"` is `["(", "Pacto", "'s", ")"]`.
+ *
+ * The possessive is separated because it is the same word wearing a suffix.
+ * On the reference episode "Practo" is misheard ten times as four tokens --
+ * `Pacto`, `Pacto,`, `Pacto.` and `Pacto's` -- and a correction that only
+ * fixes the bare one fixes five of ten, which is the kind of half-done that
+ * is worse than not offering it.
+ */
 const AFFIXES = /^([^\p{L}\p{N}]*)(.*?)([^\p{L}\p{N}]*)$/u;
+const POSSESSIVE = /['\u2019]s$/u;
 
-function splitWord(text: string): [string, string, string] {
+function splitWord(text: string): [string, string, string, string] {
 	const m = AFFIXES.exec(text.trim());
-	return m ? [m[1], m[2], m[3]] : ["", text.trim(), ""];
+	const [prefix, whole, suffix] = m ? [m[1], m[2], m[3]] : ["", text.trim(), ""];
+	const possessive = POSSESSIVE.exec(whole);
+	return possessive
+		? [prefix, whole.slice(0, -possessive[0].length), possessive[0], suffix]
+		: [prefix, whole, "", suffix];
 }
 
-/** The word inside a token, without the punctuation around it. */
-export function wordCore(text: string): string {
+/** The word inside a token, without punctuation or a possessive. */
+export function wordRoot(text: string): string {
 	return splitWord(text)[1];
 }
 
 /**
- * Every index whose word is `text`, ignoring the punctuation around either.
+ * Every index whose word is `text`, ignoring punctuation, a possessive, and
+ * case.
  *
- * Transcription gets proper nouns wrong the same way every time. On the
- * reference episode "Practo" is heard as "Pacto" in all ten places it is
- * said -- but as four different tokens, because five of them end a clause or
- * a sentence. Matching the token exactly would fix half of them and leave
- * the rest, which is the kind of half-done that is worse than not offering
- * it at all.
+ * Case is ignored because it varies in real transcripts -- the reference
+ * episode says "PRACTO" in one place and "Practo" in others -- and a word
+ * that differs only in capitalisation is the same word misheard.
+ *
+ * Deliberately not phonetic. "Same sound" matching would reach words like
+ * "factor" and "actor", which appear in this very transcript and are
+ * correct; silently rewriting a correct word is a worse failure than
+ * leaving a wrong one, because nobody goes looking for it.
  */
 export function occurrencesOf(words: Word[], text: string): number[] {
-	const wanted = wordCore(text);
+	const wanted = wordRoot(text).toLocaleLowerCase();
 	if (!wanted) return [];
 	const found: number[] = [];
-	for (let i = 0; i < words.length; i++) if (wordCore(words[i].text) === wanted) found.push(i);
+	for (let i = 0; i < words.length; i++) {
+		if (wordRoot(words[i].text).toLocaleLowerCase() === wanted) found.push(i);
+	}
 	return found;
 }
 
-/** `replacement`'s word, wearing `original`'s punctuation: correcting
- * "Pacto" to "Practo" turns "Pacto." into "Practo.", not "Practo". */
+/** Only the first letter, and the all-capitals case, are copied. Anything
+ * cleverer starts guessing at words like "iPhone". */
+function matchCase(original: string, replacement: string): string {
+	if (!original || !replacement) return replacement;
+	if (original.length > 1 && original === original.toLocaleUpperCase()) return replacement.toLocaleUpperCase();
+	const first = original[0];
+	if (first === first.toLocaleUpperCase() && first !== first.toLocaleLowerCase()) {
+		return replacement[0].toLocaleUpperCase() + replacement.slice(1);
+	}
+	return replacement[0].toLocaleLowerCase() + replacement.slice(1);
+}
+
+/** `replacement`'s word wearing `original`'s punctuation, possessive and
+ * capitalisation: correcting "Pacto" to "Practo" turns "Pacto's" into
+ * "Practo's" and "PACTO." into "PRACTO.". */
 export function recased(original: string, replacement: string): string {
-	const [prefix, , suffix] = splitWord(original);
-	return prefix + wordCore(replacement) + suffix;
+	const [prefix, root, possessive, suffix] = splitWord(original);
+	return prefix + matchCase(root, wordRoot(replacement)) + possessive + suffix;
 }
 
 /**
