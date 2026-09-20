@@ -532,22 +532,38 @@ the founder's call, to find testers and contributors early:
        browser, the setup gate shows "pyannote community-1 - installed" and
        opens the app with nothing asked of anyone; the credits sheet renders
        all six entries in dark and light and dismisses on Escape.
-     - 209 backend tests (was 222: -14 for the deleted `hf_token` suite, +1
-       net in `test_diarize.py`, which now also asserts the weights are
-       present and that `from_pretrained` is given the local path and no
-       token). 89 frontend tests, `tsc`, `oxlint` and the production build
-       all clean.
-     - **What it costs the download: 29.1MB.** Measured, not estimated, by
-       building the `.dmg` twice on the same machine and the same Electron
-       (44.4.0), once with the weights and once with the folder moved aside:
-       **122.7MB → 151.8MB**. The seven files really are inside the built
-       app, at `Cutroom.app/Contents/Resources/server/.models/diarization/`.
-       Not comparable with the published v0.3.0's 165MB, which was built by
-       CI on a different Electron -- that difference is not this change.
-     - Not verified: the packaged app *running*. The build carries the
-       weights, but nothing has launched it and processed a recording, and
-       the Electron window-open handler needs a packaged window to exercise.
-       This machine's shared instance is in use by another session.
+     - This change took the backend suite from 222 to 209: -14 for the
+       deleted `hf_token` suite, +1 net in `test_diarize.py`, which now also
+       asserts the weights are present and that `from_pretrained` is given
+       the local path and no token. **211 after merging v0.3.1**, which
+       added two of its own. 89 frontend tests, `tsc`, `oxlint` and both
+       builds clean.
+     - **What it costs the download: 29.0MB.** Measured, not estimated, by
+       building the `.dmg` twice on the same machine, once with the weights
+       and once with the folder moved aside: **150.3MB → 179.3MB**, on top
+       of v0.3.1. The seven files really are inside the built app, at
+       `Cutroom.app/Contents/Resources/server/.models/diarization/`, and
+       v0.3.1's new `verify-binaries` afterPack check passes on both builds.
+       Don't compare either figure with the published v0.3.0's 165MB: most
+       of the gap is v0.3.1 swapping `ffprobe-static` for
+       `@ffprobe-installer`, whose arm64 binary is a real arm64 build and
+       considerably larger than the x86_64 one that used to ship. The same
+       pair measured before that merge came out at 122.7MB → 151.8MB, the
+       same 29MB apart, which is the only number here this change owns.
+     - **Verified inside the packaged bundle, not just the repo.** Running
+       the built app's own copy of the pipeline out of
+       `Cutroom.app/Contents/Resources/server/`, with `HF_TOKEN` unset,
+       `HF_HUB_OFFLINE=1`, an empty `HF_HOME` and `CUTROOM_DATA_DIR` pointed
+       at a scratch directory, `diarization_configured()` is true, the
+       weights path resolves inside the bundle, and `diarize()` returns the
+       same two speakers as every other run above. That is the packaging
+       claim -- a shipped app finding its own model with no account --
+       tested against a real build rather than inferred from the
+       `extraResources` filter.
+     - Still not verified: the app *launched as an app*. Nothing has opened
+       the window and put a real recording through it, and the Electron
+       window-open handler needs a packaged window to exercise. Both want
+       port 3460, which this machine's installed copy is holding.
    - **The rest of the licence check, done 2026-09-17.** faster-whisper's
      converted weights (`Systran/faster-whisper-*` on Hugging Face, what
      `transcribe.py`'s `WhisperModel` pulls) are MIT. YuNet
@@ -935,7 +951,9 @@ the founder's call, to find testers and contributors early:
     redirect to the `v0.3.0` asset URLs.
   - Not yet verified: the Windows download-and-install path, and
     read-in-place and save-to-folder now that the bridge loads (needs a
-    real recording and a Hugging Face token run through the packaged app).
+    real recording run through the packaged app — this said "and a Hugging
+    Face token" when it was written, which stopped being true on
+    2026-09-20; the verification itself is still owed).
 - **v0.3.1, 2026-09-20: the bundled ffprobe was an Intel binary.** Every
   packaged Mac build since v0.1.0 shipped an x86_64 `ffprobe` and pointed
   `FFPROBE_BINARY` at it, so on an Apple Silicon Mac without Rosetta the
