@@ -197,33 +197,14 @@ export async function getWaveform(jobId: string): Promise<number[]> {
 
 export interface Health {
 	status: string;
-	/** Whether the Hugging Face token speaker diarisation needs is set.
-	 * Required: /process refuses the job without it. */
+	/** Whether the bundled speaker detection model is on disk. True in any
+	 * sound install -- the weights ship with the app. Required: /process
+	 * refuses the job without it. */
 	diarization: boolean;
 	/** Whether this install's ffmpeg was built with libass. A normal macOS
 	 * `brew install ffmpeg` is not, so the setup gate says so up front rather
 	 * than letting a 15-minute export fail at the end. */
 	captions: boolean;
-}
-
-/** Hand the Hugging Face token to the local service, which checks it with
- * Hugging Face and saves it to server/.env. Throws with the service's own
- * plain-English reason when the token can't be used. */
-export async function saveHfToken(token: string): Promise<void> {
-	const res = await fetch(new URL("/setup/hf-token", API_BASE), {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ token }),
-	});
-	if (res.ok) return;
-	let detail = `The service couldn't save the token (${res.status}).`;
-	try {
-		const parsed = ((await res.json()) as { detail?: unknown }).detail;
-		if (typeof parsed === "string") detail = parsed;
-	} catch {
-		// Not JSON -- keep the generic line.
-	}
-	throw new Error(detail);
 }
 
 export async function getHealth(): Promise<Health> {

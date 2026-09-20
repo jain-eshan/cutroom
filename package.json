@@ -73,6 +73,7 @@
           "main.py",
           "pipeline/**",
           ".models/face_detection_yunet.onnx",
+          ".models/diarization/**",
           "pyproject.toml",
           "uv.lock",
           ".python-version",

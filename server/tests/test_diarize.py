@@ -1,9 +1,10 @@
 """Tests for deriving overlap windows from diarisation output.
 
-The model call itself isn't tested here (it needs a token, a GPU and ten
-minutes); this covers the part that turns overlapping speaker segments into
-the windows the renderer builds composites from, which is exactly the kind of
-logic that produces a plausible-but-wrong edit when it's subtly off.
+Running the model itself isn't tested here (it wants a GPU and ten minutes);
+this covers the part that turns overlapping speaker segments into the windows
+the renderer builds composites from, which is exactly the kind of logic that
+produces a plausible-but-wrong edit when it's subtly off -- plus, below, that
+the bundled weights are present and are what gets loaded.
 """
 
 import threading
@@ -93,52 +94,91 @@ class TestOverlapWindows:
 		assert windows[0].end == 5.2
 
 
+class TestBundledModel:
+	"""The weights ship with the app rather than downloading from a gated
+	Hugging Face repo, which is what removed the account-and-token step from
+	first use. These guard the two halves of that: the files are really here,
+	and loading really reads them instead of the repo id."""
+
+	def test_every_file_the_config_refers_to_is_present(self):
+		import pipeline.diarize as diarize_module
+
+		assert diarize_module.BUNDLED_CONFIG.exists()
+		# config.yaml names these three as `$model/...`, relative to itself.
+		# A missing one only surfaces when a job loads the model, minutes in.
+		for part in ("segmentation", "embedding", "plda"):
+			assert (diarize_module.BUNDLED_MODEL_DIR / part).is_dir()
+
+	def test_loads_from_the_local_path_not_the_hub(self, monkeypatch):
+		"""The actual subject of this change: `from_pretrained` gets a path on
+		disk and no token. Passing the repo id would still work on a machine
+		with a cached model and a token, and fail for every new person -- the
+		exact failure this bundling exists to prevent."""
+		import pipeline.diarize as diarize_module
+		from pyannote.audio import Pipeline
+
+		monkeypatch.setattr(diarize_module, "_pipeline", None)
+		monkeypatch.setattr(diarize_module, "_best_device", lambda: "cpu")
+		monkeypatch.delenv("HF_TOKEN", raising=False)
+
+		seen = {}
+
+		class FakePipeline:
+			def to(self, device):
+				return self
+
+		def record(cls, source, *a, **k):
+			seen["source"] = source
+			seen["kwargs"] = k
+			return FakePipeline()
+
+		monkeypatch.setattr(Pipeline, "from_pretrained", classmethod(record))
+		diarize_module._get_pipeline()
+
+		assert seen["source"] == diarize_module.BUNDLED_CONFIG
+		assert "token" not in seen["kwargs"]
+
+
 class TestDiarizationConfigured:
 	"""The check the setup gate and /process rely on to refuse a job up front
-	rather than after a multi-minute transcription."""
+	rather than after a multi-minute transcription. True in any sound install
+	now; it stays a check because a partial or damaged one would otherwise
+	fail minutes into a job."""
 
-	def test_missing_token_is_not_configured(self, monkeypatch):
+	def test_present_weights_count_as_configured(self):
 		from pipeline.diarize import diarization_configured
 
-		monkeypatch.delenv("HF_TOKEN", raising=False)
-		assert diarization_configured() is False
-
-	def test_empty_token_counts_as_missing(self, monkeypatch):
-		from pipeline.diarize import diarization_configured
-
-		monkeypatch.setenv("HF_TOKEN", "")
-		assert diarization_configured() is False
-
-	def test_any_token_counts_as_configured(self, monkeypatch):
-		from pipeline.diarize import diarization_configured
-
-		monkeypatch.setenv("HF_TOKEN", "hf_example")
 		assert diarization_configured() is True
+
+	def test_missing_weights_are_not_configured(self, monkeypatch, tmp_path):
+		import pipeline.diarize as diarize_module
+
+		monkeypatch.setattr(diarize_module, "BUNDLED_CONFIG", tmp_path / "config.yaml")
+		assert diarize_module.diarization_configured() is False
 
 
 class TestPipelineLoadingAnnounced:
 	"""`on_loading` is the only way a browser learns why a run stalls before
-	transcription can start -- whether that's a real download or just
-	loading an already-cached model isn't told apart (see diarize.py's
-	comment); either way it's a real pause that needs a label."""
+	transcription can start. Reading 31MB of bundled weights off disk is
+	quicker than the download this used to be, but it is still a pause with
+	nothing else on screen to explain it."""
 
 	def test_fires_before_the_pipeline_call_when_not_yet_loaded(self, monkeypatch):
 		import pipeline.diarize as diarize_module
 		from pyannote.audio import Pipeline
 
 		monkeypatch.setattr(diarize_module, "_pipeline", None)
-		monkeypatch.setenv("HF_TOKEN", "hf_example")
 		monkeypatch.setattr(
 			Pipeline,
 			"from_pretrained",
-			classmethod(lambda cls, *a, **k: (_ for _ in ()).throw(RuntimeError("no network in tests"))),
+			classmethod(lambda cls, *a, **k: (_ for _ in ()).throw(RuntimeError("unreadable in tests"))),
 		)
 
 		seen: list[str] = []
 		with pytest.raises(diarize_module.DiarizationUnavailable):
 			diarize_module._get_pipeline(on_loading=seen.append)
 
-		assert seen and "first time" in seen[0]
+		assert seen and "speaker detection model" in seen[0]
 
 	def test_does_not_fire_when_already_loaded(self, monkeypatch):
 		import pipeline.diarize as diarize_module
@@ -162,7 +202,6 @@ class TestConcurrentLoads:
 		from pyannote.audio import Pipeline
 
 		monkeypatch.setattr(diarize_module, "_pipeline", None)
-		monkeypatch.setenv("HF_TOKEN", "hf_example")
 		monkeypatch.setattr(diarize_module, "_best_device", lambda: "cpu")
 
 		construction_count = 0
