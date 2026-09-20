@@ -111,3 +111,48 @@ export function personCrop(
 	const y = Math.max(0, Math.min(sourceHeight - cropHeight, top));
 	return { x, y, width: cropWidth, height: cropHeight };
 }
+
+// Two people get a side-by-side split; three or more get the speaker-focus
+// layout instead of N narrow columns. Must match render.py's DUO_SPLIT_MAX
+// and SPEAKER_FOCUS_MAIN_FRACTION.
+export const DUO_SPLIT_MAX = 2;
+export const SPEAKER_FOCUS_MAIN_FRACTION = 0.68;
+
+/**
+ * The pane each person is rendered into, in *source* pixels, in subject
+ * order. A direct port of `_segment_filter` in server/pipeline/render.py,
+ * including its integer division: `pane_w = frame_w // n`, and the
+ * speaker-focus column height rounded down so `vstack`'s panes sum exactly.
+ *
+ * The preview crops against these rather than against its own on-screen pane
+ * size. Those are not the same shape -- the stage is whatever the window
+ * leaves for it -- and `personCrop` derives both the crop's aspect and its
+ * minimum height (`targetHeight / maxUpscale`) from what it's given, so
+ * passing on-screen pixels produced a different crop from the one ffmpeg
+ * renders. See docs/STATUS.md, "the preview lied about the export".
+ */
+export function exportPanes(count: number, frameWidth: number, frameHeight: number): { width: number; height: number }[] {
+	if (count <= 1) return [{ width: frameWidth, height: frameHeight }];
+	if (count <= DUO_SPLIT_MAX) {
+		const paneWidth = Math.floor(frameWidth / count);
+		return Array.from({ length: count }, () => ({ width: paneWidth, height: frameHeight }));
+	}
+	const others = count - 1;
+	// `int()` in Python truncates; frame widths are positive, so floor agrees.
+	const sideWidth = frameWidth - Math.trunc(frameWidth * SPEAKER_FOCUS_MAIN_FRACTION);
+	const sideHeight = Math.floor(frameHeight / others);
+	return [
+		{ width: frameWidth - sideWidth, height: sideHeight * others },
+		...Array.from({ length: others }, () => ({ width: sideWidth, height: sideHeight })),
+	];
+}
+
+/** The largest box of a given aspect ratio that fits inside `width` x
+ * `height`. The preview stage is sized with this instead of a CSS
+ * `aspect-ratio`, which a flex parent overrides: the stage was stretching to
+ * whatever shape the panel left it, which is what pillarboxed the wide shot
+ * while a close-up filled the frame edge to edge. */
+export function fitBox(aspect: number, width: number, height: number): { width: number; height: number } {
+	if (!(aspect > 0) || width <= 0 || height <= 0) return { width: 0, height: 0 };
+	return width / height > aspect ? { width: height * aspect, height } : { width, height: width / aspect };
+}

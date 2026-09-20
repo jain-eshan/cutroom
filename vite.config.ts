@@ -3,7 +3,7 @@ import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
-import { createProcessingService } from './scripts/processing-service.mjs'
+import { createProcessingService, SERVICE_PORT } from './scripts/processing-service.mjs'
 
 // Kept on globalThis because Vite re-evaluates this file whenever the config
 // changes; a module-level variable would forget the running service and start
@@ -68,5 +68,25 @@ export default defineConfig({
     // Must stay in sync with server/main.py's CORS allow_origins -- README
     // and ARCHITECTURE.md both document this as the frontend's port.
     port: 3460,
+    // Every path the processing service owns, forwarded from the dev server.
+    //
+    // Inert in normal use: the app calls `VITE_API_URL ?? http://127.0.0.1:8787`
+    // (see API_BASE in src/lib/api.ts), so on port 3460 it talks to the
+    // service directly and never touches these routes. Setting VITE_API_URL to
+    // the dev server's own origin sends everything through here instead --
+    // which is how the app runs on any other port, for QA alongside an
+    // already-running install (`npm run dev:qa`).
+    //
+    // A proxy rather than a wider CORS allowlist on the service: this makes
+    // the requests same-origin, so the browser never performs a cross-origin
+    // check at all, and what the shipped service accepts is unchanged. The
+    // alternative -- letting the service answer any localhost origin -- would
+    // mean any page on any local port could drive someone's Cutroom.
+    proxy: Object.fromEntries(
+      ['/health', '/process', '/progress', '/jobs', '/projects', '/export', '/setup'].map((path) => [
+        path,
+        { target: `http://127.0.0.1:${SERVICE_PORT}`, changeOrigin: true },
+      ]),
+    ),
   },
 })

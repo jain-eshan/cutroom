@@ -4,21 +4,44 @@
     {
       "name": "cutroom-app",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3460
     },
     {
       "name": "cutroom-site",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "site"],
+      "runtimeArgs": [
+        "run",
+        "site"
+      ],
       "port": 3461
     },
     {
       "name": "cutroom-service",
       "runtimeExecutable": "uv",
-      "runtimeArgs": ["run", "--directory", "server", "uvicorn", "main:app", "--port", "8787"],
+      "runtimeArgs": [
+        "run",
+        "--directory",
+        "server",
+        "uvicorn",
+        "main:app",
+        "--port",
+        "8787"
+      ],
       "port": 8787,
       "url": "http://127.0.0.1:8787"
+    },
+    {
+      "name": "cutroom-qa",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:qa"
+      ],
+      "port": 3466
     }
   ]
 }

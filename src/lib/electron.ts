@@ -9,6 +9,8 @@ declare global {
 		cutroom?: {
 			getPathForFile: (file: File) => string;
 			chooseExportPath: (defaultName: string) => Promise<string | null>;
+			chooseProjectSavePath: (defaultName: string) => Promise<string | null>;
+			chooseRecording: (defaultName?: string) => Promise<string | null>;
 			showItemInFolder: (path: string) => void;
 			onUpdate: (callback: (state: UpdateState) => void) => () => void;
 			openDownloadPage: () => void;
@@ -41,6 +43,19 @@ export function hasElectronBridge(): boolean {
 export function chooseExportPath(defaultName: string): Promise<string | null> {
 	if (!window.cutroom) return Promise.resolve(null);
 	return window.cutroom.chooseExportPath(defaultName);
+}
+
+/** Where to write a `.cutroom` project. `null` means cancelled. */
+export function chooseProjectSavePath(defaultName: string): Promise<string | null> {
+	if (!window.cutroom) return Promise.resolve(null);
+	return window.cutroom.chooseProjectSavePath(defaultName);
+}
+
+/** The recording a project points at, for relinking one whose media has
+ * moved. `null` means cancelled. */
+export function chooseRecording(defaultName?: string): Promise<string | null> {
+	if (!window.cutroom) return Promise.resolve(null);
+	return window.cutroom.chooseRecording(defaultName);
 }
 
 /** Reveals a finished render in the OS file browser. */

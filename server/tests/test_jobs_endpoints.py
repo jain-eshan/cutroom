@@ -213,7 +213,9 @@ class TestSavedEpisodes:
 		assert len(listed) == 1 and listed[0]["jobId"] == "j" and listed[0]["filename"] == "ep.mp4"
 		# The filename rides along on the result too -- a resumed session has
 		# no browser-held upload left to read it from.
-		assert client.get("/jobs/j").json() == {"turns": ["x"], "filename": "ep.mp4"}
+		# `edit` is null until someone opens it in the editor -- see
+		# TestJobEditPersistence.
+		assert client.get("/jobs/j").json() == {"turns": ["x"], "filename": "ep.mp4", "edit": None}
 
 	def test_reopening_an_unknown_job_404s(self, client):
 		assert client.get("/jobs/nobody").status_code == 404
@@ -401,6 +403,188 @@ class TestExportProgress:
 		)
 		assert response.status_code == 500
 		assert client.get("/export/progress/j").json() == {"fraction": 0.0}
+
+
+class TestJobEditPersistence:
+	"""Autosave: the editor's own work survives quitting.
+
+	Before this, `server/jobs/` held everything the pipeline produced and
+	nothing the editor did, so reopening a saved episode meant redoing every
+	shot by hand -- on a 53-minute episode, an afternoon."""
+
+	EDIT = {
+		"cast": {"speakerToPerson": {"0": 1}, "names": {"1": "Siddharth"}},
+		"regions": [{"id": "r1", "start": 1.0, "end": 4.0, "layout": "zoom", "personIds": [1], "source": "user"}],
+		"framingStyle": "gentle",
+		"captions": True,
+		"trimDeadAir": False,
+	}
+
+	def _finished_job(self, job_id="job-1"):
+		jobs.save_result(job_id, "episode.mp4", {"turns": [], "overlapWindows": [], "words": [], "faces": {}, "match": {}})
+		return job_id
+
+	def test_a_job_nobody_has_edited_reports_no_edit(self, client):
+		job_id = self._finished_job()
+		assert client.get(f"/jobs/{job_id}").json()["edit"] is None
+
+	def test_a_saved_edit_comes_back_with_the_job(self, client):
+		job_id = self._finished_job()
+		assert client.put(f"/jobs/{job_id}/edit", json=self.EDIT).status_code == 200
+		assert client.get(f"/jobs/{job_id}").json()["edit"] == self.EDIT
+
+	def test_saving_again_replaces_rather_than_merges(self, client):
+		job_id = self._finished_job()
+		client.put(f"/jobs/{job_id}/edit", json=self.EDIT)
+		client.put(f"/jobs/{job_id}/edit", json={"regions": [], "framingStyle": "wideOnly"})
+		saved = client.get(f"/jobs/{job_id}").json()["edit"]
+		assert saved == {"regions": [], "framingStyle": "wideOnly"}
+		# Whole-document, so a key the new edit leaves out is really gone --
+		# a merge would silently resurrect shots the editor deleted.
+		assert "cast" not in saved
+
+	def test_an_edit_does_not_touch_the_pipeline_result(self, client):
+		job_id = self._finished_job()
+		before = jobs.load_result(job_id)
+		client.put(f"/jobs/{job_id}/edit", json=self.EDIT)
+		assert jobs.load_result(job_id) == before
+
+	def test_an_edit_for_a_job_that_does_not_exist_is_refused(self, client):
+		assert client.put("/jobs/nope/edit", json=self.EDIT).status_code == 404
+
+	def test_a_job_id_that_is_not_a_path_is_refused(self, client):
+		# `validate_job_id` guards the whole module; this is the one new way in.
+		assert client.put("/jobs/..%2F..%2Fetc/edit", json=self.EDIT).status_code in (404, 422)
+
+	def test_deleting_a_job_takes_its_edit_with_it(self, client):
+		job_id = self._finished_job()
+		client.put(f"/jobs/{job_id}/edit", json=self.EDIT)
+		client.delete(f"/jobs/{job_id}")
+		assert jobs.load_edit(job_id) is None
+
+	def test_a_truncated_edit_file_reads_as_no_edit_rather_than_crashing(self):
+		job_id = self._finished_job()
+		jobs.save_edit(job_id, self.EDIT)
+		(jobs.job_dir(job_id) / "edit.json").write_text('{"regions": [')
+		assert jobs.load_edit(job_id) is None
+
+
+class TestProjectEndpoints:
+	"""Saving an episode as a `.cutroom` file and opening it again. The format
+	itself is covered in test_project.py; this is the HTTP surface."""
+
+	def _finished(self, job_id="job-p"):
+		jobs.save_result(job_id, "Ep1.mp4", {"turns": [{"speaker": 0, "start": 0.0, "end": 1.0, "text": "hi"}]})
+		jobs.save_edit(job_id, {"version": 1, "regions": [{"id": "r1"}]})
+		return job_id
+
+	def test_saving_streams_a_project_named_after_the_recording(self, client):
+		job_id = self._finished()
+		res = client.get(f"/jobs/{job_id}/project")
+		assert res.status_code == 200
+		assert "Ep1.cutroom" in res.headers["content-disposition"]
+		assert res.content[:2] == b"PK"  # a real zip
+
+	def test_saving_to_a_chosen_path_returns_the_path_not_the_bytes(self, client, tmp_path):
+		job_id = self._finished()
+		out = tmp_path / "Somewhere" / "Ep1.cutroom"
+		out.parent.mkdir()
+		res = client.get(f"/jobs/{job_id}/project", params={"outputPath": str(out)})
+		assert res.json() == {"outputPath": str(out)}
+		assert out.is_file() and out.read_bytes()[:2] == b"PK"
+
+	def test_saving_into_a_folder_that_does_not_exist_is_refused_up_front(self, client, tmp_path):
+		job_id = self._finished()
+		res = client.get(f"/jobs/{job_id}/project", params={"outputPath": str(tmp_path / "nope" / "Ep1.cutroom")})
+		assert res.status_code == 400 and "No such folder" in res.json()["detail"]
+
+	def test_saving_a_job_that_does_not_exist_is_refused(self, client):
+		assert client.get("/jobs/nobody/project").status_code == 404
+
+	def test_a_project_round_trips_through_save_and_open(self, client):
+		job_id = self._finished()
+		saved = client.get(f"/jobs/{job_id}/project").content
+
+		opened = client.post("/projects/open", files={"file": ("Ep1.cutroom", saved, "application/zip")}).json()
+		assert opened["filename"] == "Ep1.mp4"
+		assert opened["jobId"] != job_id  # a copy, not the same episode
+
+		reopened = client.get(f"/jobs/{opened['jobId']}").json()
+		assert reopened["turns"] == [{"speaker": 0, "start": 0.0, "end": 1.0, "text": "hi"}]
+		assert reopened["edit"] == {"version": 1, "regions": [{"id": "r1"}]}
+
+	def test_opening_something_that_is_not_a_project_is_refused_with_a_sentence(self, client):
+		res = client.post("/projects/open", files={"file": ("notes.txt", b"hello", "text/plain")})
+		assert res.status_code == 400
+		assert "isn't a Cutroom project" in res.json()["detail"]
+
+	def test_a_refused_project_leaves_no_job_behind(self, client):
+		before = client.get("/jobs").json()
+		client.post("/projects/open", files={"file": ("notes.txt", b"hello", "text/plain")})
+		assert client.get("/jobs").json() == before
+
+	def test_a_project_whose_recording_is_gone_still_opens(self, client, tmp_path):
+		"""The whole point of relinking: the episode opens, the media doesn't."""
+		job_id = self._finished()
+		saved = client.get(f"/jobs/{job_id}/project").content
+		opened = client.post("/projects/open", files={"file": ("Ep1.cutroom", saved, "application/zip")}).json()
+		assert opened["sourceFound"] is False
+		assert client.get(f"/jobs/{opened['jobId']}").status_code == 200
+
+	def test_relinking_makes_the_recording_available_again(self, client, tmp_path):
+		job_id = self._finished()
+		recording = tmp_path / "Ep1.mp4"
+		recording.write_bytes(b"not really a video")
+		res = client.post(f"/jobs/{job_id}/relink", json={"path": str(recording)})
+		assert res.json() == {"sourceFound": True}
+		# And the recording is actually servable now.
+		assert client.get(f"/jobs/{job_id}/media").status_code == 200
+
+	def test_relinking_to_a_file_that_is_not_there_is_refused(self, client, tmp_path):
+		job_id = self._finished()
+		res = client.post(f"/jobs/{job_id}/relink", json={"path": str(tmp_path / "gone.mp4")})
+		assert res.status_code == 400 and "No such file" in res.json()["detail"]
+
+	def test_relinking_a_job_that_does_not_exist_is_refused(self, client, tmp_path):
+		recording = tmp_path / "Ep1.mp4"
+		recording.write_bytes(b"x")
+		assert client.post("/jobs/nobody/relink", json={"path": str(recording)}).status_code == 404
+
+	def test_a_recording_that_moved_reports_missing_rather_than_failing(self, client, tmp_path):
+		"""A job keeps an `input.*` entry after its recording moves -- a
+		symlink pointing at nothing. Serving that is a 500 with no
+		explanation; the point of relinking is that this is a known state."""
+		job_id = self._finished()
+		recording = tmp_path / "Ep1.mp4"
+		recording.write_bytes(b"not really a video")
+		client.post(f"/jobs/{job_id}/relink", json={"path": str(recording)})
+		assert client.get(f"/jobs/{job_id}/media").status_code == 200
+
+		recording.unlink()
+		assert client.get(f"/jobs/{job_id}/media").status_code == 404
+		# And the export says so up front rather than failing inside ffmpeg.
+		res = client.post(
+			"/export",
+			data={"jobId": job_id, "regions": "[]"},
+			files={"faces": ("faces.json", FACES, "application/json")},
+		)
+		assert res.status_code == 404 and "may have moved" in res.json()["detail"]
+
+
+class TestHealthIdentifiesItsLibrary:
+	"""`/health` says which data directory it serves, so the launcher can tell
+	whether a service already on its port is the same install or someone
+	else's -- see `adoptionVerdict` in scripts/processing-service.mjs."""
+
+	def test_health_reports_the_data_directory_it_serves(self, client, monkeypatch, tmp_path):
+		monkeypatch.setattr(main, "DATA_DIR", tmp_path)
+		assert client.get("/health").json()["dataDir"] == str(tmp_path.resolve())
+
+	def test_the_path_is_resolved_so_two_spellings_compare_equal(self, client, monkeypatch, tmp_path):
+		scenic = tmp_path / "sub" / ".." / "sub"
+		(tmp_path / "sub").mkdir()
+		monkeypatch.setattr(main, "DATA_DIR", scenic)
+		assert client.get("/health").json()["dataDir"] == str((tmp_path / "sub").resolve())
 
 
 class TestDiskSpaceRefusals:

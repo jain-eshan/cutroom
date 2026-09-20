@@ -19,10 +19,15 @@ const UNMANAGED_AFTER_MS = 8000;
 const UNRESPONSIVE_AFTER_MS = 20000;
 
 type Service = {
-	state: "starting" | "running" | "exited" | "external";
+	/** `foreign`: another Cutroom service holds the port, but it serves a
+	 * different library, so this copy refused to adopt it (see
+	 * `adoptionVerdict` in scripts/processing-service.mjs). */
+	state: "starting" | "running" | "exited" | "external" | "foreign";
 	log: string[];
 	/** Whether it got as far as serving requests before it exited. */
 	ranBefore: boolean;
+	/** Only on `foreign`: the two libraries, so this screen can name them. */
+	foreign?: { theirs: string; ours: string };
 };
 
 /** What the dev server says about the processing service it started. Null
@@ -125,6 +130,38 @@ export function SetupGate({ onReady }: { onReady: (health: Health) => void }) {
 						: "It couldn't start. This is what it said:"}
 				</p>
 				<RawMessage className="max-h-44 overflow-auto">{log(service.log)}</RawMessage>
+				{tryAgain}
+			</StatusRow>
+		);
+	} else if (service?.state === "foreign") {
+		// The one failure here that looks like success: the port answers, and
+		// answers correctly, for somebody else's episodes. Adopting it would
+		// have shown an empty library under a green tick, so it is refused --
+		// and this says so, with both paths, because "wrong service" means
+		// nothing without them.
+		serviceRow = (
+			<StatusRow
+				state="active"
+				title="The processing service"
+				detail={`${serviceHost} · another copy is using this port`}
+			>
+				<p className="text-meta text-pretty text-text2">
+					Another Cutroom service is already on this port, but it keeps its episodes somewhere else, so
+					this window left it alone rather than showing you the wrong library. Quit the other copy — or
+					the terminal running it — and try again.
+				</p>
+				{service.foreign && (
+					<dl className="flex flex-col gap-1 text-fine text-text3">
+						<div className="flex gap-2">
+							<dt className="shrink-0">It serves</dt>
+							<dd className="font-mono break-all text-text2">{service.foreign.theirs}</dd>
+						</div>
+						<div className="flex gap-2">
+							<dt className="shrink-0">You want</dt>
+							<dd className="font-mono break-all text-text2">{service.foreign.ours}</dd>
+						</div>
+					</dl>
+				)}
 				{tryAgain}
 			</StatusRow>
 		);

@@ -21,8 +21,9 @@ either ships with it or downloads by itself.
 3. **Cast** — name each recognised person once. Voices are already matched to
    faces by lip-sync, so this is a confirmation with the uncertain ones
    flagged, not a grid of anonymous voices to work out by ear.
-4. **Edit** — the transcript with real names beside a live preview that uses
-   the same framing maths as the export, and a timeline of framing regions
+4. **Edit** — the transcript with real names beside a live preview that
+   renders the same crop as the export, on a stage sized to the recording's
+   own shape, and a timeline of framing regions
    (close-up, both on screen, wide) whose edges can be dragged independently
    of turn boundaries. The timeline zooms and scrolls, has a ruler and an
    overview strip, snaps edges to words, and has undo and keyboard shortcuts.
@@ -117,6 +118,143 @@ ordering; [ARCHITECTURE.md](ARCHITECTURE.md)'s Roadmap mirrors it.
   A 47-minute, four-person iPhone recording then processed end to end on the
   fixed code: all three stages finished and four people were found. How editing
   and export went on it hasn't been written up yet.
+- **The preview lied about the export, fixed 2026-09-20.** Two separate
+  causes, one symptom. The preview stage set a CSS `aspect-ratio` but sat in
+  a flex column as `flex-1`, and flex wins: the stage was whatever shape the
+  panel left it (measured 1.691 against the source's 1.778), so the wide shot
+  was letterboxed inside the plate while a close-up, cropped to the stage's
+  own shape, filled it edge to edge. That shape then reached `personCrop`,
+  which takes both the crop's aspect *and* its minimum height
+  (`targetHeight / maxUpscale`) from its target pane -- so the crop on screen
+  was not the crop ffmpeg rendered. On a real face from the 53-minute
+  episode: 738.5x415.4 rendered, 726.1x408.5 shown, about 1.7% tight, and
+  every crop nudge inherited it because a nudge is a fraction of the crop's
+  own size. The duo split happened to be right already; the speaker-focus
+  side panes were off by a fraction of a pixel from the integer pane
+  arithmetic.
+  - The stage is now sized with `fitBox` from the source's aspect, and each
+    pane crops against `exportPanes` -- source pixels, a port of
+    `_segment_filter` in `render.py`, including its integer division. Both
+    are in `src/lib/faceCrop.ts`, and the same literal pane sizes are
+    asserted from both sides (`src/lib/faceCrop.test.ts` and
+    `TestSegmentFilterPanes` in `server/tests/test_render.py`), so changing
+    one without the other fails a test on that side.
+  - Verified live against the real 53-minute recording: zero pillarbox at any
+    window size, stage aspect exactly 1.7778 whether the available box was
+    3.274 or 0.9595, and the preview's crop rect equal to the export's.
+    `?video=` was added to the QA fixture (dev-only) so the cropped panes
+    mount against real footage at all -- the fixture had no video, so that
+    whole code path had never been exercised in a browser.
+- **Edits survive quitting, done 2026-09-20.** The pipeline's output has
+  survived a quit since saved episodes landed; the editing on top of it never
+  did, so reopening an episode meant redoing every shot by hand. The editor's
+  state is now mirrored to `jobs/{id}/edit.json` on a ~700ms debounce, with a
+  `pagehide` flush for the change someone makes just before quitting, through
+  a new `PUT /jobs/{job_id}/edit`; `GET /jobs/{job_id}` carries it back and
+  the app reopens straight into the editor.
+  - A separate file from `result.json` on purpose: the result is 2.1MB on a
+    real episode (117 turns, 8,824 word timings) and rewriting it on every
+    shot-edge drag would be both slow and a way to lose the expensive half to
+    a bad write. Writes go through the existing `_atomic_write_text`, so an
+    interrupted save leaves the previous edit intact rather than a truncated
+    one.
+  - Versioned and checked on read (`src/lib/savedEdit.ts`): an edit from a
+    version this build doesn't know opens at Cast rather than being
+    half-read. A bad *framing style* falls back to Gentle instead, since the
+    style only governs suggestions and the shots are the work worth keeping.
+  - Verified over a real socket against an isolated server with its own data
+    directory: saved, read back identically, `result.json` untouched,
+    survived killing and restarting the server, and refused with 404 for a
+    job that doesn't exist. 237 backend tests (was 229), 107 frontend (was
+    89).
+- **Episodes are documents: the `.cutroom` project file, done 2026-09-20.**
+  The other half of the item above, and the founder's actual ask ("save the
+  edit file, just like how Photoshop and other tools have an option to save
+  it"). Autosave means work is never lost; a project file means an episode is
+  something you own, can back up, move between machines or hand to someone
+  who has the footage.
+  - `server/pipeline/project.py` writes a zip of everything but the
+    recording: manifest, `result.json`, `edit.json`, `waveform.json` and the
+    timeline thumbnails. **1.2MB measured on the real 53-minute episode**,
+    against a 5.3GB recording. `audio.wav` is deliberately excluded -- it is
+    a processing intermediate -- and since the pipeline started deleting it,
+    normally not even present -- while `/export` reads the recording itself,
+    so nothing needs it to reopen or re-render.
+  - The recording is referenced, not contained, as every video editor does
+    it. The manifest records its real path (resolved, not the job's own
+    symlink, which means nothing elsewhere), and opening a project relinks
+    automatically when that path still works. When it doesn't, the episode
+    opens fully editable and the editor asks for the file. This matters
+    concretely here: the reference recording lives in OneDrive.
+  - Endpoints: `GET /jobs/{id}/project` (streams, or writes to a chosen path
+    like `/export` does), `POST /projects/open`, `POST /jobs/{id}/relink`.
+    Native Save As and recording pickers were added to the Electron bridge;
+    *opening* deliberately uses a plain file input, which serves the desktop
+    app and the browser alike for 1.2MB of bytes.
+  - Reading a project is the only place in this codebase that treats its
+    input as hostile -- it is a file from outside. Members are taken from an
+    allowlist and thumbnail paths are rebuilt from a parsed index, rather
+    than sanitising the archive's own strings, so zip-slip has nothing to
+    work with. Declared sizes are checked before anything is written. A
+    newer format version, a missing transcript, a damaged manifest or a file
+    that isn't a zip are each refused with a sentence, and a refused project
+    leaves no half-made job behind.
+  - **Found and fixed while verifying:** a job whose recording had moved kept
+    an `input.*` symlink pointing at nothing, so `/jobs/{id}/media` returned
+    a 500 and `/export` would have failed inside ffmpeg minutes later. Both
+    now check `is_file()` and report that the recording moved.
+  - Verified end to end over a real socket against an isolated server seeded
+    with the real episode's own data: saved a 1.2MB project named after the
+    recording, reopened it as a new episode with all 117 turns, 8,824 word
+    timings, 4 people and the edit intact, played the recording through it,
+    broke the link the way a synced folder would, got a clean 404, relinked
+    and played again. 272 backend tests (was 237), 107 frontend.
+  - Verified in the real app too, on the real recording, once `npm run dev:qa`
+    existed (below): reopened the episode, added a close-up, watched the
+    autosave land, reloaded into the editor with that shot still marked "You
+    set this to close on Person 1", saved a 1.20MB project from the title
+    bar, and opened it back as a second independent episode -- 117 turns,
+    8,824 words, 4 people, 35 shots with the manual one intact, and the
+    recording relinked on its own. The relink *button* is the one thing still
+    unexercised: it needs Electron's native file picker, so it can only be
+    tested in the packaged app.
+- **`npm run dev:qa`: the app can finally be driven in a browser, 2026-09-20.**
+  Every browser check in this document has hit the same wall -- the service
+  allows `:3460` only, so a dev server on any other port gets blocked by
+  CORS, and 3460 is taken whenever a real install is running. Three prior
+  entries above record working around it rather than fixing it.
+  - Fixed with a Vite dev proxy (`vite.config.ts`) rather than a wider
+    allowlist. The proxy makes the requests same-origin, so the browser never
+    performs a cross-origin check at all and what the shipped service accepts
+    is unchanged. Letting the service answer any localhost origin would mean
+    any page on any local port could drive someone's Cutroom.
+  - QA mode also gets its own service port (`CUTROOM_SERVICE_PORT`) and its
+    own data directory (`server/qa-data`, gitignored), so it can never adopt
+    a real library or be adopted by a running install. That matters more than
+    it sounds: `processing-service.mjs` reuses any service already on its
+    port, and a dev service and a packaged install have *different* data
+    directories -- an app that adopts the wrong one silently shows an empty
+    episode list. Seen live during this session.
+  - **The reuse itself is now checked, not assumed.** `/health` reports the
+    data directory it serves, and the launcher adopts a service already on
+    its port only once that matches its own (`adoptionVerdict` in
+    `scripts/processing-service.mjs`). A mismatch is refused and the setup
+    screen names both libraries, because "wrong service" is not actionable
+    without them. A service too old to answer, or one that can't be reached,
+    is still adopted -- not knowing is not evidence of a mismatch, and
+    refusing on "don't know" would break the second-terminal case the reuse
+    exists for. This was the failure that looked like success: the port
+    answers, `/health` is happy, and the app shows an empty episode list
+    under a green tick. Demonstrated live against a service pointed at a
+    scratch library: refused, with both paths.
+    - `scripts/` had no tests and `npm test` only globbed `src/`; the glob
+      now covers `scripts/**/*.test.mjs` too. 113 frontend tests (was 107).
+  - Nothing else is needed to get past the setup gate: since the diarisation
+    weights started shipping with the app, `diarization_configured()` is a
+    check that the bundled model is on disk, so a QA run reaches the upload
+    screen with no token at all. (While this was built it still wanted one,
+    which is why the notes above mention a placeholder; that requirement is
+    gone.)
 - **The host test still hasn't happened.** A host is lined up within two weeks.
 
 ### How progress is measured

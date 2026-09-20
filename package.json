@@ -7,9 +7,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:qa": "VITE_API_URL=http://localhost:3466 CUTROOM_SERVICE_PORT=8793 CUTROOM_DATA_DIR=$PWD/server/qa-data vite --port 3466 --strictPort",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --test 'src/**/*.test.ts'",
+    "test": "node --test 'src/**/*.test.ts' 'scripts/**/*.test.mjs'",
     "site": "vite --config site/vite.config.ts",
     "site:build": "vite build --config site/vite.config.ts",
     "preview": "vite preview",

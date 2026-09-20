@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getProgress, getWaveform, timelineThumbnailUrl, type BBox, type DetectFacesResponse, type Health, type OverlapWindow, type Person, type Turn, type Word } from "@/lib/api";
 import type { CastResult } from "@/features/faces/CastScreen";
-import { personCrop } from "@/lib/faceCrop";
+import { DUO_SPLIT_MAX, exportPanes, fitBox, personCrop } from "@/lib/faceCrop";
 import { TimelineTray } from "@/features/timeline/TimelineTray";
 import {
 	FRAMING_STYLE_LABELS,
@@ -32,12 +32,6 @@ import {
 	type TimeSpan,
 } from "@/features/timeline/timelineView";
 import { Button, CheckMark, PlayButton, SectionLabel, Triangle } from "@/components/ui";
-
-// Two people get a side-by-side split; three or more get the speaker-focus
-// layout instead of N narrow columns. Must match render.py's DUO_SPLIT_MAX
-// and SPEAKER_FOCUS_MAIN_FRACTION.
-const DUO_SPLIT_MAX = 2;
-const SPEAKER_FOCUS_MAIN_FRACTION = 0.68;
 
 // Pane cap is 3 -- see docs/design/handoff README, speaker colour tokens.
 const SPEAKER_DOT = ["bg-s1", "bg-s2", "bg-s3"];
@@ -100,8 +94,8 @@ function CroppedVideo({
 	bbox,
 	frameWidth,
 	frameHeight,
-	paneWidth,
-	paneHeight,
+	pane,
+	displayWidth,
 	label,
 	cropNudge,
 	driverRef,
@@ -110,8 +104,13 @@ function CroppedVideo({
 	bbox: BBox | undefined;
 	frameWidth: number;
 	frameHeight: number;
-	paneWidth: number;
-	paneHeight: number;
+	/** The pane ffmpeg renders this person into, in source pixels (see
+	 * `exportPanes`) -- what the crop is computed against. */
+	pane: { width: number; height: number };
+	/** How wide that pane is on screen right now, which only scales the
+	 * result. Kept apart from `pane` so the window's size can't change the
+	 * crop. */
+	displayWidth: number;
 	label?: string;
 	cropNudge?: { x: number; y: number };
 	driverRef: React.RefObject<HTMLVideoElement | null>;
@@ -143,12 +142,12 @@ function CroppedVideo({
 		};
 	}, [driverRef]);
 
-	if (!bbox || paneWidth === 0 || paneHeight === 0) {
+	if (!bbox || pane.width === 0 || pane.height === 0 || displayWidth === 0) {
 		return <div className="h-full w-full bg-plate-b" />;
 	}
 
-	const crop = personCrop(bbox, frameWidth, frameHeight, paneWidth, paneHeight, undefined, cropNudge);
-	const displayScale = paneWidth / crop.width;
+	const crop = personCrop(bbox, frameWidth, frameHeight, pane.width, pane.height, undefined, cropNudge);
+	const displayScale = displayWidth / crop.width;
 
 	return (
 		<div className="relative h-full w-full overflow-hidden">
@@ -386,6 +385,8 @@ export function EditorView({
 	regions,
 	onRegionsChange,
 	captionsEnabled,
+	missingRecording,
+	onRelink,
 	trimDeadAirEnabled,
 	onTrimDeadAirChange,
 	framingStyle,
@@ -412,6 +413,12 @@ export function EditorView({
 	onRegionsChange: React.Dispatch<React.SetStateAction<FramingRegion[]>>;
 	/** Shown here; chosen on the publish screen. */
 	captionsEnabled: boolean;
+	/** Where the recording was when this project was saved, when it isn't
+	 * there now. Shown so the file being asked for is named, not guessed at. */
+	missingRecording?: string | null;
+	/** Ask the user for the recording. Absent in a plain browser, which has
+	 * no way to hand the service a path to link to. */
+	onRelink?: () => void;
 	trimDeadAirEnabled: boolean;
 	onTrimDeadAirChange: (enabled: boolean) => void;
 	/** Owned by App, same reasoning as regions: survives a trip to the
@@ -422,7 +429,7 @@ export function EditorView({
 }) {
 	const captionsAvailable = health?.captions ?? true;
 	const videoRef = useRef<HTMLVideoElement>(null);
-	const [stageRef, stageSize] = useElementSize();
+	const [frameRef, available] = useElementSize();
 
 	const suggested = useMemo(
 		() => suggestRegions(turns, overlapWindows, cast.speakerToPerson, faces.people, framingStyle),
@@ -760,6 +767,17 @@ export function EditorView({
 
 	const framing = resolveFraming(regions, faces.people, currentTime);
 
+	// An audio-only file reports a 0x0 frame; without a fallback the stage
+	// collapses to nothing.
+	const sourceAspect =
+		faces.frameWidth > 0 && faces.frameHeight > 0 ? faces.frameWidth / faces.frameHeight : 16 / 9;
+	const stageSize = fitBox(sourceAspect, available.width, available.height);
+	/** The panes this shot renders into, in source pixels -- the crop is
+	 * computed against these, so it is the same crop ffmpeg produces. */
+	const panes = exportPanes(framing.kind === "wide" ? 1 : framing.subjects.length, faces.frameWidth, faces.frameHeight);
+	/** Source pixels to on-screen pixels, for positioning only. */
+	const displayScale = faces.frameWidth > 0 ? stageSize.width / faces.frameWidth : 0;
+
 	// What "+ Close-up" / "+ Both on screen" would act on: the selected turn,
 	// or whatever turn the playhead is sitting in.
 	const targetTurnIndex =
@@ -952,17 +970,17 @@ export function EditorView({
 				</aside>
 
 				<main className="flex min-h-0 flex-1 flex-col gap-[13px] px-5 py-[18px]">
+					{/* The stage is sized to the recording's own shape rather than
+					    stretched to fill the panel. A flex parent overrides a CSS
+					    `aspect-ratio`, so the stage used to be wider than the source:
+					    the wide shot was letterboxed inside it, while a close-up --
+					    cropped to whatever shape the stage happened to be -- filled it
+					    edge to edge. That shape also reached `personCrop`, so the crop
+					    on screen was not the crop ffmpeg rendered. */}
+					<div ref={frameRef} className="flex min-h-0 flex-1 items-center justify-center">
 					<div
-						ref={stageRef}
-						className="relative min-h-0 flex-1 overflow-hidden rounded-card-lg bg-plate-b"
-						// An audio-only file reports a 0x0 frame; without a fallback the stage
-						// collapses to nothing.
-						style={{
-							aspectRatio:
-								faces.frameWidth > 0 && faces.frameHeight > 0
-									? `${faces.frameWidth} / ${faces.frameHeight}`
-									: "16 / 9",
-						}}
+						className="relative overflow-hidden rounded-card-lg bg-plate-b"
+						style={{ width: stageSize.width, height: stageSize.height }}
 					>
 						{videoUrl && (
 							<video
@@ -974,11 +992,24 @@ export function EditorView({
 						)}
 
 						{mediaError && (
-							<div className="plate-stripes absolute inset-0 flex items-center justify-center p-6 text-center">
+							<div className="plate-stripes absolute inset-0 flex flex-col items-center justify-center gap-[13px] p-6 text-center">
 								<p className="max-w-[380px] text-ui text-plate-ink">
 									Couldn't load this recording. The file may have been moved, renamed, or deleted
 									since this episode was processed.
 								</p>
+								{missingRecording && (
+									<p className="max-w-[380px] font-mono text-mono-xs break-all text-plate-ink/70">
+										{missingRecording}
+									</p>
+								)}
+								{/* Everything else about the episode is here and editable --
+								    only the picture is missing -- so this asks for the file
+								    rather than sending anyone back to the start. */}
+								{onRelink && (
+									<Button size="sm" onClick={onRelink}>
+										Find the recording…
+									</Button>
+								)}
 							</div>
 						)}
 
@@ -989,8 +1020,8 @@ export function EditorView({
 									bbox={framing.subjects[0].bbox}
 									frameWidth={faces.frameWidth}
 									frameHeight={faces.frameHeight}
-									paneWidth={stageSize.width}
-									paneHeight={stageSize.height}
+									pane={panes[0]}
+									displayWidth={stageSize.width}
 									cropNudge={framing.region.cropNudge}
 									driverRef={videoRef}
 								/>
@@ -1001,7 +1032,7 @@ export function EditorView({
 							<div className="absolute inset-0">
 								{framing.subjects.length <= DUO_SPLIT_MAX ? (
 									<div className="flex h-full">
-										{framing.subjects.map((subject) => (
+										{framing.subjects.map((subject, i) => (
 											<div
 												key={subject.personId}
 												className="h-full flex-1 border-l border-plate-a first:border-l-0"
@@ -1011,8 +1042,8 @@ export function EditorView({
 													bbox={subject.bbox}
 													frameWidth={faces.frameWidth}
 													frameHeight={faces.frameHeight}
-													paneWidth={stageSize.width / framing.subjects.length}
-													paneHeight={stageSize.height}
+													pane={panes[i]}
+													displayWidth={panes[i].width * displayScale}
 													label={nameOf(subject.personId)}
 													cropNudge={framing.region.cropNudge}
 													driverRef={videoRef}
@@ -1024,21 +1055,21 @@ export function EditorView({
 									// Three or more: speaker large, everyone else down the side.
 									// Splitting 16:9 into N equal columns gives slivers past two.
 									<div className="flex h-full">
-										<div style={{ width: `${SPEAKER_FOCUS_MAIN_FRACTION * 100}%` }} className="h-full">
+										<div style={{ width: panes[0].width * displayScale }} className="h-full">
 											<CroppedVideo
 												videoUrl={videoUrl}
 												bbox={framing.subjects[0].bbox}
 												frameWidth={faces.frameWidth}
 												frameHeight={faces.frameHeight}
-												paneWidth={stageSize.width * SPEAKER_FOCUS_MAIN_FRACTION}
-												paneHeight={stageSize.height}
+												pane={panes[0]}
+												displayWidth={panes[0].width * displayScale}
 												label={nameOf(framing.subjects[0].personId)}
 												cropNudge={framing.region.cropNudge}
 												driverRef={videoRef}
 											/>
 										</div>
 										<div className="flex h-full flex-1 flex-col border-l border-plate-a">
-											{framing.subjects.slice(1).map((subject) => (
+											{framing.subjects.slice(1).map((subject, i) => (
 												<div
 													key={subject.personId}
 													className="flex-1 border-t border-plate-a first:border-t-0"
@@ -1048,8 +1079,8 @@ export function EditorView({
 														bbox={subject.bbox}
 														frameWidth={faces.frameWidth}
 														frameHeight={faces.frameHeight}
-														paneWidth={stageSize.width * (1 - SPEAKER_FOCUS_MAIN_FRACTION)}
-														paneHeight={stageSize.height / (framing.subjects.length - 1)}
+														pane={panes[i + 1]}
+														displayWidth={panes[i + 1].width * displayScale}
 														label={nameOf(subject.personId)}
 														cropNudge={framing.region.cropNudge}
 														driverRef={videoRef}
@@ -1075,6 +1106,7 @@ export function EditorView({
 							<span className={pill}>{faces.frameWidth > 0 ? `${faces.frameWidth}×${faces.frameHeight}` : "audio only"}</span>
 						</div>
 						<span className={`pointer-events-none absolute right-[14px] bottom-[14px] ${pill}`}>{formatTime(currentTime)}</span>
+					</div>
 					</div>
 
 					<div className="flex shrink-0 items-center gap-[13px]">

@@ -140,6 +140,29 @@ def load_result(job_id: str) -> dict | None:
 		return None
 
 
+def save_edit(job_id: str, edit: dict) -> None:
+	"""The editor's own work -- the cast it confirmed, the shots it set, the
+	episode options -- as opposed to `result.json`, which is what the pipeline
+	produced and never changes.
+
+	Kept a separate file for that reason: an edit is written constantly while
+	someone works, and rewriting a 2MB `result.json` (117 turns and 8,824 word
+	timings on a real 53-minute episode) on every change to a shot edge would
+	be both slow and a way to lose the expensive half to a bad write."""
+	_atomic_write_text(_ensure_dir(job_id) / "edit.json", json.dumps(edit))
+
+
+def load_edit(job_id: str) -> dict | None:
+	"""`None` for a job nobody has edited yet, which is not an error -- it
+	means "open this on the cast screen", the behaviour every job had before
+	edits were saved at all."""
+	path = job_dir(job_id) / "edit.json"
+	try:
+		return json.loads(path.read_text())
+	except (FileNotFoundError, json.JSONDecodeError):
+		return None
+
+
 def list_jobs() -> list[dict]:
 	"""Every finished job with a saved result, newest first -- the "saved
 	episodes" list. A job that never finished (no `meta.json` yet, or the

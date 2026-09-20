@@ -1033,6 +1033,30 @@ host test):
    owed.
 6. **Host test, unassisted, with the app.**
 
+Pulled forward on 2026-09-20 after a founder testing session on a real
+53-minute episode, both ahead of the host test because both are correctness
+rather than features:
+
+- ~~**The preview must render the crop the export renders**~~: done
+  2026-09-20. The stage is sized from the source's aspect (`fitBox`) and each
+  pane crops against the export's own pane in source pixels (`exportPanes`,
+  a port of `render.py`'s `_segment_filter`), both in `src/lib/faceCrop.ts`.
+- ~~**Edits must survive quitting**~~: done 2026-09-20, autosaved to
+  `jobs/{id}/edit.json` through `PUT /jobs/{job_id}/edit` and read back by
+  `GET /jobs/{job_id}`; format and reader in `src/lib/savedEdit.ts`. The
+  portable `.cutroom` project file is below.
+- ~~**An episode is a document you own**~~: done 2026-09-20. `.cutroom`
+  project files (`server/pipeline/project.py`): everything but the recording,
+  1.2MB on the reference episode, with the recording referenced and relinked
+  when it moves. `GET /jobs/{id}/project`, `POST /projects/open`,
+  `POST /jobs/{id}/relink`.
+- **Make the editor legible.** Speaker lanes are unlabelled and only three
+  colours wide (a fourth speaker wears the first one's colour, in both the
+  lanes and the transcript dots); "Captions on" reads as a button but is a
+  status label for the export, and captions are never drawn in the preview;
+  the zoom controls sit disabled at rest and read as dead. All found by the
+  founder reading the shipped editor as a new user would -- see STATUS.md.
+
 **Then, ordered by what the host test shows:** batched processing for long
 recordings, text-based editing, per-instant face visibility and crop smoothing,
 the 3-pane cap decision, real render progress, and the landing page with the

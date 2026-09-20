@@ -1,3 +1,5 @@
+import type { SavedEdit } from "@/lib/savedEdit";
+
 export interface Turn {
 	speaker: number;
 	start: number;
@@ -54,6 +56,21 @@ export interface ProcessResponse {
 	/** Only present from `getJob` -- a resumed or reopened session has no
 	 * browser-held upload left to read this from. */
 	filename?: string;
+	/** The editor's saved work, or null for a job nobody has edited yet.
+	 * Only present from `getJob`. */
+	edit?: SavedEdit | null;
+}
+
+/** Save the editor's work in progress. Called on a debounce, and deliberately
+ * quiet on failure: losing one autosave is not worth interrupting someone
+ * mid-edit over, and the next change tries again a second later. */
+export async function saveEdit<Region, Style>(jobId: string, edit: SavedEdit<Region, Style>): Promise<void> {
+	const res = await fetch(new URL(`/jobs/${jobId}/edit`, API_BASE), {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(edit),
+	});
+	if (!res.ok) throw new Error(`Could not save the edit (${res.status})`);
 }
 
 export interface BBox {
@@ -260,6 +277,67 @@ export async function getJob(jobId: string): Promise<ProcessResponse> {
 	const res = await fetch(new URL(`/jobs/${jobId}`, API_BASE));
 	if (!res.ok) throw new Error(`Job unavailable (${res.status})`);
 	return res.json();
+}
+
+/**
+ * Save this episode as a `.cutroom` project -- the document the editor owns,
+ * as opposed to the job directory the service happens to keep it in.
+ *
+ * With `outputPath` (the desktop app, which asked where first) the service
+ * writes the file itself and returns where; without one the archive comes
+ * back as a blob for the browser to download. Same split as `exportVideo`.
+ */
+export async function saveProject(jobId: string, outputPath?: string): Promise<{ outputPath: string } | Blob> {
+	const url = new URL(`/jobs/${jobId}/project`, API_BASE);
+	if (outputPath) url.searchParams.set("outputPath", outputPath);
+	const res = await fetch(url);
+	if (!res.ok) throw new Error(await problemFrom(res, "Could not save the project"));
+	return outputPath ? ((await res.json()) as { outputPath: string }) : await res.blob();
+}
+
+export interface OpenedProject {
+	jobId: string;
+	filename: string | null;
+	/** Whether the recording this project points at is readable here. False
+	 * is a normal outcome -- the project opened, the media needs relinking --
+	 * not a failure. */
+	sourceFound: boolean;
+	/** Where the recording was when the project was saved, so the app can say
+	 * which file it is looking for. */
+	sourcePath: string | null;
+}
+
+/** Open a `.cutroom` file as a job. Takes the bytes rather than a path so
+ * one code path serves the desktop app and the plain browser. */
+export async function openProject(file: File | Blob, name = "project.cutroom"): Promise<OpenedProject> {
+	const form = new FormData();
+	form.append("file", file, name);
+	const res = await fetch(new URL("/projects/open", API_BASE), { method: "POST", body: form });
+	if (!res.ok) throw new Error(await problemFrom(res, "Could not open that project"));
+	return res.json();
+}
+
+/** Point an opened project at its recording, after the app has asked for it. */
+export async function relinkJob(jobId: string, path: string): Promise<{ sourceFound: boolean }> {
+	const res = await fetch(new URL(`/jobs/${jobId}/relink`, API_BASE), {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ path }),
+	});
+	if (!res.ok) throw new Error(await problemFrom(res, "Could not find that recording"));
+	return res.json();
+}
+
+/** The service explains refusals in `detail`; the envelope is noise in the
+ * one line someone is meant to read. */
+async function problemFrom(res: Response, fallback: string): Promise<string> {
+	try {
+		const detail = ((await res.json()) as { detail?: unknown }).detail;
+		if (typeof detail === "string") return detail;
+	} catch {
+		// Not JSON -- keep the generic line.
+	}
+	return `${fallback} (${res.status})`;
 }
 
 export interface SavedEpisode {

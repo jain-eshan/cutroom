@@ -2,13 +2,24 @@ import { useState } from "react";
 import { Button, Screen, ScreenHeading, SectionLabel } from "@/components/ui";
 import type { SavedEpisode } from "@/lib/api";
 
+export const PROJECT_SUFFIX = ".cutroom";
+
 export function UploadScreen({
 	onFileSelected,
 	savedEpisodes,
 	onReopen,
 	onDelete,
+	onProjectFile,
+	projectProblem,
 }: {
 	onFileSelected: (file: File) => void;
+	/** Open a saved `.cutroom` project. A project is an episode someone kept
+	 * -- backed up, moved between machines, or handed over -- as opposed to a
+	 * saved episode, which is one this machine happens to still have. */
+	onProjectFile: (file: File) => void;
+	/** Why the last project didn't open, in the service's own words. Shown
+	 * here because this is where the user asked for it; nothing is lost. */
+	projectProblem?: string | null;
 	/** Finished jobs from previous sessions -- undefined while still loading,
 	 * so the list doesn't flash empty-then-populated on every visit. */
 	savedEpisodes?: SavedEpisode[];
@@ -23,7 +34,11 @@ export function UploadScreen({
 		e.preventDefault();
 		setIsDraggingOver(false);
 		const file = e.dataTransfer.files?.[0];
-		if (file) onFileSelected(file);
+		if (!file) return;
+		// Dropping a project here is the obvious thing to try, and refusing it
+		// as "not a recording" would be a lie about what the app can do.
+		if (file.name.endsWith(PROJECT_SUFFIX)) onProjectFile(file);
+		else onFileSelected(file);
 	}
 
 	return (
@@ -69,14 +84,44 @@ export function UploadScreen({
 				)}
 				<input
 					type="file"
-					accept="video/*,audio/*"
+					accept={`video/*,audio/*,${PROJECT_SUFFIX}`}
 					className="hidden"
 					onChange={(e) => {
 						const file = e.target.files?.[0];
-						if (file) onFileSelected(file);
+						if (!file) return;
+						if (file.name.endsWith(PROJECT_SUFFIX)) onProjectFile(file);
+						else onFileSelected(file);
 					}}
 				/>
 			</label>
+
+			{projectProblem && !isDraggingOver && (
+				<div className="flex items-center gap-[9px] rounded-card border border-warn-edge bg-chrome px-[13px] py-[11px]">
+					<span className="h-[7px] w-[7px] shrink-0 rounded-full bg-warn" />
+					<p className="text-meta text-pretty text-text2">{projectProblem}</p>
+				</div>
+			)}
+
+			{!isDraggingOver && (
+				<p className="text-center text-meta text-text3">
+					Already have a project?{" "}
+					<label className="cursor-pointer text-accent-text hover:underline">
+						Open a .cutroom file
+						<input
+							type="file"
+							accept={PROJECT_SUFFIX}
+							className="hidden"
+							onChange={(e) => {
+								const file = e.target.files?.[0];
+								if (file) onProjectFile(file);
+								// Cleared so picking the same project twice in a row
+								// still fires a change event.
+								e.target.value = "";
+							}}
+						/>
+					</label>
+				</p>
+			)}
 
 			{isDraggingOver ? (
 				<p className="text-center text-meta text-pretty text-text3">

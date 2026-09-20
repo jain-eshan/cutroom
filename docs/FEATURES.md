@@ -128,7 +128,18 @@ same pass that identifies speakers, rather than needing a second model.
 
 Three panels driven by one selection: the transcript, with real names and a
 one-line reason for each automatic decision; a live preview that uses the
-same framing maths as the export; and the framing timeline.
+same framing maths as the export, on a stage sized to the recording's own
+shape; and the framing timeline.
+
+The preview crops against the pane ffmpeg will render into, in source pixels
+(`exportPanes` in `src/lib/faceCrop.ts`, a port of `_segment_filter` in
+`server/pipeline/render.py`), not against its own size on screen. Those are
+different shapes, and `personCrop` takes both the crop's aspect and its
+minimum height from what it is given, so cropping against the window used to
+frame a close-up about 1.7% tighter than the export produced -- measured at
+738.5x415.4 rendered against 726.1x408.5 shown, on a real face from a
+1080p episode. Every crop nudge inherited that error, since a nudge is a
+fraction of the crop's own size.
 
 The timeline works like a video editor's, cut down to what a podcast needs:
 
@@ -154,9 +165,41 @@ and a who's-on-screen picker in the inspector: toggle chips for everyone the
 pipeline found on camera, so a shot isn't limited to the automatic pairing.
 See [STATUS.md](STATUS.md).
 
-*Implementation:* `src/features/timeline/EditorView.tsx`, `TimelineTray.tsx`,
-`regions.ts` (shot suggestions and edits, mirrors `render.py`) and
-`timelineView.ts` (zoom, ruler and snapping maths, tested with `npm test`).
+Edits autosave. Everything the editor decides -- the confirmed cast, every
+shot, the framing style, the captions and dead-air options -- is written to
+the job on disk about a second after the last change, and flushed on
+`pagehide` so quitting straight after a change doesn't lose it. Reopening an
+episode with a saved edit goes straight back into the editor rather than
+starting again at Cast. The saved edit is versioned and checked on read: an
+edit this build doesn't recognise opens at Cast instead of being half-read,
+because silently restoring part of one would look like the shots were kept
+while quietly dropping some.
+
+Episodes save as `.cutroom` project files. "Save a copy" in the title bar
+writes everything about an episode except the recording -- the transcript,
+the word timings, the faces and their keyframes, the waveform, the timeline
+thumbnails and the edit -- as a single file. Measured on the 53-minute
+four-person reference episode: **1.2MB**, against a 5.3GB recording. Small
+enough to back up, sync or email.
+
+The recording is referenced, not contained, the way a Premiere or Resolve
+project references its media. A project records where the recording was; open
+one where that path is wrong -- another machine, a moved file, a synced folder
+that evicted it to cloud-only -- and the episode still opens fully editable
+with only the picture missing, and the editor asks for the file ("Find the
+recording&hellip;"). Relinking points at the file rather than copying it.
+
+Open a project by dropping it on the upload screen, picking it there, or
+choosing "Open a .cutroom file". A project from a newer version of Cutroom is
+refused with a sentence rather than half-read, and a file that isn't a project
+is refused as one.
+
+*Implementation:* `server/pipeline/project.py` (the format, its reader and
+relinking), `src/features/timeline/EditorView.tsx`, `TimelineTray.tsx`,
+`regions.ts` (shot suggestions and edits, mirrors `render.py`),
+`timelineView.ts` (zoom, ruler and snapping maths) and `src/lib/savedEdit.ts`
+(the saved-edit format and its reader). All tested with `npm test`; the
+autosave endpoint is tested in `server/tests/test_jobs_endpoints.py`.
 
 ### 7. Export
 

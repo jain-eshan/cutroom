@@ -362,9 +362,14 @@ export function AppWindow({
 	serviceOk,
 	themeMode,
 	onThemeModeChange,
+	onSaveProject,
 	children,
 }: {
 	fileName?: string;
+	/** Save the open episode as a `.cutroom` project. Omitted when nothing is
+	 * open. Here rather than in the editor's own controls because it acts on
+	 * the document, not on the edit -- the same reason the filename is here. */
+	onSaveProject?: () => void;
 	/** Omitted while it hasn't been asked yet (the setup gate is asking). */
 	serviceOk?: boolean;
 	themeMode: ThemeMode;
@@ -395,6 +400,16 @@ export function AppWindow({
 					</span>
 				</span>
 				<span className="ml-auto flex items-center gap-[10px] [-webkit-app-region:no-drag]">
+					{onSaveProject && (
+						<button
+							type="button"
+							onClick={onSaveProject}
+							title="Save this episode as a .cutroom project you can back up, move or hand on. The recording itself stays where it is."
+							className="rounded-control border border-line bg-raised px-[11px] py-[5px] font-mono text-mono-xs leading-none text-text2 hover:bg-control"
+						>
+							Save a copy
+						</button>
+					)}
 					<UpdateNotice />
 					{/* The licences of the models Cutroom ships have to be readable
 					    from inside the app, not only in the repository. */}
