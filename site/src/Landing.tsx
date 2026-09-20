@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Logo } from "@/components/Logo";
 import { track } from "./analytics";
+import { AutoFramingLoop, FramingDemo } from "./Scene";
 import { Waitlist } from "./Waitlist";
 
 const REPO = "https://github.com/jain-eshan/cutroom";
@@ -61,24 +62,6 @@ function Out({
 			{children}
 			<span className="sr-only"> (opens in a new tab)</span>
 		</a>
-	);
-}
-
-/** The striped stand-in for footage that doesn't exist yet. The caption says
- * what belongs there. Swap for the real clip when it's recorded. */
-function Placeholder({ caption }: { caption: React.ReactNode }) {
-	return (
-		<div
-			className="relative aspect-video rounded-[8px]"
-			style={{
-				background:
-					"repeating-linear-gradient(135deg, var(--color-plate-a) 0 11px, var(--color-plate-b) 11px 22px)",
-			}}
-		>
-			<p className="absolute bottom-4 left-4 pr-4 text-left font-mono text-[10px] leading-[1.5] text-plate-ink">
-				{caption}
-			</p>
-		</div>
 	);
 }
 
@@ -147,16 +130,10 @@ function Hero() {
 				<p className="mt-5 text-[12.5px] leading-[1.5] text-text3">
 					Free forever · MIT licence · your recording never leaves your machine
 				</p>
-				<div className="mx-auto mt-[44px] max-w-[840px] rounded-marketing border border-line bg-raised p-[10px] shadow-hero">
-					<Placeholder
-						caption={
-							<>
-								DEMO LOOP · 30 S
-								<br />
-								the wide shot cutting to close-ups, in real time
-							</>
-						}
-					/>
+				{/* Sized so the whole demo, timeline included, fits on screen under the
+				    nav on a laptop, rather than filling a large monitor. */}
+				<div className="mx-auto mt-[44px] w-full max-w-[min(840px,calc((100svh_-_280px)*16/9))]">
+					<FramingDemo />
 				</div>
 			</div>
 		</section>
@@ -203,17 +180,7 @@ function Features() {
 		{
 			title: "It cuts to whoever's talking",
 			body: "Faces are found and recognised across the whole episode, and each voice is matched to a face by lip movement. Close-ups are framed the way professional podcast edits frame a seated person, and when two people talk over each other, both go on screen.",
-			clip: (
-				<div
-					className="flex h-full items-center justify-center font-mono text-[9.5px] text-text3"
-					style={{
-						background:
-							"repeating-linear-gradient(135deg, var(--color-control) 0 9px, var(--color-panel) 9px 18px)",
-					}}
-				>
-					LOOP · AUTO-FRAMING
-				</div>
-			),
+			clip: <AutoFramingLoop />,
 		},
 		{
 			title: "Every cut is yours to move",

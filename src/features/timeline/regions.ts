@@ -154,6 +154,14 @@ function makeId(): string {
 	return `r${nextId}`;
 }
 
+/** Whether a shot frames someone other than the person speaking. A short line
+ * held inside another speaker's close-up (see floorHeldAcross) has no shot of
+ * its own, so the region under it belongs to whoever holds the floor. A speaker
+ * with no face (`undefined`) is never on screen, so any shot is someone else's. */
+export function framesSomeoneElse(region: FramingRegion, speakerPersonId: number | undefined): boolean {
+	return speakerPersonId === undefined || !region.personIds.includes(speakerPersonId);
+}
+
 /** The region covering a moment, or null for wide. Regions are kept disjoint;
  * if two ever overlap, the later one wins -- the same rule render.py applies,
  * so the preview cannot disagree with the export. */

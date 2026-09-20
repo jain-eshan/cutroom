@@ -1,6 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MIN_REGION_S, addRegion, applyStyleWithin, orderBySeat, reconcileWithStyle, regionAt, resizeRegion, resolveFraming, splitRegion, suggestRegions, wideGaps } from "./regions.ts";
+import {
+	MIN_REGION_S,
+	addRegion,
+	applyStyleWithin,
+	framesSomeoneElse,
+	orderBySeat,
+	reconcileWithStyle,
+	regionAt,
+	resizeRegion,
+	resolveFraming,
+	splitRegion,
+	suggestRegions,
+	wideGaps,
+} from "./regions.ts";
 import type { FramingRegion } from "./types.ts";
 import type { Person, Turn } from "../../lib/api.ts";
 
@@ -632,4 +645,11 @@ test("a suggested shot straddling the edge of a stretch is cut at the edge", () 
 		end: cutAt + 1000,
 	});
 	for (const region of after) assert.ok(region.end <= cutAt + MIN_REGION_S, `${region.start}-${region.end}`);
+});
+
+test("framesSomeoneElse: true when the shot under a line is another person's", () => {
+	assert.equal(framesSomeoneElse(region({ personIds: [0] }), 1), true);
+	assert.equal(framesSomeoneElse(region({ personIds: [0] }), undefined), true);
+	assert.equal(framesSomeoneElse(region({ personIds: [0] }), 0), false);
+	assert.equal(framesSomeoneElse(region({ personIds: [0, 1], layout: "split" }), 1), false);
 });

@@ -67,7 +67,7 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | Export completes and is faithful | **95,436 frames in -> 95,436 out**, duration exact, 1920x1080 preserved, audio stream-copied **bit-identical** (matching MD5), 3.5GB out, peak 949MB RAM |
 | Diarisation does **not** hold up at length | 4 people -> **2 speakers, 34 turns in 53 min** (median turn 33s, longest 6.4 min). See "What's left" |
 
-**Checks:** 119 backend tests and 89 frontend tests (`npm test`) passing, `tsc` clean, `oxlint` clean (two
+**Checks:** 119 backend tests and 113 frontend tests (`npm test`) passing, `tsc` clean, `oxlint` clean (two
 deliberate, documented warnings), production build clean, full flow verified
 in a real browser against real footage.
 
@@ -291,8 +291,18 @@ the founder's call, to find testers and contributors early:
 - A landing page in `site/` (see [site/README.md](../site/README.md)), hosted
   on Vercel, with a waitlist through an embedded Tally form. On 2026-09-19
   the page was moved onto the design system's site kit: amber accent on the
-  one waitlist button, the illustrated hero replaced by a striped placeholder
-  until a real demo clip is recorded, and no icons, blur or dark bands.
+  one waitlist button, no icons, blur or dark bands, and the illustrated hero
+  replaced by striped placeholders. **That last part backfired and was
+  reversed on 2026-09-20.** The "video" in the hero and in "It cuts to
+  whoever's talking" was never a video: it was an animated illustration
+  (`site/src/Scene.tsx`). The design system forbids illustrations, so the
+  move deleted it, and the two most visible spots on the live page became
+  empty boxes captioned "DEMO LOOP · 30 S". Nobody had been told that would
+  happen. The illustration is back, as a documented temporary exception until
+  there is real footage everyone in it agrees to publish (see
+  [site/README.md](../site/README.md), "The hero demo"), and the two app
+  screenshots on the page were retaken from the redesigned app, since they
+  still showed the pre-redesign look.
 - Contributor docs: a rewritten README with setup and troubleshooting,
   [CONTRIBUTING.md](../CONTRIBUTING.md), [SECURITY.md](../SECURITY.md), a
   [docs index](README.md), issue forms and a pull request template.
@@ -1335,6 +1345,17 @@ the founder's call, to find testers and contributors early:
 
 ## Known limitations
 
+- **The reason under a transcript line can name the wrong person.** When a
+  short line is held inside someone else's shot (the floor-holder rule in
+  `regions.ts`, `floorHeldAcross`), `reasonFor` in `EditorView.tsx` still
+  says "Dev is talking alone here, so we cut in close" about the line's
+  speaker, while the timeline is on the person holding the floor. The
+  shot is right; the sentence beside it is false, which breaks the design
+  system's one voice rule (every automatic decision states what it did and
+  why). Found 2026-09-20 while retaking the landing page screenshots, which
+  avoid it by using a conversation with no held lines. Fix: say whose shot
+  the line sits inside, in the user's words, when the region's person isn't
+  the speaker.
 - **Zooming into a wide shot is inherently soft.** Framing now matches
   professional practice, which needs ~2.6x upscale on a 1080p wide shot of
   four people. The real fix is source resolution: shoot 4K, deliver 1080p,
@@ -1343,6 +1364,10 @@ the founder's call, to find testers and contributors early:
 - ~~**Diarisation now requires a Hugging Face token.**~~ Gone, 2026-09-20:
   the weights ship with the app, so there is no account, licence or token in
   the way of a first edit. See the desktop-app item above.
+- ~~**The reason under a transcript line names the wrong person.**~~ Fixed,
+  2026-09-20: a short line held inside someone else's close-up now reads "We
+  stayed on Maya through Dev's short line." instead of claiming the line's
+  own speaker is on screen.
 - **Diarisation has no fallback.** community-1 replaced `resemblyzer`
   clustering, which was measured finding two speakers on a four-person
   episode — a fallback that produces a quietly wrong edit is worse than an
