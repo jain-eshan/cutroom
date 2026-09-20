@@ -417,6 +417,17 @@ class TestSourceAudioCodec:
 		monkeypatch.setattr(subprocess, "run", raise_timeout)
 		assert _source_audio_codec(tmp_path / "clip.mp4") is None
 
+	def test_an_ffprobe_that_cannot_run_reads_as_unknown_codec_rather_than_crashing(self, monkeypatch, tmp_path):
+		# Wrong-architecture binary (errno 86) or no exec bit (errno 13): a
+		# plain OSError, which used to escape this and take the export down.
+		# Unknown codec is the safe answer -- it re-encodes instead of risking
+		# a stream copy the container can't hold.
+		def raise_bad_cpu(*a, **k):
+			raise OSError(86, "Bad CPU type in executable", "ffprobe")
+
+		monkeypatch.setattr(subprocess, "run", raise_bad_cpu)
+		assert _source_audio_codec(tmp_path / "clip.mp4") is None
+
 	def test_the_probe_itself_is_given_a_timeout(self, monkeypatch, tmp_path):
 		seen = {}
 

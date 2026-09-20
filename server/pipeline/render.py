@@ -349,7 +349,11 @@ def _source_audio_codec(input_path: Path) -> str | None:
 			check=True, capture_output=True, text=True, timeout=FFPROBE_TIMEOUT_S,
 		)
 		return (out.stdout or "").strip() or None
-	except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+	# OSError covers an ffprobe that won't execute at all (missing, wrong CPU
+	# architecture, no exec bit) -- has_ass_filter already treats that the
+	# same way. Falling back to re-encoding the audio is the right answer for
+	# every one of these: unknown codec means don't risk a stream copy.
+	except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
 		return None
 
 
