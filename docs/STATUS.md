@@ -913,9 +913,42 @@ the founder's call, to find testers and contributors early:
     bundle with `ffprobe-static`'s x86_64 binary put back (fails, naming the
     file and its arch) and with `ffprobe` removed (fails, naming the
     missing binary). 224 pytest, 89 node tests, `tsc` and `oxlint` clean.
-  - Not yet verified: the Windows installer, which no longer gets its
-    `ffprobe.exe` from the same tarball. The guard now checks it on the
-    Windows runner, so a bad one fails that job rather than reaching anyone.
+  - **Tagged and published 2026-09-20.** The guard ran on both runners and
+    passed: `verify-binaries: 2 bundled binaries are arm64` on macOS,
+    `... are x64` on Windows. That closes the one item this entry left open
+    before the tag -- the Windows installer now sources `ffprobe.exe` from
+    `@ffprobe-installer/win32-x64` rather than the old all-architectures
+    tarball, and nothing had yet watched that path build.
+  - Verified after publishing, against the released artifact rather than
+    the CI log: unpacking `Cutroom-0.3.1-arm64-mac.zip` gives an app
+    reporting 0.3.1 whose bundled `ffmpeg` and `ffprobe` both read as
+    Mach-O arm64, and whose `ffprobe` runs on an M5 and prints its version.
+    sha512 of the dmg, the mac zip and `Setup.exe` each match their
+    `latest*.yml` entry. All four `releases/latest/download/` links and
+    both updater manifests serve 0.3.1.
+  - **The release split into two drafts for the third tag running**
+    (v0.2.0, v0.3.0, v0.3.1). One correction to what the earlier entries
+    assumed: the split is not cleanly per-job. On v0.3.1 the mac
+    `zip.blockmap` landed on the *Windows* draft, so the second draft was
+    created while the mac job was still uploading, and "draft A is mac,
+    draft B is Windows" is not a safe assumption when fixing it by hand.
+    Both drafts report the tagged commit's date as `created_at`, which is
+    what GitHub does for drafts, so that field cannot order them either.
+    Consolidated the usual way: diff the two asset lists, upload whatever
+    is unique to the second onto the first (by release id -- `gh release
+    upload` takes a tag, which is ambiguous with two same-tag releases),
+    check each `latest*.yml` sha512 against its installer, delete the
+    duplicate, publish. release.yml's comment still describes this as open,
+    because it is.
+  - **`make_latest` needs its own API call.** Publishing with
+    `gh api --method PATCH .../releases/<id> -f draft=false -f
+    make_latest=true` silently ignores `make_latest`: the release goes
+    public but `/releases/latest/` keeps pointing at the previous tag, so
+    no `electron-updater` client is ever offered the new version. Send it
+    as a second PATCH, then confirm against the public redirect rather than
+    the API response -- `repos/.../releases/latest` updates first, while the
+    `releases/latest/download/` redirect stays cached on the edge for a
+    minute or two.
 
 ## Known limitations
 
