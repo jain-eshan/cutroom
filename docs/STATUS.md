@@ -1313,6 +1313,10 @@ the founder's call, to find testers and contributors early:
 - ~~**Diarisation now requires a Hugging Face token.**~~ Gone, 2026-09-20:
   the weights ship with the app, so there is no account, licence or token in
   the way of a first edit. See the desktop-app item above.
+- ~~**The reason under a transcript line names the wrong person.**~~ Fixed,
+  2026-09-20: a short line held inside someone else's close-up now reads "We
+  stayed on Maya through Dev's short line." instead of claiming the line's
+  own speaker is on screen.
 - **Diarisation has no fallback.** community-1 replaced `resemblyzer`
   clustering, which was measured finding two speakers on a four-person
   episode — a fallback that produces a quietly wrong edit is worse than an

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
 	addRegion,
+	framesSomeoneElse,
 	orderBySeat,
 	reconcileWithStyle,
 	regionAt,
@@ -569,4 +570,11 @@ test("a both-on-screen shot goes wide when nobody named is actually visible any 
 	const people = [personSeenAt(0, 0, 0), personSeenAt(1, 100, 5)];
 	const framing = resolveFraming([region], people, 65);
 	assert.equal(framing.kind, "wide");
+});
+
+test("framesSomeoneElse: true when the shot under a line is another person's", () => {
+	assert.equal(framesSomeoneElse(region({ personIds: [0] }), 1), true);
+	assert.equal(framesSomeoneElse(region({ personIds: [0] }), undefined), true);
+	assert.equal(framesSomeoneElse(region({ personIds: [0] }), 0), false);
+	assert.equal(framesSomeoneElse(region({ personIds: [0, 1], layout: "split" }), 1), false);
 });
