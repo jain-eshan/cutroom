@@ -949,6 +949,67 @@ the founder's call, to find testers and contributors early:
     the API response -- `repos/.../releases/latest` updates first, while the
     `releases/latest/download/` redirect stays cached on the edge for a
     minute or two.
+- **The duplicate-draft race, root cause found and fixed, 2026-09-20.**
+  The entry above says release.yml still describes this as open. It no
+  longer does. It was never a race between the mac and Windows jobs, which
+  is why `max-parallel: 1` did nothing and why a `needs:` dependency would
+  have done nothing either.
+  - **It is a race inside a single job.** electron-builder's GitHub
+    publisher does find-or-create -- `GET /repos/OWNER/REPO/releases`,
+    return the first draft matching the tag, `POST` a new one otherwise.
+    `app-builder-lib`'s `PublishManager.getOrCreatePublisher` caches
+    publishers in a `Map`, but it `await`s `createPublisher()` before it
+    writes the cache entry. Two artifacts finishing in the same tick both
+    miss the still-empty cache, both build a publisher, and each publisher
+    carries its own lazily-resolved release -- so each runs its own
+    find-or-create, both find nothing, and both create a draft.
+  - **The v0.3.1 log says it outright.** In the mac job:
+    `publishing publisher=Github` twice, 0.3ms apart, then
+    `creating GitHub release reason=release doesn't exist` twice, 24ms
+    apart, triggered by `Cutroom-0.3.1-arm64-mac.zip` and its `.blockmap`
+    being scheduled together. That is the explanation for the correction
+    the entry above records: the mac job created *both* drafts, so the
+    zip's blockmap was never on the "Windows" draft by accident. The
+    Windows job -- which the Actions timings put 3s *after* the mac job
+    ended, so genuinely sequential -- then joined the second one, because
+    GitHub lists same-`created_at` drafts newest id first.
+  - **Fixed by creating the draft before anything can race for it.** A new
+    `draft` job runs ahead of the build matrix and does one
+    `gh release create "$TAG" --draft`. The create half of find-or-create
+    is the only part that isn't idempotent, so removing the need for it
+    removes the bug by construction rather than by ordering.
+    `--publish always`, `latest.yml` and `latest-mac.yml` are unchanged.
+    Title and empty body match what electron-builder's own `createRelease`
+    would have set, and an existing draft is reused, so re-running a failed
+    release is safe.
+  - **A new `verify` job replaces the by-hand consolidation check.** It
+    fails the run unless there is exactly one release for the tag carrying
+    all 8 expected assets, naming the ids or the missing files. Green now
+    means the release is whole.
+  - **The draft job also checks the tag against `package.json`.**
+    electron-builder never reads `github.ref_name`; it builds its own tag
+    as `v` + the package version. Pinning the draft to the pushed tag
+    couples the two for the first time, so a mismatch fails in seconds
+    instead of sending the builders off to create their own release.
+  - Verified without cutting a tag: the race reproduced in isolation from
+    the exact `getOrCreatePublisher` code shape (2 publishers, 2 drafts,
+    one lone mac artifact stranded on the second -- the real v0.3.1 shape);
+    the `verify` script run against the live repo passes on v0.3.1, fails
+    on v0.1.0 naming all 5 missing assets, fails on an absent tag, and
+    fails on a stubbed two-release response naming both ids; the
+    tag/version guard passes on `v0.3.1` and fails on `v0.9.9`; and a
+    throwaway draft created in the repo exactly as the job does it came
+    back `tag_name` exact, `draft=true`, `body=null`, at **index 0** of the
+    unpaginated `GET /releases` electron-builder calls -- the first entry
+    its loop tests -- then deleted, leaving the 8 git tags untouched.
+  - Not verified without a tag: that a real `npm run dist:mac --publish
+    always` takes the find branch against that pre-created draft. The code
+    path is short and read (`if (release.draft) return release`, before any
+    time or type check) and the draft is shaped to match, but only a tag
+    exercises it. The `verify` job is what catches it if that reasoning is
+    wrong.
+  - The `make_latest` finding above is now written down in `release.yml`
+    next to the `verify` job, since publishing the draft stays manual.
 
 ## Known limitations
 
