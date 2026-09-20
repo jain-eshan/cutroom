@@ -99,7 +99,7 @@ talks to over HTTP. No cloud, no database, no accounts.
 │     — pick / drop a file      │                              │    extract audio (ffmpeg)         │
 │                               │                              │    ├─ transcribe (faster-whisper) │
 │  2. ProcessingScreen          │ ──── GET /progress/{id} ───▶ │    │  + diarize (pyannote         │
-│     — real upload bytes,      │                              │    │    community-1, HF_TOKEN,    │
+│     — real upload bytes,      │                              │    │    community-1, bundled,     │
 │       per-stage progress      │                              │    │    overlap-aware in 1 pass)  │
 │                               │                              │    ├─ faces: detect (YuNet)       │
 │  3. CastScreen                │                              │    │    → track (IOU)             │
@@ -180,33 +180,24 @@ dev server origin). There used to be separate `/transcribe` and
 `/detect-faces` endpoints, called concurrently from the frontend — both took
 the file, so the browser uploaded the same recording **twice** (10GB of
 transfer for a 5GB file). They're gone; `POST /process` below replaced both.
+`POST /setup/hf-token` is gone as well — it took the Hugging Face token the
+setup gate used to ask for, and the diarisation weights ship with the app
+now, so there is no token to check or save (see Setup below).
 
 ### `GET /health`
 
 Returns `{"status": "ok", "diarization": bool, "captions": bool}`.
-`diarization` is whether `HF_TOKEN` is set — required, so the setup gate
-blocks on it, and `/process` refuses a job without it before the upload is
-saved (it used to surface only after transcription finished). It can't
-confirm the model licence was accepted; that still shows at first load. The setup gate polls it every
-2s and doesn't show the app until it answers. `captions` is whether this
+`diarization` is whether the bundled community-1 weights are on disk —
+required, so the setup gate blocks on it, and `/process` refuses a job
+without them before the upload is saved (a missing model used to surface only
+after transcription finished). Since the weights ship with the app this is
+true in any sound install; it stays a check so a damaged one fails at the
+door rather than minutes into a job. It used to report whether `HF_TOKEN` was
+set, back when the model downloaded from a gated repo. The setup gate polls
+it every 2s and doesn't show the app until it answers. `captions` is whether this
 ffmpeg was built with libass — cached for the life of the process, since the
 binary is fixed at import — and the editor uses it to refuse captions before a
 render rather than failing 15 minutes into one.
-
-### `POST /setup/hf-token`
-
-**Request:** JSON `{"token": "hf_..."}`. Called by the setup gate's token
-field. Checks the format (which also rules out a newline sneaking a second
-setting into `.env`), then asks Hugging Face two things in order: whose token
-it is (`whoami`), then whether that account can reach the diarisation model
-(`auth_check`) — which, unlike `/health`, catches unaccepted terms. The order
-matters: Hugging Face answers a made-up token on a gated model exactly as it
-answers a real account that hasn't agreed yet, so checking the model alone
-told people with a mistyped token to go accept terms they already had.
-Only a token that passes is written to `server/.env` (owner-only
-permissions) and applied to the running process, with any already-loaded
-model dropped so it reloads with the new token. Returns `{"ok": true}`, or a
-400 whose `detail` says what to fix. The token is never echoed or logged.
 
 ### `POST /process`
 
@@ -214,6 +205,13 @@ model dropped so it reloads with the new token. Returns `{"ok": true}`, or a
 (enables progress reporting via `/progress/{job_id}`). No speaker-count
 parameter — forcing one was measured to invent speakers (see STATUS.md), so
 nothing downstream accepts it any more.
+
+Refused with a **507** when the disk can't hold the upload, by the
+`RefuseUploadsThatWontFit` middleware rather than by this endpoint: FastAPI
+resolves `file: UploadFile` before calling the path function, so a check
+inside it would run only after Starlette had already spooled the whole body
+to a temp file. `/process/local` and `/export` check the same way in their
+own bodies, where there's no body to spool first.
 
 Internally, transcription+diarization and face detection run concurrently in
 threads (OpenCV and CTranslate2 both release the GIL, so they genuinely
@@ -409,13 +407,14 @@ src/
 ├── components/
 │   ├── ui.tsx                       # design-system primitives + AppWindow, the title bar every stage sits in
 │   ├── Logo.tsx                     # Cutroom SVG mark (design's assets/logo), tiny at <=20px
+│   ├── Credits.tsx                  # who made the bundled models and ffmpeg, and under which licence
 │   └── ThemeSwitcher.tsx            # System/Light/Dark segmented control
 ├── lib/
 │   ├── api.ts                       # typed fetch wrappers for /health, /process, /progress, /export
 │   ├── faceCrop.ts                  # bbox → CSS zoom transform math + pixel-space crop math
 │   └── theme.ts                     # `useThemeMode` — dark by default, saves only an explicit choice
 ├── features/
-│   ├── setup/SetupGate.tsx          # status rows: this window, the service, speaker models (token), captions
+│   ├── setup/SetupGate.tsx          # status rows: this window, the service, speaker models, captions
 │   ├── upload/UploadScreen.tsx      # file picker + real drag-and-drop (idle / error states)
 │   ├── upload/ProcessingFailed.tsx  # stopped partway: how far it got, the raw error, try again
 │   ├── upload/ProcessingScreen.tsx  # per-stage progress + live transcript and faces found
@@ -507,7 +506,7 @@ server/
 │   ├── ffmpeg.py                 # which ffmpeg/ffprobe binary to run (FFMPEG_BINARY override)
 │   ├── transcribe.py            # faster-whisper: word-level timestamped transcript
 │   ├── diarize.py                # pyannote community-1: who's talking when, overlap-aware,
-│   │                              # in one pass (needs HF_TOKEN, no fallback)
+│   │                              # in one pass (bundled weights, no fallback)
 │   ├── turns.py                  # merge transcript + diarization into dialogue turns
 │   ├── faces.py                  # OpenCV YuNet + IOU tracking + SFace/DBSCAN: face
 │   │                              # detection, tracking, and identity recognition
@@ -519,6 +518,11 @@ server/
 │   ├── trim.py                   # dead-air/filler-word ranges to cut, and caption remapping
 │   │                              # for a trimmed timeline
 │   ├── progress.py               # in-memory per-job stage progress, polled by the UI
+│   ├── jobs.py                   # the on-disk job store under jobs/{id}/: the input, the
+│   │                              # result, the waveform and thumbnails -- what lets a job
+│   │                              # outlive its request and an episode reopen without
+│   │                              # reprocessing. Also the free-space check the endpoints
+│   │                              # refuse on, and the one thing evicted (the extracted wav)
 │   └── render.py                 # /export's render pipeline: segment construction,
 │                                  # bust-shot/composite crop math, caption burn-in,
 │                                  # dead-air/filler cutting, ffmpeg orchestration
@@ -532,7 +536,9 @@ server/
 ├── logs/
 │   └── <session_id>/decisions.jsonl  # written by /export on success, gitignored
 └── .models/
-    └── face_detection_yunet.onnx   # committed directly (232KB — small enough, avoids a download step)
+    ├── face_detection_yunet.onnx   # committed directly (232KB — small enough, avoids a download step)
+    └── diarization/                # pyannote community-1, committed too (31MB, CC-BY-4.0 — see
+                                    # NOTICE.md beside it; replaces a download from a gated repo)
     # SFace recognition weights and LR-ASD lip-sync weights download here on first
     # run instead (~38MB and ~3.3MB) — gitignored, same pattern as the Whisper model
 ```
@@ -544,11 +550,12 @@ two people talking at once come out as two segments covering the same
 instant, rather than a separate model that has to be cross-referenced
 against the speaker segments to guess who was involved. No speaker count is
 ever passed — forcing one was measured to invent speakers by splitting a
-real person in two. Needs a Hugging Face token (`HF_TOKEN`); unlike the
-`resemblyzer` clustering it replaced, there is no fallback — a fallback that
-quietly produces a wrong edit is worse than a 400 naming the token and
-licence page. Runs on GPU (MPS) when available: measured 53s vs 398s on CPU
-for the same 10-minute slice, byte-identical output either way.
+real person in two. The weights ship in `server/.models/diarization/`, so
+nothing is fetched and no account is involved; unlike the `resemblyzer`
+clustering it replaced, there is no fallback — a fallback that quietly
+produces a wrong edit is worse than a 400 saying the install is damaged. Runs
+on GPU (MPS) when available: measured 53s vs 398s on CPU for the same
+10-minute slice, byte-identical output either way.
 
 **`turns.py`** — walks Whisper's word-level output, looks up which speaker
 segment covers each word's timestamp, and merges consecutive words from
@@ -683,8 +690,8 @@ no UI component library yet (plain Tailwind classes).
 | `fastapi` + `uvicorn[standard]` | the HTTP service itself | |
 | `python-multipart` | required by FastAPI for `UploadFile` form parsing | |
 | `faster-whisper` | transcription with word-level timestamps | CTranslate2-based, not the original `openai-whisper` — much lighter (no PyTorch dependency for the transcription path itself) |
-| `pyannote-audio` | speaker diarization (community-1) — who's talking when, overlap-aware in one pass | **Required, no fallback.** Replaced `resemblyzer`, which was measured finding two speakers on a real four-person episode. Gated on a Hugging Face account + token (`HF_TOKEN`, see Setup above); a missing token now fails `/process` with a 400 rather than silently degrading. Runs on GPU (MPS/CUDA) when available |
-| `python-dotenv` | loads `server/.env` for `HF_TOKEN` and `FFMPEG_BINARY` | |
+| `pyannote-audio` | speaker diarization (community-1) — who's talking when, overlap-aware in one pass | **Required, no fallback.** Replaced `resemblyzer`, which was measured finding two speakers on a real four-person episode. The community-1 weights ship in `server/.models/diarization/` (see Setup above); weights that aren't there fail `/process` with a 400 rather than silently degrading. Runs on GPU (MPS/CUDA) when available |
+| `python-dotenv` | loads `server/.env` for `FFMPEG_BINARY` | it also used to carry `HF_TOKEN`, which nothing reads any more |
 | `scikit-learn` | `DBSCAN` clustering of face embeddings into identities (`faces.py`) | no longer used for diarization — community-1 does its own clustering internally |
 | `opencv-python-headless` | face detection (`FaceDetectorYN`/YuNet), recognition (`FaceRecognizerSF`/SFace), and video frame sampling | **pinned `>=4.9,<5`** — see below, this bit us |
 | `numpy` | array plumbing between the above | |
@@ -756,20 +763,28 @@ First run of the processing service downloads the Whisper model (`small`
 by default, ~500MB), the SFace face-recognition weights (~38MB), and the
 LR-ASD lip-sync weights (~3.3MB) — all public, no account needed.
 
-**Required: a Hugging Face token for diarization.** `pyannote` community-1
-is the only speaker-diarization model this pipeline uses, and there's no
-token-free fallback — a fallback that quietly produces a wrong edit is
-worse than a clear error. Without `HF_TOKEN` set, `POST /process` returns a
-400 naming exactly what to do:
+**The diarization model ships with the repo.** `pyannote` community-1 is the
+only speaker-diarization model this pipeline uses, and there's no fallback —
+a fallback that quietly produces a wrong edit is worse than a clear error.
+Its six files live in `server/.models/diarization/` (31MB, committed, and
+copied into the installer by `build.extraResources` in `package.json`), so
+there is nothing to set up: `config.yaml` points at `$model/segmentation`,
+`$model/embedding` and `$model/plda` relative to itself, and none of it
+touches the network.
 
-1. Create a token at https://huggingface.co/settings/tokens
-2. Accept the model licence at
-   https://huggingface.co/pyannote/speaker-diarization-community-1
-3. Add `HF_TOKEN=<your token>` to `server/.env` (create the file — it's
-   gitignored) and restart the service
+It used to download from that model's Hugging Face repo, which is gated, and
+that was the only reason this project ever asked for an account: a new person
+had to sign up, accept the terms, create a read token and paste it in before
+a single edit could be made. community-1 is CC-BY-4.0, which permits
+redistribution with attribution, so the weights are bundled and pyannote is
+credited in the app's credits sheet instead — the reasoning is in
+`server/.models/diarization/NOTICE.md`. `HF_TOKEN` is no longer read
+anywhere; one left in an existing `server/.env` is ignored. `POST /process`
+returns a 400 if the weights aren't on disk, which now means a damaged
+install.
 
 This also covers overlap detection — community-1 is overlap-aware in the
-same pass, so there's no separate model or token to configure for it.
+same pass, so there's no separate model to configure for it.
 
 **Optional: burned-in captions.** Needs an `ffmpeg` built with libass,
 which Homebrew's default `ffmpeg` formula doesn't have — `brew install
@@ -791,12 +806,12 @@ spending 15 minutes rendering a video with no captions on it.
 Per [STATUS.md](STATUS.md)'s "Known limitations", which is the source of
 truth kept current as the pipeline changes — the list below matches it:
 
-- **Diarisation now requires a Hugging Face token, with no fallback.**
-  community-1 replaced the token-free `resemblyzer` clustering, which was
-  measured finding two speakers on a real four-person episode — a fallback
-  that quietly produces a wrong edit is worse than an error that says what
-  to do. `/process` returns a 400 naming the token and licence page if it's
-  missing.
+- **Diarisation has no fallback.** community-1 replaced the `resemblyzer`
+  clustering, which was measured finding two speakers on a real four-person
+  episode — a fallback that quietly produces a wrong edit is worse than an
+  error that says what to do. The weights ship with the app, so what's left
+  to go wrong is an install that didn't bring them; `/process` returns a 400
+  saying so rather than editing without speakers.
 - **Diarisation is still not perfect.** It can mis-assign a turn, and only
   finds speakers who actually speak in the window analysed. Per-turn
   correction in the editor exists for this.
@@ -825,9 +840,14 @@ truth kept current as the pipeline changes — the list below matches it:
   the same video reruns detection from scratch; there's no caching or
   project-file concept yet (Recordly-style `.recordly` project persistence
   was noted as a nice-to-have, not built).
-- **No pre-flight disk-space check for large exports** — a multi-GB upload
-  plus its extracted audio plus a same-or-larger rendered output can
-  transiently need significant temp disk space. Not guarded against.
+- **Disk space is checked, but against a fixed margin.** `/process`,
+  `/process/local` and `/export` refuse with a 507 rather than filling the
+  disk partway through. The part each request can measure is exact — an
+  upload's `Content-Length`, a recording's size on disk — but the extracted
+  audio, the thumbnails and any overshoot on the render share one 1GB
+  margin (`jobs.SPACE_MARGIN_BYTES`) instead of being worked out per
+  episode. A recording long enough to need more wav than that would still
+  get through; at ~115MB/hour that is about a nine-hour episode.
 - **macOS only so far.** Nothing is knowingly platform-specific, but nothing
   else has been tried.
 
@@ -1003,9 +1023,9 @@ host test):
    done 2026-09-16, `/process` now backgrounds the pipeline and persists
    every job to `server/jobs/{id}/` -- see STATUS.md for detail and what
    verification is still owed.
-4. **Desktop app (.dmg).** The licence check is done: community-1 is CC-BY-4.0
-   and all of its weights live in one repo, so the app can ship them with
-   attribution and drop the Hugging Face step.
+4. **Desktop app (.dmg).** The Hugging Face step is gone: community-1 is
+   CC-BY-4.0 and all of its weights live in one repo, so the app ships them
+   with attribution (the credits sheet) and nobody is asked for an account.
 5. ~~**Waiting that keeps people**~~: done 2026-09-16, a done/failed
    notification (hidden-tab only), a live preview following the transcript,
    a concurrency-aware time estimate, and visible progress for model

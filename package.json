@@ -3,7 +3,7 @@
   "description": "Cutroom: free, local, open-source auto-editing for one-camera podcast video. Transcribes, works out who's talking, and frames the shot on them.",
   "license": "MIT",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -73,6 +73,7 @@
           "main.py",
           "pipeline/**",
           ".models/face_detection_yunet.onnx",
+          ".models/diarization/**",
           "pyproject.toml",
           "uv.lock",
           ".python-version",

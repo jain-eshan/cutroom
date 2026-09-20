@@ -131,7 +131,7 @@ class TestProcessEndpoint:
 		# The task was scheduled, not run inline -- the endpoint returned
 		# well under the 10s sleep above.
 
-	def test_refuses_without_a_hugging_face_token(self, client, monkeypatch):
+	def test_refuses_when_the_speaker_model_is_missing(self, client, monkeypatch):
 		monkeypatch.setattr(main, "diarization_configured", lambda: False)
 		response = client.post(
 			"/process",
@@ -585,3 +585,130 @@ class TestHealthIdentifiesItsLibrary:
 		(tmp_path / "sub").mkdir()
 		monkeypatch.setattr(main, "DATA_DIR", scenic)
 		assert client.get("/health").json()["dataDir"] == str((tmp_path / "sub").resolve())
+
+
+class TestDiskSpaceRefusals:
+	"""Running out of disk mid-job is the expensive failure: a multi-GB
+	upload dies part-written, or a 15-minute render dies at minute 12. Each
+	of these refuses at the door instead, with the numbers in the message.
+	507 rather than 400 -- the request is well formed, the machine can't
+	hold it."""
+
+	def _full(self, monkeypatch):
+		monkeypatch.setattr(jobs, "free_bytes", lambda: 1024)
+
+	def test_process_refuses_an_upload_that_would_not_fit(self, client, monkeypatch):
+		monkeypatch.setattr(main, "diarization_configured", lambda: True)
+		self._full(monkeypatch)
+		response = client.post(
+			"/process",
+			headers={"Origin": ORIGIN},
+			files={"file": ("clip.mp4", b"fake video")},
+		)
+		assert response.status_code == 507
+		assert "disk space" in response.json()["detail"]
+
+	def test_process_local_refuses_even_though_it_copies_nothing(self, client, monkeypatch, tmp_path):
+		# The symlink costs nothing, but the wav and thumbnails still land on
+		# this filesystem, which is what the margin is for.
+		monkeypatch.setattr(main, "diarization_configured", lambda: True)
+		source = tmp_path / "ep.mp4"
+		source.write_bytes(b"fake video")
+		self._full(monkeypatch)
+		response = client.post(
+			"/process/local",
+			headers={"Origin": ORIGIN},
+			json={"path": str(source)},
+		)
+		assert response.status_code == 507
+
+	def test_export_refuses_before_starting_the_render(self, client, monkeypatch):
+		jobs.save_input("j", "ep.mp4").write_bytes(b"fake video")
+		rendered = []
+		monkeypatch.setattr(main, "render_export", lambda *a, **k: rendered.append(1))
+		self._full(monkeypatch)
+
+		response = client.post(
+			"/export",
+			headers={"Origin": ORIGIN},
+			files={"faces": ("faces.json", FACES, "application/json")},
+			data={"regions": "[]", "jobId": "j"},
+		)
+		assert response.status_code == 507
+		# The point of a pre-flight check: nothing was rendered.
+		assert rendered == []
+
+	def test_the_upload_is_refused_without_the_body_being_read(self, client, monkeypatch):
+		"""The whole point of doing this in middleware. FastAPI resolves
+		`file: UploadFile` before the endpoint runs, so a check inside
+		`process_endpoint` would fire only after Starlette had already
+		spooled the entire multipart body to a temp file -- 5GB written
+		while trying to avoid writing 5GB.
+
+		Proved by sending a body that cannot be parsed as multipart: if
+		anything had tried, this would come back 400 or 422. A 507 means the
+		refusal happened on the headers alone."""
+		self._full(monkeypatch)
+		response = client.post(
+			"/process",
+			headers={"Origin": ORIGIN, "Content-Type": "multipart/form-data; boundary=----x"},
+			content=b"not remotely a valid multipart body",
+		)
+		assert response.status_code == 507
+		assert "disk space" in response.json()["detail"]
+
+	def test_a_malformed_upload_is_still_rejected_normally_when_there_is_room(self, client, monkeypatch):
+		# The guard above must not become a catch-all that swallows real
+		# parse errors whenever the disk happens to be full enough.
+		monkeypatch.setattr(jobs, "free_bytes", lambda: 500 * 1024**3)
+		response = client.post(
+			"/process",
+			headers={"Origin": ORIGIN, "Content-Type": "multipart/form-data; boundary=----x"},
+			content=b"not remotely a valid multipart body",
+		)
+		assert response.status_code != 507
+
+	def test_a_job_still_starts_when_there_is_room(self, client, monkeypatch):
+		monkeypatch.setattr(main, "diarization_configured", lambda: True)
+		monkeypatch.setattr(jobs, "free_bytes", lambda: 500 * 1024**3)
+		monkeypatch.setattr(main, "_run_pipeline", lambda *a, **k: asyncio.sleep(0))
+		response = client.post(
+			"/process",
+			headers={"Origin": ORIGIN},
+			files={"file": ("clip.mp4", b"fake video")},
+			params={"jobId": "j1"},
+		)
+		assert response.status_code == 200
+
+
+class TestWavIsNotKept:
+	"""~115MB per hour of episode, derived from the input and read by nothing
+	once the pipeline ends. jobs/ has no eviction, so a file that size
+	staying behind on every episode is the difference between a saved
+	episode costing megabytes and costing a tenth of a gigabyte."""
+
+	async def _run(self, tmp_path):
+		input_path = tmp_path / "input.mp4"
+		input_path.write_bytes(b"fake")
+		await main._run_pipeline("j", input_path, "clip.mp4")
+
+	def test_gone_after_a_successful_run(self, tmp_path, monkeypatch):
+		_fake_pipeline_steps(monkeypatch)
+		# extract_wav is faked out, so write the file the real one would.
+		monkeypatch.setattr(main, "extract_wav", lambda src, dest: Path(dest).write_bytes(b"RIFF"))
+
+		asyncio.run(self._run(tmp_path))
+
+		assert jobs.load_result("j") is not None
+		assert not (jobs.job_dir("j") / "audio.wav").exists()
+
+	def test_gone_after_a_failed_run_too(self, tmp_path, monkeypatch):
+		# The early-return paths are exactly where a stranded wav would have
+		# been easiest to miss, which is why this is a `finally`.
+		_fake_pipeline_steps(monkeypatch, gather_raises=DiarizationUnavailable("no model"))
+		monkeypatch.setattr(main, "extract_wav", lambda src, dest: Path(dest).write_bytes(b"RIFF"))
+
+		asyncio.run(self._run(tmp_path))
+
+		assert progress.snapshot("j")["error"] == "no model"
+		assert not (jobs.job_dir("j") / "audio.wav").exists()

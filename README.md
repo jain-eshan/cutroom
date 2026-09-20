@@ -108,7 +108,6 @@ from source, or you're on Linux, see Quick start below.
 | **Node.js 22.18 or newer** | Runs the app and its tooling | `brew install node`, or [nodejs.org](https://nodejs.org) |
 | **uv** | Installs and runs the processing service, including Python 3.12 | `brew install uv`, or [docs.astral.sh/uv](https://docs.astral.sh/uv/) |
 | **ffmpeg** | Reads recordings and renders the export | `brew install ffmpeg` |
-| **A Hugging Face account** | The speaker detection model needs a free token | [huggingface.co/join](https://huggingface.co/join) |
 | **About 3 GB of disk** | Python packages and models | |
 | **8 GB of memory or more** | A 53-minute episode peaked at 4.5 GB while processing | |
 
@@ -133,19 +132,16 @@ stops both when you press Ctrl+C. There's no second terminal to manage.
 The first start installs the processing service's Python packages, which takes
 a few minutes. The setup screen shows it working and moves on by itself.
 
-Then it asks you to connect Hugging Face, once:
+Nothing is asked of you here. The screen lists the pieces that have to be
+up -- this window, the processing service, and the speaker detection model,
+which ships inside Cutroom -- and opens the app as soon as they all answer.
 
-1. Create a **Read** token at
-   [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
-2. Accept the licence for
-   [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
-   with the same account.
-3. Paste the token into the setup screen and press Save.
-
-The app checks the token and the licence with Hugging Face, then saves it to
-`server/.env` on your machine with owner-only permissions. You don't need to
-restart anything. (Writing `HF_TOKEN=...` into `server/.env` yourself also
-works.)
+That model used to be the one thing you had to fetch yourself: a Hugging Face
+account, the model's licence to accept and a token to paste, before a single
+edit could be made. It's licensed
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which allows
+redistribution with credit, so it ships with the app and pyannote is credited
+in the **credits** button in the title bar instead.
 
 ### 2. Drop in a recording
 
@@ -244,12 +240,11 @@ The app uses whatever is answering on 8787. If that's an old copy of the
 processing service from a previous session, stop it, or it may be running
 older code.
 
-**"Hugging Face didn't accept that token."**
-The token was mistyped or revoked. Create a new Read token and paste it again.
-
-**"That token belongs to … but that account hasn't accepted the model's terms yet."**
-Open the community-1 page linked in the message while signed in to that
-account, accept the terms, and press Save again.
+**The setup screen says the speaker model is missing.**
+The weights ship inside Cutroom, so there's no step to have skipped: the copy
+you're running didn't install completely. Install it again, or if you're
+running from source, check the files in `server/.models/diarization/` are
+there.
 
 **"Could not reach the local processing service."**
 The service stopped while the app was waiting for it. Check the terminal
@@ -357,7 +352,7 @@ Cutroom is built on other people's open work:
   [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
   pipeline by pyannote, licensed
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), for speaker
-  detection
+  detection -- its weights ship inside Cutroom under that licence
 - [OpenCV](https://opencv.org) (Apache 2.0), with the YuNet face detection and
   SFace face recognition models from
   [OpenCV Zoo](https://github.com/opencv/opencv_zoo) (see each model's

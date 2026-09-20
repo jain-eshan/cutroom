@@ -10,8 +10,9 @@ export phase see [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md) and
 ## What works end to end, today
 
 Drop in a recording and you get an edited MP4 out. The whole loop runs
-locally, nothing is uploaded anywhere. `npm run dev` starts everything, and a
-setup screen covers the one-time Hugging Face token.
+locally, nothing is uploaded anywhere. `npm run dev` starts everything, and
+there is no account, key or licence to accept: every model the pipeline needs
+either ships with it or downloads by itself.
 
 1. **Upload** — click or drag-and-drop, with real byte-level progress.
 2. **Process** — one upload feeds transcription, speaker diarisation,
@@ -87,8 +88,8 @@ The epic's Next Steps, and where each landed:
 Two things the epic listed as open questions are now answered:
 
 - *"Does the pipeline even surface overlapping speech?"* — it did not. It
-  does now, via `pyannote.audio` overlap detection (optional, needs a free
-  Hugging Face token).
+  does now, via `pyannote.audio` overlap detection, in the same pass that
+  finds the speakers.
 - *"Is the manual face-labelling step fine as-is?"* — no. It asked users to
   map faces to anonymous "Speaker 1" ids they had no way to identify.
   Replaced with naming people and matching voices by ear.
@@ -176,8 +177,9 @@ ordering; [ARCHITECTURE.md](ARCHITECTURE.md)'s Roadmap mirrors it.
     recording: manifest, `result.json`, `edit.json`, `waveform.json` and the
     timeline thumbnails. **1.2MB measured on the real 53-minute episode**,
     against a 5.3GB recording. `audio.wav` is deliberately excluded -- it is
-    a processing intermediate and `/export` reads the recording itself, so
-    nothing needs it to reopen or re-render.
+    a processing intermediate -- and since the pipeline started deleting it,
+    normally not even present -- while `/export` reads the recording itself,
+    so nothing needs it to reopen or re-render.
   - The recording is referenced, not contained, as every video editor does
     it. The manifest records its real path (resolved, not the job's own
     symlink, which means nothing elsewhere), and opening a project relinks
@@ -247,10 +249,12 @@ ordering; [ARCHITECTURE.md](ARCHITECTURE.md)'s Roadmap mirrors it.
     scratch library: refused, with both paths.
     - `scripts/` had no tests and `npm test` only globbed `src/`; the glob
       now covers `scripts/**/*.test.mjs` too. 113 frontend tests (was 107).
-  - The setup gate needs `HF_TOKEN` set to something (it is a presence check;
-    the licence only shows when the model loads). QA mode reads it from
-    `server/qa-data/.env`, so no placeholder token is committed and no real
-    credential is copied around.
+  - Nothing else is needed to get past the setup gate: since the diarisation
+    weights started shipping with the app, `diarization_configured()` is a
+    check that the bundled model is on disk, so a QA run reaches the upload
+    screen with no token at all. (While this was built it still wanted one,
+    which is why the notes above mention a placeholder; that requirement is
+    gone.)
 - **The host test still hasn't happened.** A host is lined up within two weeks.
 
 ### How progress is measured
@@ -478,9 +482,9 @@ the founder's call, to find testers and contributors early:
        notifications specific to the packaged app (the web `Notification`
        API from item 5 already works there unmodified -- Electron's
        renderer supports it natively -- but that hasn't been confirmed
-       inside a packaged window), and shipping the `pyannote` weights
-       directly per the licence check two lines down (which would drop the
-       Hugging Face step from the desktop app entirely).
+       inside a packaged window). Shipping the `pyannote` weights directly,
+       per the licence check two lines down, was the third item here and is
+       now done -- see "The Hugging Face step is gone" below.
    - **Reads the recording where it is, done 2026-09-17.** `electron/
      preload.mjs` exposes `webUtils.getPathForFile` through
      `contextBridge` -- it only resolves for a file the user actually
@@ -620,6 +624,84 @@ the founder's call, to find testers and contributors early:
      weights, credit pyannote with a link to the licence, and drop the Hugging
      Face step entirely. This is a reading of the licence, not legal advice:
      confirm before release.
+   - **The Hugging Face step is gone, done 2026-09-20.** The one thing this
+     item had left to do for a non-technical host. Diarisation downloaded
+     `pyannote` community-1 from a gated Hugging Face repo on first use,
+     which is the only reason this app ever wanted a token: running it meant
+     creating an account, accepting the model's terms, creating a read token
+     and pasting it into the setup screen before a single edit could be
+     made. community-1 is CC-BY-4.0, so the weights now ship inside the app
+     the way the YuNet detector already did -- six files, 31MB, and
+     self-contained (its own `config.yaml` names `$model/segmentation`,
+     `$model/embedding` and `$model/plda`, each relative to itself, so
+     nothing is left to fetch). **Only that one model was gated**: Whisper,
+     SFace, LR-ASD and YuNet all ship or download without an account and are
+     untouched, which is why this cost 31MB rather than the several GB the
+     line below assumed.
+     - Deleted with it: `POST /setup/hf-token`, `pipeline/hf_token.py` and
+       its 14 tests, `saveHfToken`, and the setup gate's token form and
+       two-step Hugging Face instructions. `diarization_configured()` now
+       reports whether the weights are on disk rather than whether a token
+       is set -- true in any sound install, kept as a check so a damaged one
+       fails before a job starts rather than minutes in. A stale `HF_TOKEN`
+       in an existing `server/.env` is ignored. Net -33 lines of code.
+     - **The credits screen this needed, built alongside.** CC-BY-4.0 allows
+       the redistribution on condition of attribution, so the credit has to
+       be readable from inside the app, not only in the repository: a
+       "credits" button in the title bar opens a native popover (the same
+       mechanism the editor's Shortcuts sheet uses) crediting
+       pyannote.audio (CC-BY-4.0), Whisper via faster-whisper (MIT), LR-ASD
+       (MIT), YuNet (MIT), SFace (Apache-2.0) and FFmpeg (GPL-3.0). That
+       also closes the Electron shell's outstanding note above that the
+       bundled ffmpeg's licence "should be linked from the app's
+       credits/about, not just sitting in `node_modules`". The reasoning for
+       bundling is recorded in `server/.models/diarization/NOTICE.md`.
+     - Those links needed somewhere to go: `electron/main.mjs` had no
+       `setWindowOpenHandler`, so a `target="_blank"` would have opened a
+       second app window with no address bar and no way back. Latent until
+       now, since the only external links were on the setup screen this
+       change deleted. They open in the system browser now, http(s) only.
+     - Verified against the real pipeline, not only the suite: with
+       `HF_TOKEN` unset, `HF_HUB_OFFLINE=1` and an empty `HF_HOME`,
+       `diarize()` returns the same two speakers on the same clip as the
+       token path did (0.03-6.44, 6.60-11.05 on a two-voice synthetic
+       clip). A real `uvicorn` on an isolated port with no `.env` at all
+       reports `"diarization": true` and 404s the removed endpoint. In a
+       browser, the setup gate shows "pyannote community-1 - installed" and
+       opens the app with nothing asked of anyone; the credits sheet renders
+       all six entries in dark and light and dismisses on Escape.
+     - This change took the backend suite from 222 to 209: -14 for the
+       deleted `hf_token` suite, +1 net in `test_diarize.py`, which now also
+       asserts the weights are present and that `from_pretrained` is given
+       the local path and no token. **211 after merging v0.3.1**, which
+       added two of its own. 89 frontend tests, `tsc`, `oxlint` and both
+       builds clean.
+     - **What it costs the download: 29.0MB.** Measured, not estimated, by
+       building the `.dmg` twice on the same machine, once with the weights
+       and once with the folder moved aside: **150.3MB → 179.3MB**, on top
+       of v0.3.1. The seven files really are inside the built app, at
+       `Cutroom.app/Contents/Resources/server/.models/diarization/`, and
+       v0.3.1's new `verify-binaries` afterPack check passes on both builds.
+       Don't compare either figure with the published v0.3.0's 165MB: most
+       of the gap is v0.3.1 swapping `ffprobe-static` for
+       `@ffprobe-installer`, whose arm64 binary is a real arm64 build and
+       considerably larger than the x86_64 one that used to ship. The same
+       pair measured before that merge came out at 122.7MB → 151.8MB, the
+       same 29MB apart, which is the only number here this change owns.
+     - **Verified inside the packaged bundle, not just the repo.** Running
+       the built app's own copy of the pipeline out of
+       `Cutroom.app/Contents/Resources/server/`, with `HF_TOKEN` unset,
+       `HF_HUB_OFFLINE=1`, an empty `HF_HOME` and `CUTROOM_DATA_DIR` pointed
+       at a scratch directory, `diarization_configured()` is true, the
+       weights path resolves inside the bundle, and `diarize()` returns the
+       same two speakers as every other run above. That is the packaging
+       claim -- a shipped app finding its own model with no account --
+       tested against a real build rather than inferred from the
+       `extraResources` filter.
+     - Still not verified: the app *launched as an app*. Nothing has opened
+       the window and put a real recording through it, and the Electron
+       window-open handler needs a packaged window to exercise. Both want
+       port 3460, which this machine's installed copy is holding.
    - **The rest of the licence check, done 2026-09-17.** faster-whisper's
      converted weights (`Systran/faster-whisper-*` on Hugging Face, what
      `transcribe.py`'s `WhisperModel` pulls) are MIT. YuNet
@@ -1007,7 +1089,9 @@ the founder's call, to find testers and contributors early:
     redirect to the `v0.3.0` asset URLs.
   - Not yet verified: the Windows download-and-install path, and
     read-in-place and save-to-folder now that the bridge loads (needs a
-    real recording and a Hugging Face token run through the packaged app).
+    real recording run through the packaged app — this said "and a Hugging
+    Face token" when it was written, which stopped being true on
+    2026-09-20; the verification itself is still owed).
 - **v0.3.1, 2026-09-20: the bundled ffprobe was an Intel binary.** Every
   packaged Mac build since v0.1.0 shipped an x86_64 `ffprobe` and pointed
   `FFPROBE_BINARY` at it, so on an Apple Silicon Mac without Rosetta the
@@ -1048,9 +1132,155 @@ the founder's call, to find testers and contributors early:
     bundle with `ffprobe-static`'s x86_64 binary put back (fails, naming the
     file and its arch) and with `ffprobe` removed (fails, naming the
     missing binary). 224 pytest, 89 node tests, `tsc` and `oxlint` clean.
-  - Not yet verified: the Windows installer, which no longer gets its
-    `ffprobe.exe` from the same tarball. The guard now checks it on the
-    Windows runner, so a bad one fails that job rather than reaching anyone.
+  - **Tagged and published 2026-09-20.** The guard ran on both runners and
+    passed: `verify-binaries: 2 bundled binaries are arm64` on macOS,
+    `... are x64` on Windows. That closes the one item this entry left open
+    before the tag -- the Windows installer now sources `ffprobe.exe` from
+    `@ffprobe-installer/win32-x64` rather than the old all-architectures
+    tarball, and nothing had yet watched that path build.
+  - Verified after publishing, against the released artifact rather than
+    the CI log: unpacking `Cutroom-0.3.1-arm64-mac.zip` gives an app
+    reporting 0.3.1 whose bundled `ffmpeg` and `ffprobe` both read as
+    Mach-O arm64, and whose `ffprobe` runs on an M5 and prints its version.
+    sha512 of the dmg, the mac zip and `Setup.exe` each match their
+    `latest*.yml` entry. All four `releases/latest/download/` links and
+    both updater manifests serve 0.3.1.
+  - **The release split into two drafts for the third tag running**
+    (v0.2.0, v0.3.0, v0.3.1). One correction to what the earlier entries
+    assumed: the split is not cleanly per-job. On v0.3.1 the mac
+    `zip.blockmap` landed on the *Windows* draft, so the second draft was
+    created while the mac job was still uploading, and "draft A is mac,
+    draft B is Windows" is not a safe assumption when fixing it by hand.
+    Both drafts report the tagged commit's date as `created_at`, which is
+    what GitHub does for drafts, so that field cannot order them either.
+    Consolidated the usual way: diff the two asset lists, upload whatever
+    is unique to the second onto the first (by release id -- `gh release
+    upload` takes a tag, which is ambiguous with two same-tag releases),
+    check each `latest*.yml` sha512 against its installer, delete the
+    duplicate, publish. release.yml's comment still describes this as open,
+    because it is.
+  - **`make_latest` needs its own API call.** Publishing with
+    `gh api --method PATCH .../releases/<id> -f draft=false -f
+    make_latest=true` silently ignores `make_latest`: the release goes
+    public but `/releases/latest/` keeps pointing at the previous tag, so
+    no `electron-updater` client is ever offered the new version. Send it
+    as a second PATCH, then confirm against the public redirect rather than
+    the API response -- `repos/.../releases/latest` updates first, while the
+    `releases/latest/download/` redirect stays cached on the edge for a
+    minute or two.
+- **The duplicate-draft race, root cause found and fixed, 2026-09-20.**
+  The entry above says release.yml still describes this as open. It no
+  longer does. It was never a race between the mac and Windows jobs, which
+  is why `max-parallel: 1` did nothing and why a `needs:` dependency would
+  have done nothing either.
+  - **It is a race inside a single job.** electron-builder's GitHub
+    publisher does find-or-create -- `GET /repos/OWNER/REPO/releases`,
+    return the first draft matching the tag, `POST` a new one otherwise.
+    `app-builder-lib`'s `PublishManager.getOrCreatePublisher` caches
+    publishers in a `Map`, but it `await`s `createPublisher()` before it
+    writes the cache entry. Two artifacts finishing in the same tick both
+    miss the still-empty cache, both build a publisher, and each publisher
+    carries its own lazily-resolved release -- so each runs its own
+    find-or-create, both find nothing, and both create a draft.
+  - **The v0.3.1 log says it outright.** In the mac job:
+    `publishing publisher=Github` twice, 0.3ms apart, then
+    `creating GitHub release reason=release doesn't exist` twice, 24ms
+    apart, triggered by `Cutroom-0.3.1-arm64-mac.zip` and its `.blockmap`
+    being scheduled together. That is the explanation for the correction
+    the entry above records: the mac job created *both* drafts, so the
+    zip's blockmap was never on the "Windows" draft by accident. The
+    Windows job -- which the Actions timings put 3s *after* the mac job
+    ended, so genuinely sequential -- then joined the second one, because
+    GitHub lists same-`created_at` drafts newest id first.
+  - **Fixed by creating the draft before anything can race for it.** A new
+    `draft` job runs ahead of the build matrix and does one
+    `gh release create "$TAG" --draft`. The create half of find-or-create
+    is the only part that isn't idempotent, so removing the need for it
+    removes the bug by construction rather than by ordering.
+    `--publish always`, `latest.yml` and `latest-mac.yml` are unchanged.
+    Title and empty body match what electron-builder's own `createRelease`
+    would have set, and an existing draft is reused, so re-running a failed
+    release is safe.
+  - **A new `verify` job replaces the by-hand consolidation check.** It
+    fails the run unless there is exactly one release for the tag carrying
+    all 8 expected assets, naming the ids or the missing files. Green now
+    means the release is whole.
+  - **The draft job also checks the tag against `package.json`.**
+    electron-builder never reads `github.ref_name`; it builds its own tag
+    as `v` + the package version. Pinning the draft to the pushed tag
+    couples the two for the first time, so a mismatch fails in seconds
+    instead of sending the builders off to create their own release.
+  - Verified without cutting a tag: the race reproduced in isolation from
+    the exact `getOrCreatePublisher` code shape (2 publishers, 2 drafts,
+    one lone mac artifact stranded on the second -- the real v0.3.1 shape);
+    the `verify` script run against the live repo passes on v0.3.1, fails
+    on v0.1.0 naming all 5 missing assets, fails on an absent tag, and
+    fails on a stubbed two-release response naming both ids; the
+    tag/version guard passes on `v0.3.1` and fails on `v0.9.9`; and a
+    throwaway draft created in the repo exactly as the job does it came
+    back `tag_name` exact, `draft=true`, `body=null`, at **index 0** of the
+    unpaginated `GET /releases` electron-builder calls -- the first entry
+    its loop tests -- then deleted, leaving the 8 git tags untouched.
+  - Not verified without a tag: that a real `npm run dist:mac --publish
+    always` takes the find branch against that pre-created draft. The code
+    path is short and read (`if (release.draft) return release`, before any
+    time or type check) and the draft is shaped to match, but only a tag
+    exercises it. The `verify` job is what catches it if that reasoning is
+    wrong.
+  - The `make_latest` finding above is now written down in `release.yml`
+    next to the `verify` job, since publishing the draft stays manual.
+- **v0.3.2, 2026-09-20.** Minor in substance, patch in number: the first
+  build anyone can install and use without a Hugging Face account, plus the
+  credits sheet that attribution requires, plus the fix above. Nothing in it
+  is new since the two entries above -- this is the release that carries
+  them, cut so the first long-episode test runs on a build without the
+  account step rather than on v0.3.0, which still has the Intel `ffprobe`.
+  - **The first tag on the draft-first workflow.** The entry above could
+    not verify that a real `--publish always` takes the find branch against
+    a pre-created draft; this tag is that test, and the `verify` job is what
+    says whether it held.
+
+- **Disk safety for long episodes, 2026-09-20.** Two of the known
+  limitations below, both of which bite hardest on exactly the multi-GB,
+  hour-long recording this project is built for, and neither of which had
+  been touched.
+  - **Nothing checked for free space.** A full disk surfaced as an `OSError`
+    mid-write, with a part-written input left behind, or as a render dying
+    at minute twelve of fifteen. `/process`, `/process/local` and `/export`
+    now refuse up front with a **507** naming what it needs and what's free.
+    Each caller passes a size it actually knows -- an upload's
+    `Content-Length`, a recording's size on disk -- rather than a guess
+    scaled off one; the only estimated part is a 1GB margin covering the
+    wav, the thumbnails and the render's own overshoot.
+  - **The upload check had to be middleware, not an endpoint check.**
+    Written first inside `process_endpoint`, where it was useless: FastAPI
+    resolves `file: UploadFile` *before* calling the path function, so
+    Starlette had already spooled the whole body to a temp file by the time
+    any line of the endpoint ran -- 5GB written in the course of trying not
+    to write 5GB. Caught by testing it rather than assuming. It's an ASGI
+    middleware now, alongside `ReportUnexpectedErrors`, and the test proves
+    the ordering: a body that can't be parsed as multipart still comes back
+    507 rather than 422, which it only can if nothing tried to read it.
+  - **`server/jobs/` now drops the extracted wav.** 16kHz mono PCM, about
+    115MB per hour of episode, and nothing reads it once the pipeline ends
+    -- `/export` renders from the original recording and cuts dead air from
+    word timings, and the timeline's waveform was already reduced to peaks
+    and saved. It goes in `_run_pipeline`'s `finally`, so the paths that
+    return early don't strand it. Deliberately the *only* eviction here:
+    saved episodes are the user's own recordings and edits, the upload
+    screen already has a per-episode Delete with a confirm, and a tool that
+    quietly deletes someone's work to reclaim space is a worse bug than the
+    one being fixed.
+  - Verified beyond the suite passing: neutering `discard_wav` and re-running
+    the pipeline leaves the wav behind, so that test fails against the
+    pre-fix code rather than passing vacuously; `space_problem` refuses a
+    10TB ask and passes a 1GB one against this machine's real free space.
+    226 backend tests (was 211), 89 frontend, `tsc`, `oxlint` and the build
+    clean.
+  - Not done: the per-episode disk cost is still unbounded in aggregate --
+    nothing removes old episodes, by design. If that becomes a real problem
+    the answer is showing what they cost and making the existing Delete easy
+    to find, not automatic eviction.
 
 ## Known limitations
 
@@ -1059,11 +1289,15 @@ the founder's call, to find testers and contributors early:
   four people. The real fix is source resolution: shoot 4K, deliver 1080p,
   and punch-ins become genuinely sharp because the crop then holds more real
   pixels than the output needs.
-- **Diarisation now requires a Hugging Face token.** community-1 replaced the
-  token-free `resemblyzer` clustering, which was measured finding two
-  speakers on a four-person episode — a fallback that produces a quietly
-  wrong edit is worse than an error that says what to do, so there is no
-  fallback. `/process` returns a 400 naming the token and the licence page.
+- ~~**Diarisation now requires a Hugging Face token.**~~ Gone, 2026-09-20:
+  the weights ship with the app, so there is no account, licence or token in
+  the way of a first edit. See the desktop-app item above.
+- **Diarisation has no fallback.** community-1 replaced `resemblyzer`
+  clustering, which was measured finding two speakers on a four-person
+  episode — a fallback that produces a quietly wrong edit is worse than an
+  error that says what to do. What is left to go wrong is an install that
+  didn't bring its own model files; `/process` returns a 400 saying so
+  rather than editing without speakers.
 - **Diarisation is still not perfect.** It can mis-assign a turn, and only
   finds speakers who actually speak in the window analysed. This is why
   every shot can be changed in the editor. See
@@ -1093,8 +1327,13 @@ the founder's call, to find testers and contributors early:
   episode length. On the 53-minute episode that separates the four
   participants (>99% of frames) from the six junk clusters (<0.4%) with three
   orders of magnitude to spare.
-- **No pre-flight disk-space check.** A multi-GB upload plus extracted audio
-  plus a same-or-larger render can transiently need a lot of temp space.
+- ~~**No pre-flight disk-space check.**~~ Added 2026-09-20: `/process`,
+  `/process/local` and `/export` each refuse with a 507 naming both numbers
+  when the space they need isn't free. What's still true is that the need is
+  only *mostly* known in advance — an upload's `Content-Length` and a
+  recording's size on disk are exact, but the wav, the thumbnails and the
+  render's own overshoot sit inside a fixed 1GB margin rather than being
+  computed per episode.
 - **macOS only so far.** Nothing is knowingly platform-specific, but nothing
   else has been tried.
 

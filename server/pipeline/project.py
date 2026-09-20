@@ -2,9 +2,9 @@
 
 Everything a job holds *except* the recording -- the transcript, the faces,
 the waveform, the timeline thumbnails and the edit on top of them. On the
-53-minute reference episode that is about 1.5MB, against a 5.3GB recording
-and a 101MB intermediate wav, so a project is something you can back up,
-move between machines or send to someone who has the footage.
+53-minute reference episode that is 1.2MB, against a 5.3GB recording, so a
+project is something you can back up, move between machines or send to
+someone who has the footage.
 
 The recording is referenced, not contained, the same way a Premiere or
 Resolve project references its media. A project therefore records where the
@@ -13,9 +13,10 @@ the job without an input until it is relinked -- see `relink` in main.py.
 The alternative, copying multi-GB media into a "project", is the thing every
 editor learned not to do.
 
-`audio.wav` is deliberately left out: it is a processing intermediate, and
-`/export` reads the recording itself, so nothing needs it to reopen or
-re-render an episode.
+`audio.wav` is excluded, and normally isn't there to exclude -- the pipeline
+deletes it once a job finishes. `/export` reads the recording itself, so
+nothing needs it to reopen or re-render an episode. The exclusion stays
+explicit anyway, since a job interrupted mid-run can still have one.
 """
 
 import json
@@ -47,7 +48,7 @@ _ALLOWED_FILES = {MANIFEST_NAME, "result.json", "edit.json", "waveform.json"}
 _THUMBNAIL_DIR = "thumbnails/"
 
 # A project is JSON and small JPEGs. This is generous for a feature-length
-# episode (the reference one is 1.5MB) and still refuses an archive that
+# episode (the reference one is 1.2MB) and still refuses an archive that
 # would fill the disk when decompressed.
 MAX_UNPACKED_BYTES = 256 * 1024 * 1024
 

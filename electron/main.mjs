@@ -48,8 +48,8 @@ const ffprobePath = ffprobeInstaller.path;
 process.env.FFMPEG_BINARY = app.isPackaged ? unpack(ffmpegPath) : ffmpegPath;
 process.env.FFPROBE_BINARY = app.isPackaged ? unpack(ffprobePath) : ffprobePath;
 
-// Everything the service writes -- saved episodes, the Hugging Face token,
-// downloaded model weights, the Python environment itself -- has to land
+// Everything the service writes -- saved episodes, downloaded model
+// weights, decision logs, the Python environment itself -- has to land
 // outside the app bundle. macOS replaces the bundle wholesale on update, so
 // anything in there is destroyed on every release, and an app that writes
 // inside its own bundle breaks the signature notarisation checks. Electron
@@ -144,6 +144,15 @@ function createWindow() {
 			? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 14, y: 16 } }
 			: {}),
 		webPreferences: { preload: path.join(__dirname, "preload.cjs") },
+	});
+	// A target="_blank" link -- the credits sheet's licence links -- would
+	// otherwise open a second Electron window with no address bar and no way
+	// back. Hand them to the real browser instead, and only ever http(s):
+	// `deny` is the default for anything else, so a file:// or custom-scheme
+	// URL is dropped rather than passed to the OS to open.
+	win.webContents.setWindowOpenHandler(({ url }) => {
+		if (/^https?:\/\//.test(url)) shell.openExternal(url);
+		return { action: "deny" };
 	});
 	win.loadURL(`http://127.0.0.1:${FRONTEND_PORT}/`);
 }

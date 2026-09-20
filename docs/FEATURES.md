@@ -25,6 +25,7 @@ design). For measured accuracy and performance numbers, see
 | 14 | [Automatic social clips](#14-automatic-social-clips) | Not started |
 | 15 | [Multi-camera support](#15-multi-camera-support) | Not started |
 | 16 | [Desktop packaging](#16-desktop-packaging) | Shipped |
+| 17 | [Credits](#17-credits) | Shipped |
 | — | [Vary shot length](#vary-shot-length-deferred) | Deferred |
 
 ---
@@ -178,8 +179,8 @@ Episodes save as `.cutroom` project files. "Save a copy" in the title bar
 writes everything about an episode except the recording -- the transcript,
 the word timings, the faces and their keyframes, the waveform, the timeline
 thumbnails and the edit -- as a single file. Measured on the 53-minute
-four-person reference episode: **1.2MB**, against a 5.3GB recording and a
-101MB intermediate wav. Small enough to back up, sync or email.
+four-person reference episode: **1.2MB**, against a 5.3GB recording. Small
+enough to back up, sync or email.
 
 The recording is referenced, not contained, the way a Premiere or Resolve
 project references its media. A project records where the recording was; open
@@ -323,3 +324,16 @@ anything about how the frontend is built. Shipped: an Electron shell and
 Windows `.exe` build in CI), which checks for updates from v0.3.0 on:
 automatic on Windows, a "new version" prompt on the Mac until the app is
 signed. Not signed/notarised yet. See [STATUS.md](STATUS.md).
+
+### 17. Credits
+
+The licences of everything Cutroom ships — five sets of model weights and an
+ffmpeg binary — readable from inside the app, through a "credits" button in
+the title bar. Not decoration: pyannote's CC-BY-4.0 permits the
+redistribution that removed the Hugging Face sign-up from first use, and
+asks for attribution in return, so this screen is what makes that bundling
+allowed rather than merely convenient.
+
+*Implementation:* `src/components/Credits.tsx`, opened from `AppWindow` in
+`src/components/ui.tsx`. Attribution rationale for the bundled weights is in
+`server/.models/diarization/NOTICE.md`.

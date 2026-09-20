@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API_BASE, getHealth, saveHfToken, type Health } from "@/lib/api";
+import { API_BASE, getHealth, type Health } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
 import { Button, CommandBlock, RawMessage, Screen, ScreenHeading, StatusRow } from "@/components/ui";
 
@@ -43,65 +43,15 @@ async function getService(): Promise<Service | null> {
 	}
 }
 
-type TokenState =
-	| { status: "idle" }
-	| { status: "checking" }
-	| { status: "saved" }
-	| { status: "error"; message: string };
-
-/** Paste and save. The service checks the token with Hugging Face -- licence
- * included -- before keeping it, so a wrong token is caught here, not mid-job. */
-function TokenForm() {
-	const [token, setToken] = useState("");
-	const [state, setState] = useState<TokenState>({ status: "idle" });
-	const checking = state.status === "checking";
-
-	async function submit(e: React.FormEvent) {
-		e.preventDefault();
-		setState({ status: "checking" });
-		try {
-			await saveHfToken(token.trim());
-			// The next health poll sees the token and the screen moves on.
-			setState({ status: "saved" });
-		} catch (err) {
-			setState({
-				status: "error",
-				message: err instanceof Error ? err.message : "Couldn't save the token.",
-			});
-		}
-	}
-
-	return (
-		<form onSubmit={submit} className="flex flex-col gap-[7px]">
-			<div className="flex gap-[9px]">
-				<input
-					type="password"
-					autoComplete="off"
-					spellCheck={false}
-					value={token}
-					onChange={(e) => {
-						setToken(e.target.value);
-						if (state.status === "error") setState({ status: "idle" });
-					}}
-					placeholder="hf_…"
-					aria-label="Hugging Face token"
-					className="min-w-0 flex-1 rounded-control-lg border border-line bg-well px-3 py-[10px] font-mono text-mono leading-none text-text outline-none focus:border-accent-edge"
-				/>
-				<Button type="submit" variant="primary" disabled={!token.trim() || checking || state.status === "saved"}>
-					{checking ? "Checking…" : state.status === "saved" ? "Saved" : "Save token"}
-				</Button>
-			</div>
-			{state.status === "error" && <p className="text-fine text-warn">{state.message}</p>}
-		</form>
-	);
-}
-
 /**
  * Gets the machine ready, and only shows what needs the person in front of it.
- * With a working setup it opens and closes in about a second. The processing
- * service is started by the dev server (see vite.config.ts), so the only
- * things ever asked of anyone are the Hugging Face steps -- which have to
- * happen on their account -- and pasting the token back here.
+ * With a working setup it opens and closes in about a second, and nothing is
+ * ever asked of anyone: the processing service is started by the dev server
+ * (see vite.config.ts) or by Electron, and the speaker detection model ships
+ * with the app. This screen used to hold a Hugging Face sign-up, licence
+ * acceptance and a token to paste, because that model downloaded from a gated
+ * repo; it is bundled now (see server/pipeline/diarize.py), so all that is
+ * left here is saying which pieces are up.
  */
 export function SetupGate({ onReady }: { onReady: (health: Health) => void }) {
 	const [health, setHealth] = useState<Health | null>(null);
@@ -274,45 +224,15 @@ export function SetupGate({ onReady }: { onReady: (health: Health) => void }) {
 				{!health ? (
 					<StatusRow state="pending" title="Speaker models" detail="pyannote · waits for the service" />
 				) : health.diarization ? (
-					<StatusRow state="ok" title="Speaker models" detail="pyannote · token saved" />
+					<StatusRow state="ok" title="Speaker models" detail="pyannote community-1 · installed" />
 				) : (
-					<StatusRow state="active" title="Speaker models" detail="pyannote · needs a one-time access token">
-						<ol className="flex flex-col gap-[11px] pl-[30px]">
-							<li className="flex items-start gap-[11px]">
-								<span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-control font-mono text-mono-sm leading-none text-text2">
-									1
-								</span>
-								<span className="pt-0.5 text-ui text-text2">
-									Signed in to Hugging Face,{" "}
-									<a
-										href="https://huggingface.co/pyannote/speaker-diarization-community-1"
-										target="_blank"
-										rel="noreferrer"
-										className="text-accent-text hover:text-accent"
-									>
-										agree to the model's terms
-									</a>
-									. It's free.
-								</span>
-							</li>
-							<li className="flex items-start gap-[11px]">
-								<span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-control font-mono text-mono-sm leading-none text-text2">
-									2
-								</span>
-								<span className="pt-0.5 text-ui text-text2">
-									<a
-										href="https://huggingface.co/settings/tokens"
-										target="_blank"
-										rel="noreferrer"
-										className="text-accent-text hover:text-accent"
-									>
-										Create a read token
-									</a>{" "}
-									and paste it here. It's kept on this machine only.
-								</span>
-							</li>
-							<TokenForm />
-						</ol>
+					// Only reachable from a damaged install: the weights ship inside
+					// the app, so there is no step here for anyone to have skipped.
+					<StatusRow state="active" title="Speaker models" detail="pyannote community-1 · missing">
+						<p className="text-meta text-text2">
+							The speaker detection model isn't where it should be, which means this copy of Cutroom
+							didn't install completely. Installing it again replaces it.
+						</p>
 					</StatusRow>
 				)}
 				{health?.captions ? (
@@ -333,7 +253,7 @@ export function SetupGate({ onReady }: { onReady: (health: Health) => void }) {
 
 			<div className="flex items-center gap-[14px] pt-1">
 				<Button variant="inert">
-					{ready ? "Opening Cutroom…" : health ? "Waiting for the token…" : "Waiting for the service…"}
+					{ready ? "Opening Cutroom…" : health ? "Checking the install…" : "Waiting for the service…"}
 				</Button>
 			</div>
 		</Screen>

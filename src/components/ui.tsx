@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { Logo } from "@/components/Logo";
+import { CreditsSheet } from "@/components/Credits";
 import { hasElectronBridge, openDownloadPage, restartToUpdate, useUpdateState } from "@/lib/electron";
 import type { ThemeMode } from "@/lib/theme";
 
@@ -410,6 +411,17 @@ export function AppWindow({
 						</button>
 					)}
 					<UpdateNotice />
+					{/* The licences of the models Cutroom ships have to be readable
+					    from inside the app, not only in the repository. */}
+					<button
+						type="button"
+						popoverTarget="app-credits"
+						title="The models and tools Cutroom is built on"
+						className="font-mono text-mono-xs leading-none text-text3 hover:text-text2"
+					>
+						credits
+					</button>
+					<CreditsSheet id="app-credits" />
 					<ThemeSwitcher mode={themeMode} onChange={onThemeModeChange} />
 					{serviceOk !== undefined && (
 						<span
