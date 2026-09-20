@@ -174,7 +174,27 @@ edit this build doesn't recognise opens at Cast instead of being half-read,
 because silently restoring part of one would look like the shots were kept
 while quietly dropping some.
 
-*Implementation:* `src/features/timeline/EditorView.tsx`, `TimelineTray.tsx`,
+Episodes save as `.cutroom` project files. "Save a copy" in the title bar
+writes everything about an episode except the recording -- the transcript,
+the word timings, the faces and their keyframes, the waveform, the timeline
+thumbnails and the edit -- as a single file. Measured on the 53-minute
+four-person reference episode: **1.2MB**, against a 5.3GB recording and a
+101MB intermediate wav. Small enough to back up, sync or email.
+
+The recording is referenced, not contained, the way a Premiere or Resolve
+project references its media. A project records where the recording was; open
+one where that path is wrong -- another machine, a moved file, a synced folder
+that evicted it to cloud-only -- and the episode still opens fully editable
+with only the picture missing, and the editor asks for the file ("Find the
+recording&hellip;"). Relinking points at the file rather than copying it.
+
+Open a project by dropping it on the upload screen, picking it there, or
+choosing "Open a .cutroom file". A project from a newer version of Cutroom is
+refused with a sentence rather than half-read, and a file that isn't a project
+is refused as one.
+
+*Implementation:* `server/pipeline/project.py` (the format, its reader and
+relinking), `src/features/timeline/EditorView.tsx`, `TimelineTray.tsx`,
 `regions.ts` (shot suggestions and edits, mirrors `render.py`),
 `timelineView.ts` (zoom, ruler and snapping maths) and `src/lib/savedEdit.ts`
 (the saved-edit format and its reader). All tested with `npm test`; the

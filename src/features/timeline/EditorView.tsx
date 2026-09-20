@@ -385,6 +385,8 @@ export function EditorView({
 	regions,
 	onRegionsChange,
 	captionsEnabled,
+	missingRecording,
+	onRelink,
 	trimDeadAirEnabled,
 	onTrimDeadAirChange,
 	framingStyle,
@@ -411,6 +413,12 @@ export function EditorView({
 	onRegionsChange: React.Dispatch<React.SetStateAction<FramingRegion[]>>;
 	/** Shown here; chosen on the publish screen. */
 	captionsEnabled: boolean;
+	/** Where the recording was when this project was saved, when it isn't
+	 * there now. Shown so the file being asked for is named, not guessed at. */
+	missingRecording?: string | null;
+	/** Ask the user for the recording. Absent in a plain browser, which has
+	 * no way to hand the service a path to link to. */
+	onRelink?: () => void;
 	trimDeadAirEnabled: boolean;
 	onTrimDeadAirChange: (enabled: boolean) => void;
 	/** Owned by App, same reasoning as regions: survives a trip to the
@@ -984,11 +992,24 @@ export function EditorView({
 						)}
 
 						{mediaError && (
-							<div className="plate-stripes absolute inset-0 flex items-center justify-center p-6 text-center">
+							<div className="plate-stripes absolute inset-0 flex flex-col items-center justify-center gap-[13px] p-6 text-center">
 								<p className="max-w-[380px] text-ui text-plate-ink">
 									Couldn't load this recording. The file may have been moved, renamed, or deleted
 									since this episode was processed.
 								</p>
+								{missingRecording && (
+									<p className="max-w-[380px] font-mono text-mono-xs break-all text-plate-ink/70">
+										{missingRecording}
+									</p>
+								)}
+								{/* Everything else about the episode is here and editable --
+								    only the picture is missing -- so this asks for the file
+								    rather than sending anyone back to the start. */}
+								{onRelink && (
+									<Button size="sm" onClick={onRelink}>
+										Find the recording…
+									</Button>
+								)}
 							</div>
 						)}
 

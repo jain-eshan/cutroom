@@ -1024,8 +1024,12 @@ rather than features:
 - ~~**Edits must survive quitting**~~: done 2026-09-20, autosaved to
   `jobs/{id}/edit.json` through `PUT /jobs/{job_id}/edit` and read back by
   `GET /jobs/{job_id}`; format and reader in `src/lib/savedEdit.ts`. The
-  portable `.cutroom` project file and a relink prompt for a moved recording
-  are the open half.
+  portable `.cutroom` project file is below.
+- ~~**An episode is a document you own**~~: done 2026-09-20. `.cutroom`
+  project files (`server/pipeline/project.py`): everything but the recording,
+  1.2MB on the reference episode, with the recording referenced and relinked
+  when it moves. `GET /jobs/{id}/project`, `POST /projects/open`,
+  `POST /jobs/{id}/relink`.
 - **Make the editor legible.** Speaker lanes are unlabelled and only three
   colours wide (a fourth speaker wears the first one's colour, in both the
   lanes and the transcript dots); "Captions on" reads as a button but is a

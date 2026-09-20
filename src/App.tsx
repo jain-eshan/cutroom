@@ -10,7 +10,7 @@ import type { FramingRegion, FramingStyle } from "@/features/timeline/types";
 import { ProcessingFailed } from "@/features/upload/ProcessingFailed";
 import { ProcessingScreen } from "@/features/upload/ProcessingScreen";
 import { UploadScreen } from "@/features/upload/UploadScreen";
-import { getLocalPath } from "@/lib/electron";
+import { chooseProjectSavePath, chooseRecording, getLocalPath, hasElectronBridge } from "@/lib/electron";
 import { fixtureCast, fixtureData, FIXTURE_FILE_NAME, FIXTURE_JOB_ID, isFixtureMode } from "@/lib/fixture";
 import { EDIT_VERSION, editFingerprint, restorableEdit, type SavedEdit } from "@/lib/savedEdit";
 import { useThemeMode } from "@/lib/theme";
@@ -22,7 +22,10 @@ import {
 	listJobs,
 	processVideo,
 	processVideoAtPath,
+	openProject,
+	relinkJob,
 	saveEdit,
+	saveProject,
 	type DetectFacesResponse,
 	type Health,
 	type JobProgress,
@@ -189,6 +192,13 @@ function App() {
 	const [progress, setProgress] = useState<JobProgress | null>(null);
 	const [elapsed, setElapsed] = useState(0);
 	const [savedEpisodes, setSavedEpisodes] = useState<SavedEpisode[] | undefined>(undefined);
+	// A project that saved, opened or relinked badly -- shown where the action
+	// was taken rather than thrown, since none of these lose any work.
+	const [projectProblem, setProjectProblem] = useState<string | null>(null);
+	// Set when an opened project points at a recording that isn't here: the
+	// episode is fully editable, it just has nothing to play or export until
+	// it's relinked.
+	const [missingRecording, setMissingRecording] = useState<string | null>(null);
 	// Read from inside handleFile's catch, where the progress state would be
 	// the stale value captured when the upload began.
 	const lastPosition = useRef(0);
@@ -247,6 +257,75 @@ function App() {
 			window.removeEventListener("pagehide", flush);
 		};
 	}, [editSessionId, editCast, regions, framingStyle, captions, trimDeadAir]);
+
+	/** Save the open episode as a `.cutroom` file the user keeps.
+	 *
+	 * Two routes for the same reason `/export` has two: the desktop app asks
+	 * where first and the service writes it there, while a plain browser has
+	 * nowhere to write to but its own downloads. */
+	async function handleSaveProject() {
+		if (!("sessionId" in status)) return;
+		const suggested = `${(status.fileName ?? "episode").replace(/\.[^.]+$/, "")}.cutroom`;
+		try {
+			if (hasElectronBridge()) {
+				const outputPath = await chooseProjectSavePath(suggested);
+				if (outputPath === null) return; // cancelled
+				await saveProject(status.sessionId, outputPath);
+				return;
+			}
+			const blob = (await saveProject(status.sessionId)) as Blob;
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = suggested;
+			link.click();
+			URL.revokeObjectURL(url);
+		} catch (err) {
+			setProjectProblem(err instanceof Error ? err.message : "Could not save the project.");
+		}
+	}
+
+	/** Open a `.cutroom` file: unpack it into a job, then take the same path
+	 * every finished job takes. The recording it points at may not be here --
+	 * `sourceFound` says so, and the editor asks for it rather than the app
+	 * refusing to open an episode it can perfectly well show. */
+	async function handleProjectFile(file: File) {
+		setProjectProblem(null);
+		try {
+			const opened = await openProject(file, file.name);
+			const result = await getJob(opened.jobId);
+			rememberActiveJob({
+				jobId: opened.jobId,
+				fileName: opened.filename ?? file.name,
+				fileSizeBytes: 0,
+				startedAt: Date.now(),
+			});
+			setMissingRecording(opened.sourceFound ? null : (opened.sourcePath ?? opened.filename ?? "the recording"));
+			enterCast(opened.jobId, opened.filename ?? file.name, result);
+			refreshSavedEpisodes();
+		} catch (err) {
+			setProjectProblem(err instanceof Error ? err.message : "Could not open that project.");
+		}
+	}
+
+	/** Point the open episode at its recording, after the user picks it. */
+	async function handleRelink() {
+		if (!("sessionId" in status)) return;
+		const path = await chooseRecording(status.fileName);
+		if (path === null) return; // cancelled
+		try {
+			const { sourceFound } = await relinkJob(status.sessionId, path);
+			if (!sourceFound) return;
+			setMissingRecording(null);
+			// The media URL is unchanged, so the <video> needs a reason to try
+			// again -- a cache-busting query is the whole of it.
+			setStatus((current) =>
+				"videoUrl" in current ? { ...current, videoUrl: `${jobMediaUrl(current.sessionId)}?relinked=${Date.now()}` } : current,
+			);
+		} catch (err) {
+			setProjectProblem(err instanceof Error ? err.message : "Could not find that recording.");
+		}
+	}
 
 	function refreshSavedEpisodes() {
 		listJobs()
@@ -552,6 +631,8 @@ function App() {
 				regions={regions}
 				onRegionsChange={setRegions}
 				captionsEnabled={captions}
+				missingRecording={missingRecording}
+				onRelink={hasElectronBridge() ? handleRelink : undefined}
 				trimDeadAirEnabled={trimDeadAir}
 				onTrimDeadAirChange={setTrimDeadAir}
 				framingStyle={framingStyle}
@@ -581,6 +662,8 @@ function App() {
 		screen = (
 			<UploadScreen
 				onFileSelected={handleFile}
+				onProjectFile={handleProjectFile}
+				projectProblem={projectProblem}
 				savedEpisodes={savedEpisodes}
 				onReopen={handleReopen}
 				onDelete={handleDelete}
@@ -591,6 +674,7 @@ function App() {
 	return (
 		<AppWindow
 			fileName={"fileName" in status ? status.fileName : undefined}
+			onSaveProject={"sessionId" in status && !isFixtureMode() ? handleSaveProject : undefined}
 			serviceOk={status.state === "checking" ? undefined : health !== null}
 			themeMode={themeMode}
 			onThemeModeChange={setThemeMode}

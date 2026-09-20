@@ -31,6 +31,7 @@ from pipeline.fuse import fuse
 from pipeline import jobs
 from pipeline.lipsync import analyse
 from pipeline.paths import DATA_DIR
+from pipeline import project
 from pipeline.progress import (
 	clear_render_progress,
 	face_thumbnail,
@@ -236,14 +237,112 @@ def put_job_edit_endpoint(job_id: str, edit: dict = Body(...)) -> dict:
 	return {"saved": True}
 
 
+@app.get("/jobs/{job_id}/project")
+def get_job_project_endpoint(job_id: str, outputPath: str | None = None) -> Response:
+	"""Save this episode as a `.cutroom` file: the document the editor owns.
+
+	`outputPath` is the desktop app's route -- it asks where to save first and
+	the file is written straight there, same as `/export`. Without one the
+	archive streams back and the browser downloads it. Either way the
+	recording is referenced, not contained: see pipeline/project.py."""
+	if jobs.load_result(job_id) is None:
+		raise HTTPException(404, "No finished job with that id.")
+	filename = project.project_filename(jobs.original_filename(job_id))
+
+	if outputPath:
+		destination = Path(outputPath)
+		if not destination.parent.is_dir():
+			raise HTTPException(400, f"No such folder: {destination.parent}")
+		try:
+			project.write_project(job_id, destination)
+		except project.NotAProject as err:
+			raise HTTPException(400, str(err)) from err
+		return JSONResponse({"outputPath": str(destination)})
+
+	# Built in a temp directory and deleted once the response has been sent;
+	# `BackgroundTask` is what the export path already uses for this.
+	staging = Path(tempfile.mkdtemp())
+	try:
+		written = project.write_project(job_id, staging / filename)
+	except project.NotAProject as err:
+		shutil.rmtree(staging, ignore_errors=True)
+		raise HTTPException(400, str(err)) from err
+	return FileResponse(
+		written,
+		filename=filename,
+		media_type="application/zip",
+		background=BackgroundTask(shutil.rmtree, staging, ignore_errors=True),
+	)
+
+
+@app.post("/projects/open")
+async def open_project_endpoint(file: UploadFile) -> dict:
+	"""Open a `.cutroom` file as a job, so an episode saved last month (or on
+	another machine) is editable again without reprocessing.
+
+	`sourceFound` says whether the recording the project points at is
+	actually readable here. False is a normal outcome, not a failure -- the
+	project opened, the media needs relinking -- so the transcript, the faces
+	and the edit all load and the app asks for the recording."""
+	job_id = str(uuid.uuid4())
+	staging = Path(tempfile.mkdtemp())
+	archive = staging / "upload.cutroom"
+	try:
+		with archive.open("wb") as handle:
+			shutil.copyfileobj(file.file, handle)
+		try:
+			manifest = project.read_project(archive, job_id)
+		except project.NotAProject as err:
+			# Nothing partial is left behind: a refused project may still have
+			# written some of its members before the refusal.
+			jobs.delete_job(job_id)
+			raise HTTPException(400, str(err)) from err
+	finally:
+		shutil.rmtree(staging, ignore_errors=True)
+
+	recorded = (manifest.get("source") or {}).get("path")
+	if recorded:
+		with contextlib.suppress(project.NotAProject, OSError):
+			project.relink(job_id, Path(recorded))
+
+	return {
+		"jobId": job_id,
+		"filename": manifest.get("filename"),
+		"sourceFound": project.source_is_available(job_id),
+		"sourcePath": recorded,
+	}
+
+
+@app.post("/jobs/{job_id}/relink")
+def relink_job_endpoint(job_id: str, path: str = Body(..., embed=True)) -> dict:
+	"""Point an opened project at its recording.
+
+	Needed because a project references media rather than containing it, so
+	the path it recorded can be wrong on another machine, after a move, or --
+	for a recording in a synced folder -- once the file has been evicted to
+	cloud-only. `path` comes from Electron's `webUtils.getPathForFile`, the
+	same as `/process/local`: it resolves only for a file the user picked."""
+	if jobs.load_result(job_id) is None:
+		raise HTTPException(404, "No finished job with that id.")
+	try:
+		project.relink(job_id, Path(path))
+	except project.NotAProject as err:
+		raise HTTPException(400, str(err)) from err
+	return {"sourceFound": project.source_is_available(job_id)}
+
+
 @app.get("/jobs/{job_id}/media")
 def job_media_endpoint(job_id: str) -> FileResponse:
 	"""The original recording, for a reopened saved episode -- there's no
 	browser-held `File` object to play from once the tab that uploaded it is
 	gone. `FileResponse` serves Range requests on its own, which video
 	playback and scrubbing both need."""
+	# `is_file()` follows the link: a job whose recording has moved still has
+	# an `input.*` entry pointing at nothing, and handing that to FileResponse
+	# is a 500 rather than an answer. Relinking exists precisely because this
+	# happens, so it has to report cleanly.
 	path = jobs.input_path(job_id)
-	if path is None:
+	if path is None or not path.is_file():
 		raise HTTPException(404, "No uploaded recording for that job.")
 	return FileResponse(path)
 
@@ -610,8 +709,10 @@ async def export_endpoint(
 	frame_h = faces_data["frameHeight"]
 
 	input_path = jobs.input_path(jobId)
-	if input_path is None:
-		raise HTTPException(404, "No uploaded recording found for that job. Try exporting from the editor again.")
+	if input_path is None or not input_path.is_file():
+		# Same dangling-link case as `/jobs/{id}/media`: better to say the
+		# recording is missing than to let ffmpeg fail on it minutes later.
+		raise HTTPException(404, "No readable recording for that episode -- it may have moved. Reopen it and point Cutroom at the file again.")
 
 	# Not a `with tempfile.TemporaryDirectory()` -- FileResponse below streams
 	# the output from disk *after* this function returns, so the directory

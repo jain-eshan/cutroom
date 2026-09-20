@@ -166,14 +166,51 @@ ordering; [ARCHITECTURE.md](ARCHITECTURE.md)'s Roadmap mirrors it.
     survived killing and restarting the server, and refused with 404 for a
     job that doesn't exist. 237 backend tests (was 229), 107 frontend (was
     89).
-  - Not done, and the other half of this item: an explicit, portable
-    `.cutroom` project file (Save a copy / Open), and a relink prompt for
-    when the recording moves. A project file points at the recording rather
-    than containing it -- the reference episode is 5.3GB, and its source
-    lives in OneDrive, where being moved or evicted to cloud-only is a
-    question of when. Everything a project file needs is already on disk and
-    comes to about 1.5MB for a 53-minute episode (0.5MB gzipped result,
-    40KB waveform, 956KB thumbnails, the edit).
+- **Episodes are documents: the `.cutroom` project file, done 2026-09-20.**
+  The other half of the item above, and the founder's actual ask ("save the
+  edit file, just like how Photoshop and other tools have an option to save
+  it"). Autosave means work is never lost; a project file means an episode is
+  something you own, can back up, move between machines or hand to someone
+  who has the footage.
+  - `server/pipeline/project.py` writes a zip of everything but the
+    recording: manifest, `result.json`, `edit.json`, `waveform.json` and the
+    timeline thumbnails. **1.2MB measured on the real 53-minute episode**,
+    against a 5.3GB recording. `audio.wav` is deliberately excluded -- it is
+    a processing intermediate and `/export` reads the recording itself, so
+    nothing needs it to reopen or re-render.
+  - The recording is referenced, not contained, as every video editor does
+    it. The manifest records its real path (resolved, not the job's own
+    symlink, which means nothing elsewhere), and opening a project relinks
+    automatically when that path still works. When it doesn't, the episode
+    opens fully editable and the editor asks for the file. This matters
+    concretely here: the reference recording lives in OneDrive.
+  - Endpoints: `GET /jobs/{id}/project` (streams, or writes to a chosen path
+    like `/export` does), `POST /projects/open`, `POST /jobs/{id}/relink`.
+    Native Save As and recording pickers were added to the Electron bridge;
+    *opening* deliberately uses a plain file input, which serves the desktop
+    app and the browser alike for 1.2MB of bytes.
+  - Reading a project is the only place in this codebase that treats its
+    input as hostile -- it is a file from outside. Members are taken from an
+    allowlist and thumbnail paths are rebuilt from a parsed index, rather
+    than sanitising the archive's own strings, so zip-slip has nothing to
+    work with. Declared sizes are checked before anything is written. A
+    newer format version, a missing transcript, a damaged manifest or a file
+    that isn't a zip are each refused with a sentence, and a refused project
+    leaves no half-made job behind.
+  - **Found and fixed while verifying:** a job whose recording had moved kept
+    an `input.*` symlink pointing at nothing, so `/jobs/{id}/media` returned
+    a 500 and `/export` would have failed inside ffmpeg minutes later. Both
+    now check `is_file()` and report that the recording moved.
+  - Verified end to end over a real socket against an isolated server seeded
+    with the real episode's own data: saved a 1.2MB project named after the
+    recording, reopened it as a new episode with all 117 turns, 8,824 word
+    timings, 4 people and the edit intact, played the recording through it,
+    broke the link the way a synced folder would, got a clean 404, relinked
+    and played again. 272 backend tests (was 237), 107 frontend.
+  - Not verified in a browser: "Save a copy" and the relink button. Both are
+    behind a real session, and the service's CORS allowlist is `:3460` only,
+    so a scratch dev server can't reach it -- the same friction every
+    browser check in this document has hit. Worth deciding on separately.
 - **The host test still hasn't happened.** A host is lined up within two weeks.
 
 ### How progress is measured

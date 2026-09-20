@@ -19,6 +19,11 @@ contextBridge.exposeInMainWorld("cutroom", {
 	getPathForFile: (file) => webUtils.getPathForFile(file),
 	chooseExportPath: (defaultName) => ipcRenderer.invoke("choose-export-path", defaultName),
 	showItemInFolder: (path) => ipcRenderer.invoke("show-item-in-folder", path),
+	// Project files. `chooseRecording` hands back a path the *user* picked in
+	// a native dialog, the same trust boundary as `getPathForFile`: the page
+	// can ask for a picker, it can't name a path itself.
+	chooseProjectSavePath: (defaultName) => ipcRenderer.invoke("choose-project-save-path", defaultName),
+	chooseRecording: (defaultName) => ipcRenderer.invoke("choose-recording", defaultName),
 	// Updates: the current state once, then every change. Returns an
 	// unsubscribe function.
 	onUpdate: (callback) => {

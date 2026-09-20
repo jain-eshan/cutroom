@@ -159,6 +159,27 @@ ipcMain.handle("choose-export-path", async (_event, defaultName) => {
 	return canceled ? null : filePath;
 });
 
+// The project file. Saving needs a native Save As (the renderer can't write
+// to a path), and relinking needs a native picker (the service needs a real
+// path to link to). *Opening* a project needs neither: it is 1.5MB of bytes,
+// so a plain file input serves the desktop app and the browser alike.
+ipcMain.handle("choose-project-save-path", async (_event, defaultName) => {
+	const { canceled, filePath } = await dialog.showSaveDialog({
+		defaultPath: defaultName,
+		filters: [{ name: "Cutroom project", extensions: ["cutroom"] }],
+	});
+	return canceled ? null : filePath;
+});
+
+ipcMain.handle("choose-recording", async (_event, defaultName) => {
+	const { canceled, filePaths } = await dialog.showOpenDialog({
+		title: defaultName ? `Find ${defaultName}` : "Find the recording",
+		properties: ["openFile"],
+		filters: [{ name: "Recording", extensions: ["mp4", "mov", "m4v", "mkv", "webm", "avi", "wav", "mp3", "m4a"] }],
+	});
+	return canceled ? null : (filePaths[0] ?? null);
+});
+
 ipcMain.handle("show-item-in-folder", (_event, filePath) => {
 	shell.showItemInFolder(filePath);
 });
