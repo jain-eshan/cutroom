@@ -73,6 +73,8 @@ visits like one.
   banner.
 - **PostHog** — clicks on the download and GitHub buttons, and whether the
   waitlist section was reached and filled in. Session recording is off.
+- **Amplitude** — one page-view event per visit. Autocapture and session
+  replay are off.
 - **Tally** — the waitlist form itself, when it's open. Your email is used to
   invite you to try Cutroom. Reply to any email from us and we'll remove you.
 
@@ -88,7 +90,7 @@ they use is a write-only ingest key: it can add an event and read nothing.
 ## For maintainers
 
 Telemetry is dormant in a plain checkout. Both halves read
-`VITE_POSTHOG_KEY`, and with it unset nothing initialises, nothing is sent,
+`VITE_POSTHOG_KEY` (and the site's Amplitude event reads `VITE_AMPLITUDE_API_KEY`), and with it unset nothing initialises, nothing is sent,
 and the site doesn't even ship the PostHog bundle. Set it in Vercel's
 environment variables for the site, and at build time for a release of the
 app.
