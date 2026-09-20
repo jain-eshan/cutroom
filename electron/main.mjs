@@ -135,6 +135,15 @@ function createWindow() {
 			: {}),
 		webPreferences: { preload: path.join(__dirname, "preload.cjs") },
 	});
+	// A target="_blank" link -- the credits sheet's licence links -- would
+	// otherwise open a second Electron window with no address bar and no way
+	// back. Hand them to the real browser instead, and only ever http(s):
+	// `deny` is the default for anything else, so a file:// or custom-scheme
+	// URL is dropped rather than passed to the OS to open.
+	win.webContents.setWindowOpenHandler(({ url }) => {
+		if (/^https?:\/\//.test(url)) shell.openExternal(url);
+		return { action: "deny" };
+	});
 	win.loadURL(`http://127.0.0.1:${FRONTEND_PORT}/`);
 }
 
