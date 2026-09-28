@@ -842,6 +842,26 @@ the founder's call, to find testers and contributors early:
     measuring in the packaged app first -- these numbers are from a dev
     server proxying a 5.3GB file over HTTP range requests, and a local file
     may do better.
+  - **Fixed 2026-09-29: one decode, drawn into a canvas per pane.**
+    `CroppedVideo` now copies its crop out of the driver `<video>` on every
+    frame the driver presents (`requestVideoFrameCallback`), so there is no
+    second `<video>` and no `sync()` to keep panes in step.
+  - Measured in headless Chromium on a synthetic 1080p, 14 Mbps, 30fps clip
+    served over HTTP range requests, old code against new on the same
+    setup. A close-up ran at 30fps either way, so decoding two streams is
+    not by itself the problem on this Mac. A both-on-screen shot is where
+    it showed: the old code ran three decodes, its panes at 25fps and the
+    whole editor redrawing at 30Hz instead of 60; the new code ran one, at
+    29.8fps with the editor at 60Hz. The crop drawn is the same as before
+    (screenshots compared).
+  - Not reproduced: the 4fps itself. The real recording is online-only in
+    OneDrive (0 bytes on disk), so it couldn't be replayed without a 5.7GB
+    download. 4fps is exactly the "every ~250ms" symptom of ARCHITECTURE.md
+    bug #11, the pane `sync()` race, which suggests that race was back on
+    real footage; the new code has no sync to race. Still owed: a replay of
+    the real episode, ideally with the file kept on the device. If it
+    plays smoothly, the word highlight's `requestAnimationFrame` approach
+    (rejected above because it made things worse) is worth another try.
 
 ### Then, ordered by what the host test shows
 
