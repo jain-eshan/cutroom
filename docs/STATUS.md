@@ -67,7 +67,7 @@ Everything below was measured on a real recording (a four-person, 53-minute
 | Export completes and is faithful | **95,436 frames in -> 95,436 out**, duration exact, 1920x1080 preserved, audio stream-copied **bit-identical** (matching MD5), 3.5GB out, peak 949MB RAM |
 | Diarisation does **not** hold up at length | 4 people -> **2 speakers, 34 turns in 53 min** (median turn 33s, longest 6.4 min). See "What's left" |
 
-**Checks:** 119 backend tests and 113 frontend tests (`npm test`) passing, `tsc` clean, `oxlint` clean (two
+**Checks:** 119 backend tests and 146 frontend tests (`npm test`) passing, `tsc` clean, `oxlint` clean (two
 deliberate, documented warnings), production build clean, full flow verified
 in a real browser against real footage.
 
@@ -822,6 +822,28 @@ the founder's call, to find testers and contributors early:
     measurement", pending a reference edit to measure against
     (EDGE_CASES.md section 5). This is the evidence that the measurement is
     now worth doing.
+  - **The hold, fixed 2026-09-29.** A long close-up now comes out to wide
+    on a beat (a sentence end, or a pause of a second or more) and goes
+    back in on another (`breakLongCloseUps` in `regions.ts`, paces in
+    `FRAMING_STYLE_BREAK_S`). Founder calls: wide rather than a listener's
+    reaction shot, since wide can't pick the wrong person or an off-camera
+    face; and the slower of two paces offered. Composites are never broken,
+    and a break that would leave a stub under half a hold is skipped.
+    Re-measured on the same episode:
+
+    | Style | Shots on screen | On a face | Median close-up | Longest | Change every |
+    |---|---|---|---|---|---|
+    | Long answers (before) | 33 regions | 93% | 51s | 589s | ~65s |
+    | Long answers | 79 regions | 76% | 29s | 53s | ~22s |
+    | Most answers (before) | 37 regions | 95% | 47s | 589s | ~60s |
+    | Most answers | 129 regions | 68% | 15s | 38s | ~13s |
+
+    No shot under two seconds either way. The styles now differ in a way
+    you can see. Still a guess against no reference edit, and still slower
+    than the 5-15s the paragraph above cites, at the founder's choice. The
+    host test is the check. Episodes already edited keep their saved shots;
+    only new suggestions, "Reset to suggested", or re-applying a style pick
+    this up.
 
 - **The editor runs at about 4fps while a cropped shot plays.** Measured in
   a browser on the reference episode: 21 frames in 9 seconds, median frame

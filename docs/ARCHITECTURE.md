@@ -1061,12 +1061,17 @@ rather than features:
   1.2MB on the reference episode, with the recording referenced and relinked
   when it moves. `GET /jobs/{id}/project`, `POST /projects/open`,
   `POST /jobs/{id}/relink`.
-- **Make the editor legible.** Speaker lanes are unlabelled and only three
+- ~~**Make the editor legible.**~~ Done 2026-09-20 (PR #19). Speaker lanes are unlabelled and only three
   colours wide (a fourth speaker wears the first one's colour, in both the
   lanes and the transcript dots); "Captions on" reads as a button but is a
   status label for the export, and captions are never drawn in the preview;
   the zoom controls sit disabled at rest and read as dead. All found by the
   founder reading the shipped editor as a new user would -- see STATUS.md.
+
+- ~~**The automatic edit holds one face for minutes**~~: done 2026-09-29.
+  Long close-ups go wide on a sentence end at a per-style pace
+  (`breakLongCloseUps` in `regions.ts`); a camera change every ~22s or ~13s
+  on the reference episode, down from about once a minute.
 
 **Then, ordered by what the host test shows:** batched processing for long
 recordings, text-based editing, per-instant face visibility and crop smoothing,

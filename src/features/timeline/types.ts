@@ -81,6 +81,24 @@ export const FRAMING_STYLE_MIN_LINE_S: Record<FramingStyle, number | null> = {
 };
 
 /**
+ * How long a close-up holds before the camera comes back out to wide, and
+ * for how long, in seconds. Both land on the next sentence end, so they are
+ * the least a shot runs, not its exact length.
+ *
+ * Without this a close-up ran until the next shot or a 3s silence, so a long
+ * answer held one face for as long as it lasted: 589s on the reference
+ * episode, with a cut about once a minute. Product call, 2026-09-29: go wide
+ * (not to a listener's reaction shot) at the slower of two paces offered.
+ * Measured on that episode, a camera change every ~22s for `gentle` and
+ * ~13s for `dynamic`; still not measured against a professional edit.
+ */
+export const FRAMING_STYLE_BREAK_S: Record<FramingStyle, { hold: number; wide: number } | null> = {
+	wideOnly: null,
+	gentle: { hold: 25, wide: 8 },
+	dynamic: { hold: 12, wide: 5 },
+};
+
+/**
  * Named for what you get, not for a temperament.
  *
  * "Gentle" and "Dynamic" said nothing about the result and, measured on a
@@ -94,10 +112,12 @@ export const FRAMING_STYLE_LABELS: Record<FramingStyle, string> = {
 	dynamic: "Most answers",
 };
 
-/** The rule in a sentence, built from the number the suggestions really use. */
+/** The rule in a sentence, built from the numbers the suggestions really use. */
 export function framingStyleRule(style: FramingStyle): string {
 	const seconds = FRAMING_STYLE_MIN_LINE_S[style];
-	return seconds === null
+	const pace = FRAMING_STYLE_BREAK_S[style];
+	return seconds === null || pace === null
 		? "Everyone stays in frame. No close-ups suggested."
-		: `Cut to a close-up when someone has been talking for ${seconds} seconds.`;
+		: `Cut to a close-up when someone has been talking for ${seconds} seconds. ` +
+				`On a long answer, go wide for ${pace.wide} seconds about every ${pace.hold}.`;
 }

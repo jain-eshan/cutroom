@@ -197,6 +197,7 @@ function App() {
 					fixtureCast.speakerToPerson,
 					fixtureData.faces.people,
 					"gentle",
+					fixtureData.words,
 				)
 			: [],
 	);
@@ -650,7 +651,14 @@ function App() {
 					// same safe default, not whatever the previous one ended on.
 					setFramingStyle("gentle");
 					setRegions(
-						suggestRegions(status.turns, status.overlapWindows, cast.speakerToPerson, status.faces.people, "gentle"),
+						suggestRegions(
+							status.turns,
+							status.overlapWindows,
+							cast.speakerToPerson,
+							status.faces.people,
+							"gentle",
+							status.words,
+						),
 					);
 					// On when this install can burn captions in; never requested when it
 					// can't, since /export would refuse the whole job.

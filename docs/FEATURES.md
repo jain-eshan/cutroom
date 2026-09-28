@@ -103,11 +103,18 @@ face positions:
   instead of a wall of narrow panes, though a composite of any size can
   still be added by hand.
 
-The suggested shots are simple today: a close-up of whoever says each line,
-everyone involved wherever people talk over each other for a second or more,
-and wide in between. That cuts to people who only say a word and flashes the
-wide shot at every pause. The rules meant to replace it, and every known edge
-case, are in [EDGE_CASES.md](EDGE_CASES.md).
+The suggested shots follow the rules in [EDGE_CASES.md](EDGE_CASES.md): a
+close-up on whoever holds the floor once they've talked long enough for the
+chosen style, both on screen when people genuinely talk over each other, and
+wide through real silences. A long answer comes back out to wide on a
+sentence end every so often and goes back in on another, so one face never
+holds for minutes. "Long answers" holds about 25 seconds and goes wide for
+about 8; "Most answers" holds about 12 and goes wide for about 5. On the
+53-minute reference episode that is a camera change every ~22s and ~13s,
+where it used to be about once a minute with one close-up lasting 589s.
+
+*Rules:* `src/features/timeline/regions.ts` (`suggestRegions`), with each
+style's numbers in `types.ts`.
 
 *Implementation:* `src/lib/faceCrop.ts` (live preview math),
 `server/pipeline/framing.py` + `render.py` (export render math — same

@@ -560,3 +560,10 @@ numbers were measured. **Not done yet** -- 2026-09-17's verification used the
 section 1 table and fixture data, not a real recording; the founder's own
 "We have to improve the video editing a lot" complaint hasn't had a
 real-footage retest since these fixes landed.
+
+**First real-footage measurement, 2026-09-20; acted on 2026-09-29.** Run
+over the 53-minute reference episode, the suggestions held one face for up
+to 589s and changed shot about once a minute. Long close-ups now go wide on
+a sentence end at a per-style pace; the before and after numbers are in
+STATUS.md ("Found 2026-09-20"). The professional-edit comparison is still
+not done.
