@@ -12,6 +12,7 @@ declare global {
 			chooseProjectSavePath: (defaultName: string) => Promise<string | null>;
 			chooseRecording: (defaultName?: string) => Promise<string | null>;
 			showItemInFolder: (path: string) => void;
+			saveProblemReport: () => Promise<string>;
 			onUpdate: (callback: (state: UpdateState) => void) => () => void;
 			openDownloadPage: () => void;
 			restartToUpdate: () => void;
@@ -61,6 +62,12 @@ export function chooseRecording(defaultName?: string): Promise<string | null> {
 /** Reveals a finished render in the OS file browser. */
 export function showItemInFolder(path: string): void {
 	window.cutroom?.showItemInFolder(path);
+}
+
+/** Writes a problem report to Downloads and shows it there; resolves to
+ * where it went. Desktop app only. */
+export function saveProblemReport(): Promise<string> | undefined {
+	return window.cutroom?.saveProblemReport();
 }
 
 /** A newer release than the one running, from electron/main.mjs's update

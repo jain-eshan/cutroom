@@ -178,12 +178,11 @@ def relink(job_id: str, source: Path) -> None:
 	A project carries a path, not the media, so opening one on another
 	machine -- or after the recording moved, which for a file in a synced
 	folder is a question of when -- leaves the job with nothing to play or
-	export. Symlinked, exactly as `/process/local` does it, so relinking
+	export. Linked, exactly as `/process/local` does it, so relinking
 	never copies a multi-GB file either."""
 	if not source.is_file():
 		raise NotAProject(f"No such file: {source}")
-	destination = jobs.save_input(job_id, source.name)
-	destination.symlink_to(source.resolve())
+	jobs.link_input(job_id, source)
 
 
 def source_is_available(job_id: str) -> bool:

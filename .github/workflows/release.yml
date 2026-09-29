@@ -165,7 +165,7 @@ jobs:
           id=$(cat ids.txt)
 
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$id/assets" \
-            -q '.[].name' | sort > got.txt
+            -q '.[].name' | grep -vx "SHA256SUMS.txt" | sort > got.txt  # added by the next step
           printf '%s\n' \
             "Cutroom-${TAG#v}-arm64-mac.zip" \
             "Cutroom-${TAG#v}-arm64-mac.zip.blockmap" \
@@ -188,3 +188,34 @@ jobs:
             exit 1
           fi
           echo "Release $id for $TAG has all 8 expected assets."
+
+      # The builds aren't code-signed yet, so a checksum is the honest way to
+      # tell a real download from a tampered one: README.md's "Check your
+      # download" tells people how to compare. Added to the release notes, so
+      # it sits beside the files, and as SHA256SUMS.txt for scripts.
+      - name: Publish SHA-256 checksums with the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir sums && cd sums
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            -p "Cutroom-arm64.dmg" -p "Cutroom-${TAG#v}-arm64-mac.zip" -p "Cutroom-Setup.exe"
+          sha256sum Cutroom-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body > notes.md
+          # A re-run has already added them; the file upload above replaced its copy.
+          if grep -q "### Check your download" notes.md; then exit 0; fi
+          {
+            echo
+            echo "### Check your download"
+            echo
+            echo "SHA-256 of each file. How to compare: https://github.com/$GITHUB_REPOSITORY#check-your-download"
+            echo
+            echo '```'
+            cat SHA256SUMS.txt
+            echo '```'
+          } >> notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md

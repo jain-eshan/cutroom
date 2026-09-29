@@ -12,7 +12,7 @@ import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { Logo } from "@/components/Logo";
 import { CreditsSheet } from "@/components/Credits";
 import { UsageDataSheet } from "@/components/UsageData";
-import { hasElectronBridge, openDownloadPage, restartToUpdate, useUpdateState } from "@/lib/electron";
+import { hasElectronBridge, openDownloadPage, restartToUpdate, saveProblemReport, useUpdateState } from "@/lib/electron";
 import type { ThemeMode } from "@/lib/theme";
 
 type Variant = "primary" | "secondary" | "quiet" | "ghost" | "destructive" | "inert";
@@ -350,8 +350,10 @@ function UpdateNotice() {
 
 /** macOS draws its own traffic lights in the desktop app (the window's title
  * bar is hidden, see electron/main.mjs), so the title bar leaves room for
- * them there and draws them only in a plain browser. */
+ * them there and draws them only in a plain browser. Windows keeps its own
+ * title bar and buttons, so the desktop app draws neither there. */
 const NATIVE_LIGHTS = hasElectronBridge() && /Mac/.test(navigator.userAgent);
+const DRAWN_LIGHTS = !hasElectronBridge();
 
 /**
  * Every stage sits in the same window: the title bar with the mark, the
@@ -384,9 +386,8 @@ export function AppWindow({
 	return (
 		<div className="flex h-screen flex-col bg-panel">
 			<header className="flex h-11 shrink-0 items-center gap-[14px] border-b border-line bg-chrome px-[14px] select-none [-webkit-app-region:drag]">
-				{NATIVE_LIGHTS ? (
-					<span className="w-[47px] shrink-0" />
-				) : (
+				{NATIVE_LIGHTS && <span className="w-[47px] shrink-0" />}
+				{DRAWN_LIGHTS && (
 					<span className="flex gap-[7px]" aria-hidden="true">
 						<span className="h-[11px] w-[11px] rounded-full bg-tl-red" />
 						<span className="h-[11px] w-[11px] rounded-full bg-tl-amber" />
@@ -412,6 +413,18 @@ export function AppWindow({
 						</button>
 					)}
 					<UpdateNotice />
+					{/* Desktop only: the report is the processing service's own
+					    output, which only the desktop app holds. */}
+					{hasElectronBridge() && (
+						<button
+							type="button"
+							onClick={() => void saveProblemReport()}
+							title="Saves a file to your Downloads folder describing this install and what the processing service printed recently, to attach to an issue. Folder names are left out, and nothing is sent anywhere."
+							className="font-mono text-mono-xs leading-none text-text3 hover:text-text2"
+						>
+							report a problem
+						</button>
+					)}
 					{/* The licences of the models Cutroom ships have to be readable
 					    from inside the app, not only in the repository. */}
 					<button

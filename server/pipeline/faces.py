@@ -150,6 +150,17 @@ def get_video_fps(video_path: str) -> float:
 	return float(fps)
 
 
+# Models are handed to OpenCV as bytes rather than paths. On Windows its file
+# loading uses the narrow-character APIs, which can't open a path containing
+# a Cyrillic or Chinese username -- and both models live under the user's
+# profile. Python opens the file instead, which has no such limit.
+_NO_CONFIG = np.empty(0, np.uint8)
+
+
+def _model_bytes(path) -> np.ndarray:
+	return np.frombuffer(path.read_bytes(), np.uint8)
+
+
 def detect_and_track_faces(
 	video_path: str,
 	interval_s: float = 1.0,
@@ -191,7 +202,7 @@ def detect_and_track_faces(
 	# full-length episode, while 5-minute test clips never showed it.
 	expected_frames = max(1, int(get_video_duration(video_path) / interval_s))
 	detector = None
-	recognizer = cv2.FaceRecognizerSF.create(str(RECOGNITION_MODEL), "")
+	recognizer = cv2.FaceRecognizerSF.create("onnx", _model_bytes(RECOGNITION_MODEL), _NO_CONFIG)
 
 	next_id = 0
 	active: dict[int, dict] = {}
@@ -202,7 +213,7 @@ def detect_and_track_faces(
 		sampled_frames = i + 1
 		if detector is None:
 			h, w = frame.shape[:2]
-			detector = cv2.FaceDetectorYN.create(str(DETECTION_MODEL), "", (w, h), score_threshold=0.6)
+			detector = cv2.FaceDetectorYN.create("onnx", _model_bytes(DETECTION_MODEL), _NO_CONFIG, (w, h), score_threshold=0.6)
 		if progress is not None and i % 10 == 0:
 			progress(min(1.0, i / expected_frames))
 

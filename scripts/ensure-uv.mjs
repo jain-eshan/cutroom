@@ -24,7 +24,9 @@ const INSTALL_TIMEOUT_MS = 120_000;
 
 function run(command, args, { timeoutMs, ...options } = {}) {
 	return new Promise((resolve) => {
-		const child = spawn(command, args, { stdio: "ignore", ...options });
+		// windowsHide: the PowerShell installer would otherwise flash a console
+		// window over the setup screen on Windows.
+		const child = spawn(command, args, { stdio: "ignore", windowsHide: true, ...options });
 		const timer = setTimeout(() => child.kill(), timeoutMs ?? INSTALL_TIMEOUT_MS);
 		const settle = (value) => {
 			clearTimeout(timer);

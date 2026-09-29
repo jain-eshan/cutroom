@@ -30,8 +30,10 @@ test("a service serving a different library is refused, with both paths", () => 
 	assert.equal(verdict.adopt, false);
 	assert.equal(verdict.confirmed, true);
 	// Both, because "wrong service" is not actionable without them.
-	assert.equal(verdict.theirs, theirs);
-	assert.equal(verdict.ours, OURS);
+	// Resolved, as the verdict reports them: on Windows a POSIX-style path
+	// gains a drive letter.
+	assert.equal(verdict.theirs, path.resolve(theirs));
+	assert.equal(verdict.ours, path.resolve(OURS));
 });
 
 test("a service that can't be reached is adopted rather than refused", () => {

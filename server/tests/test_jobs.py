@@ -193,3 +193,36 @@ class TestSpaceCheck:
 		# is there yet, and shutil.disk_usage needs a path that exists.
 		monkeypatch.setattr(jobs, "JOBS_DIR", tmp_path / "not" / "created" / "yet")
 		assert jobs.free_bytes() > 0
+
+
+class TestLinkInput:
+	"""A recording read where it is, not copied. Windows refuses symlinks to
+	anyone without admin rights or Developer Mode (WinError 1314), and CI's
+	Windows runners are admins, so the refusal has to be simulated to test."""
+
+	def test_a_symlink_where_the_os_allows_one(self, tmp_path):
+		source = tmp_path / "My Episode.mp4"
+		source.write_bytes(b"video")
+		linked = jobs.link_input("j", source)
+		assert linked.name == "input.mp4"
+		assert jobs.input_path("j").read_bytes() == b"video"
+
+	def test_the_path_is_written_down_where_symlinks_are_refused(self, tmp_path, monkeypatch):
+		source = tmp_path / "Épisode 一.mp4"
+		source.write_bytes(b"video")
+
+		def refuse(self, target):
+			raise OSError(1314, "A required privilege is not held by the client")
+
+		monkeypatch.setattr(type(tmp_path), "symlink_to", refuse)
+		jobs.link_input("j", source)
+		assert jobs.input_path("j") == source.resolve()
+		assert jobs.input_path("j").read_bytes() == b"video"
+
+	def test_a_new_input_replaces_a_written_down_path(self, tmp_path, monkeypatch):
+		source = tmp_path / "old.mp4"
+		source.write_bytes(b"old")
+		monkeypatch.setattr(type(tmp_path), "symlink_to", lambda self, target: (_ for _ in ()).throw(OSError(1314, "no")))
+		jobs.link_input("j", source)
+		jobs.save_input("j", "new.mp4").write_bytes(b"new")
+		assert jobs.input_path("j").read_bytes() == b"new"
