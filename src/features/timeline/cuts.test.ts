@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { activeCuts, findCuts, isKept, remapTime, skipTo, totalCut } from "./cuts.ts";
+import { activeCuts, findCuts, isKept, remapTime, skipTo, totalCut, wordCuts, wordsLeft } from "./cuts.ts";
 
 const word = (start: number, end: number, text: string) => ({ start, end, text });
 
@@ -110,4 +110,57 @@ test("playback inside a cut jumps to its end", () => {
 	assert.equal(skipTo(3, drops), 4);
 	assert.equal(skipTo(4, drops), null);
 	assert.equal(skipTo(1, drops), null);
+});
+
+// --- Words struck out of the transcript ------------------------------------
+
+/** "we went there and it was great", one word a second, 0.2s between words
+ * except a 1s pause before "and". */
+const SENTENCE = [
+	word(0, 0.8, "we"),
+	word(1, 1.8, "went"),
+	word(2, 2.8, "there."),
+	word(3.8, 4.6, "and"),
+	word(4.8, 5.6, "it"),
+	word(5.8, 6.6, "was"),
+	word(6.8, 7.6, "great."),
+];
+
+test("a run of struck-out words is one cut, reaching halfway into the gap either side at most", () => {
+	// "it was": 0.2s gaps either side, so 0.1s of each.
+	const cuts = wordCuts(SENTENCE, [4, 5]);
+	assert.equal(cuts.length, 1);
+	assert.ok(Math.abs(cuts[0].start - 4.7) < 1e-9 && Math.abs(cuts[0].end - 6.7) < 1e-9, `${cuts[0].start}-${cuts[0].end}`);
+	assert.equal(cuts[0].kind, "words");
+});
+
+test("a struck-out word after a long pause takes a breath of it, not the whole pause", () => {
+	const [cut] = wordCuts(SENTENCE, [3]); // "and", 1s of silence before it
+	assert.ok(Math.abs(cut.start - 3.65) < 1e-9, `${cut.start}`);
+});
+
+test("words struck out apart are separate cuts, and duplicates or unknown indices change nothing", () => {
+	assert.equal(wordCuts(SENTENCE, [0, 6, 6, 42]).length, 2);
+	assert.deepEqual(wordCuts(SENTENCE, []), []);
+});
+
+test("the first word of the episode can't be cut from before zero", () => {
+	assert.equal(wordCuts(SENTENCE, [0])[0].start, 0);
+});
+
+test("struck-out words are cut whatever was put back from the dead-air trim", () => {
+	const struck = wordCuts(SENTENCE, [4]);
+	const pause = { start: 2.9, end: 3.7, kind: "pause" as const };
+	// The pause was put back; the struck word still goes.
+	const drops = activeCuts([pause], [3.3], struck);
+	assert.equal(drops.length, 1);
+	assert.ok(drops[0].start > 4 && drops[0].end < 6);
+});
+
+test("captions leave out the words that were cut", () => {
+	const drops = activeCuts([], [], wordCuts(SENTENCE, [4, 5]));
+	assert.deepEqual(
+		wordsLeft(SENTENCE, drops).map((w) => w.text),
+		["we", "went", "there.", "and", "great."],
+	);
 });

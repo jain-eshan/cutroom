@@ -889,9 +889,34 @@ the founder's call, to find testers and contributors early:
 - **Batched processing for long recordings**, if the wait loses people. The
   hard part isn't cutting the file into chunks; it's keeping voice and face
   identities consistent across them.
-- **Text-based editing** (delete words in the transcript to cut them), if
-  hosts want to cut content and not just framing. Word-level timings already
-  exist.
+- ~~**Text-based editing**~~ (delete words in the transcript to cut them):
+  **built 2026-09-29, ahead of the host test at the founder's call** ("continue
+  with the roadmap build"). Stacked on PR #22's Cuts, not a second cutting
+  path: struck-out words are one more kind of cut (`wordCuts` in
+  `src/features/timeline/cuts.ts`), so the preview skips them, the Cuts row
+  shows them and the export renders the same list.
+  - Click a line and press X (or "Cut line"), Shift-click for several lines;
+    or click a word and Shift-click another in the same line, then X or
+    Delete. Cut words stay in the transcript struck through; clicking one puts
+    its whole run back, as does clicking it in the Cuts row or "Put back"
+    straight after. Saved as word indices (`removedWords` in `edit.json`),
+    beside `wordEdits`, so it autosaves and travels in a `.cutroom` file.
+  - A cut reaches up to 0.15s into the silence either side, at most half of
+    it, so what's left meets with one natural pause rather than none or two.
+  - Captions and the .srt now leave out cut words (`wordsLeft`), which also
+    fixes PR #22's filler cuts still showing in caption text.
+  - The preview used to skip a cut on `timeupdate`, about four times a
+    second, which let up to a quarter second of a cut word play. It now also
+    arms a timer for the next cut ahead. Measured in the browser: the picture
+    jumped from the frame at 10.633s to 11.867s across a cut of
+    10.615-11.885s, so about one frame of it shows.
+  - Found and fixed on the way: word corrections were never cleared between
+    episodes, so opening a fresh episode after one with corrections applied
+    them to the new one's words (and autosaved them there). Cut words would
+    have done the same, so both now reset whenever an episode opens.
+  - Not in ⌘Z, same as word corrections and kept pauses: undo covers framing.
+    Not verified: a real export with struck words through the service, and
+    anything on real footage.
 - **Per-instant face visibility and crop smoothing**, if framing gets
   complaints. See [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) item 6b.
 - **The 3-pane cap**, decided with feedback from a real four-person show. See

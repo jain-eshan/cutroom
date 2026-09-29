@@ -210,6 +210,9 @@ function App() {
 	// themselves so an autosave carries a handful of replacements rather than
 	// the reference episode's 550KB of timings.
 	const [wordEdits, setWordEdits] = useState<WordEdits>({});
+	// Words struck out of the transcript, by the same indices, which the
+	// export cuts along with any dead air.
+	const [removedWords, setRemovedWords] = useState<number[]>([]);
 	const [captions, setCaptions] = useState(false);
 	const [trimDeadAir, setTrimDeadAir] = useState(false);
 	const [cutStrength, setCutStrength] = useState<CutStrength>("most");
@@ -275,6 +278,7 @@ function App() {
 			cutStrength,
 			keptCuts,
 			wordEdits,
+			removedWords,
 			savedAt: Date.now(),
 		};
 		const fingerprint = editFingerprint(edit);
@@ -302,7 +306,7 @@ function App() {
 			clearTimeout(timer);
 			window.removeEventListener("pagehide", flush);
 		};
-	}, [editSessionId, editCast, regions, framingStyle, captions, trimDeadAir, cutStrength, keptCuts, wordEdits]);
+	}, [editSessionId, editCast, regions, framingStyle, captions, trimDeadAir, cutStrength, keptCuts, wordEdits, removedWords]);
 
 	/** Save the open episode as a `.cutroom` file the user keeps.
 	 *
@@ -395,6 +399,11 @@ function App() {
 	}) {
 		const videoUrl = jobMediaUrl(jobId);
 		const saved = restorableEdit(result.edit);
+		// Both are keyed by word index, so whatever the last episode held would
+		// land on this one's words: a correction on the wrong word, or worse, a
+		// cut. A job with no saved edit starts with neither.
+		setWordEdits(saved?.wordEdits ?? {});
+		setRemovedWords(saved?.removedWords ?? []);
 		if (saved && result.faces.people.length > 0) {
 			setRegions(saved.regions);
 			setFramingStyle(saved.framingStyle);
@@ -402,7 +411,6 @@ function App() {
 			setTrimDeadAir(saved.trimDeadAir);
 			setCutStrength(saved.cutStrength);
 			setKeptCuts(saved.keptCuts);
-			setWordEdits(saved.wordEdits);
 			// Seeded here rather than left null, so reopening an episode and
 			// changing nothing doesn't write an identical edit straight back.
 			lastSaved.current = editFingerprint({ version: EDIT_VERSION, ...saved, savedAt: 0 });
@@ -730,6 +738,8 @@ function App() {
 				onCutStrengthChange={setCutStrength}
 				keptCuts={keptCuts}
 				onKeptCutsChange={setKeptCuts}
+				removedWords={removedWords}
+				onRemovedWordsChange={setRemovedWords}
 				framingStyle={framingStyle}
 				onFramingStyleChange={setFramingStyle}
 				onPublish={(duration) => setStatus({ ...status, state: "publishing", duration })}
@@ -752,6 +762,7 @@ function App() {
 				trimDeadAir={trimDeadAir}
 				cutStrength={cutStrength}
 				keptCuts={keptCuts}
+				removedWords={removedWords}
 				onBack={() => setStatus({ ...status, state: "editing" })}
 				onNew={startOver}
 			/>

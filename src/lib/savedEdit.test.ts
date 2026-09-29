@@ -105,3 +105,9 @@ test("cut settings survive, and anything that isn't a time is dropped", () => {
 	assert.deepEqual(restored?.keptCuts, [12.5]);
 	assert.equal(restorableEdit(edit({ cutStrength: "wild" as never }))?.cutStrength, "most");
 });
+
+test("struck-out words survive, and anything that isn't a word index is dropped", () => {
+	assert.deepEqual(restorableEdit(edit())?.removedWords, []);
+	const restored = restorableEdit(edit({ removedWords: [3, 4, -1, 2.5, "7"] as unknown as number[] }));
+	assert.deepEqual(restored?.removedWords, [3, 4]);
+});

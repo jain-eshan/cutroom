@@ -1071,7 +1071,7 @@ rather than features:
   founder reading the shipped editor as a new user would -- see STATUS.md.
 
 **Then, ordered by what the host test shows:** batched processing for long
-recordings, text-based editing, per-instant face visibility and crop smoothing,
+recordings, ~~text-based editing~~ (built 2026-09-29), per-instant face visibility and crop smoothing,
 the 3-pane cap decision, real render progress, and the landing page with the
 repo rename.
 

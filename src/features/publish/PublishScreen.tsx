@@ -14,7 +14,7 @@ import { track } from "@/lib/telemetry";
 import { formatDuration } from "@/lib/format";
 import { Button, ButtonLink, CheckMark, CommandBlock, RawMessage, Screen, ScreenHeading, SectionLabel } from "@/components/ui";
 import type { FramingRegion } from "@/features/timeline/types";
-import { activeCuts, findCuts, totalCut, type CutStrength, type Span } from "@/features/timeline/cuts";
+import { activeCuts, findCuts, totalCut, wordCuts, wordsLeft, type CutStrength, type Span } from "@/features/timeline/cuts";
 
 /** One finished file. The desktop app writes straight to a path and never
  * holds the render in memory; a plain browser has nothing but a blob. */
@@ -109,6 +109,7 @@ export function PublishScreen({
 	trimDeadAir,
 	cutStrength,
 	keptCuts,
+	removedWords,
 	onBack,
 	onNew,
 }: {
@@ -126,6 +127,8 @@ export function PublishScreen({
 	trimDeadAir: boolean;
 	cutStrength: CutStrength;
 	keptCuts: number[];
+	/** Words struck out of the transcript; cut whether or not dead air is. */
+	removedWords: number[];
 	onBack: () => void;
 	onNew: () => void;
 }) {
@@ -134,9 +137,16 @@ export function PublishScreen({
 	const [audio, setAudio] = useState(false);
 	// The same cuts the editor showed and skipped, worked out the same way.
 	const cuts = useMemo(
-		() => (trimDeadAir ? activeCuts(findCuts(speech, words, duration, cutStrength), keptCuts) : []),
-		[trimDeadAir, speech, words, duration, cutStrength, keptCuts],
+		() =>
+			activeCuts(
+				trimDeadAir ? findCuts(speech, words, duration, cutStrength) : [],
+				keptCuts,
+				wordCuts(words, removedWords),
+			),
+		[trimDeadAir, speech, words, duration, cutStrength, keptCuts, removedWords],
 	);
+	// Captions and the subtitle file are made from what's still said.
+	const captionWords = useMemo(() => wordsLeft(words, cuts), [words, cuts]);
 	const captionsAvailable = health?.captions ?? false;
 	const burnCaptions = captions && captionsAvailable;
 	const changed = regions.filter((r) => r.source === "user").length;
@@ -204,7 +214,7 @@ export function PublishScreen({
 				source: r.source,
 				cropNudge: r.cropNudge,
 			}));
-			keep(filename, outputPath, await exportVideo(sessionId, regionArgs, faces, words, burnCaptions, cuts, outputPath));
+			keep(filename, outputPath, await exportVideo(sessionId, regionArgs, faces, captionWords, burnCaptions, cuts, outputPath));
 			if (audio) {
 				setRender({ status: "rendering", what: "the audio", fraction: 0 });
 				const path = outputPath && sibling(outputPath, ".mp3");
@@ -212,7 +222,7 @@ export function PublishScreen({
 			}
 			if (subtitles) {
 				const path = outputPath && sibling(outputPath, ".srt");
-				keep(`${stem}-edited.srt`, path, await exportSubtitles(words, cuts, path));
+				keep(`${stem}-edited.srt`, path, await exportSubtitles(captionWords, cuts, path));
 			}
 			setRender({ status: "done", made });
 			// One event for both routes: a saved file and a downloaded one are
@@ -272,7 +282,7 @@ export function PublishScreen({
 				<span className="text-section font-semibold text-text">Your episode is ready</span>
 				<p className="text-ui leading-[1.6] text-text2">
 					MP4{burnCaptions ? " with captions burned in" : ""}
-					{trimDeadAir ? ", dead air trimmed" : ""}.
+					{cuts.length > 0 ? `, ${formatDuration(totalCut(cuts))} cut` : ""}.
 				</p>
 				{render.made.map((m) =>
 					m.save.kind === "path" ? (
@@ -326,7 +336,7 @@ export function PublishScreen({
 						<Artefact
 							title="The episode"
 							subline={`${stem}-edited.mp4 · ${size} · ${
-								trimDeadAir ? `${formatDuration(totalCut(cuts))} of dead air cut, audio re-encoded` : "original audio untouched"
+								cuts.length > 0 ? `${formatDuration(totalCut(cuts))} cut, audio re-encoded` : "original audio untouched"
 							}`}
 							checked
 						/>

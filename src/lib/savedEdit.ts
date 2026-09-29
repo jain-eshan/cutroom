@@ -44,6 +44,10 @@ export interface SavedEdit<Region = unknown, Style = string> {
 	 * edit saved before corrections existed, which is not an error: it means
 	 * nothing was corrected. */
 	wordEdits?: WordEdits;
+	/** Indices of the words struck out of the transcript, which the export
+	 * cuts. Absent in an edit saved before text editing existed: nothing
+	 * was struck out. */
+	removedWords?: number[];
 	savedAt: number;
 }
 
@@ -56,6 +60,7 @@ export interface RestoredEdit {
 	cutStrength: CutStrength;
 	keptCuts: number[];
 	wordEdits: WordEdits;
+	removedWords: number[];
 }
 
 const FRAMING_STYLES: FramingStyle[] = ["wideOnly", "gentle", "dynamic"];
@@ -92,6 +97,9 @@ export function restorableEdit(edit: SavedEdit | null | undefined): RestoredEdit
 		wordEdits: Object.fromEntries(
 			Object.entries(edit.wordEdits ?? {}).filter(([, text]) => typeof text === "string"),
 		),
+		removedWords: Array.isArray(edit.removedWords)
+			? edit.removedWords.filter((i) => Number.isInteger(i) && i >= 0)
+			: [],
 	};
 }
 
