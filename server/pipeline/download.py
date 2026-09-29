@@ -57,7 +57,17 @@ def download_once(
 	print(f"[download] {label} to {dest} ...")
 	try:
 		urllib.request.urlretrieve(url, tmp, reporthook=reporthook)
-		os.replace(tmp, dest)
+		try:
+			os.replace(tmp, dest)
+		except PermissionError:
+			# Windows refuses a rename onto a file another rename is landing on
+			# at the same moment (WinError 5); macOS and Linux let the last one
+			# win. Either way a complete copy is in place -- the rename is
+			# atomic, so an existing `dest` is a finished one -- and ours is a
+			# duplicate.
+			if not dest.exists():
+				raise
+			tmp.unlink(missing_ok=True)
 	except Exception as err:
 		tmp.unlink(missing_ok=True)
 		raise RuntimeError(

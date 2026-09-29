@@ -4,6 +4,7 @@ lipsync.py's LR-ASD weights download."""
 import threading
 import time
 import urllib.request
+from pathlib import Path
 
 import pytest
 
@@ -101,3 +102,31 @@ class TestDownloadOnce:
 		assert dest.exists()
 		assert dest.read_text().startswith("content from thread t")
 		assert list(tmp_path.iterdir()) == [dest], "no leftover temp files from either thread"
+
+	def test_losing_a_rename_race_on_windows_uses_the_copy_that_won(self, monkeypatch, tmp_path):
+		# What Windows does when two downloads rename onto the same file at
+		# once: the second is refused with WinError 5 while the first's
+		# complete copy is already in place. CI's Windows runner hit this in
+		# the test above; this pins it on every platform.
+		import os
+
+		dest = tmp_path / "model.bin"
+		monkeypatch.setattr(urllib.request, "urlretrieve", lambda url, filename, reporthook=None: Path(filename).write_bytes(b"ours"))
+
+		def refused(src, dst):
+			Path(dst).write_bytes(b"theirs")
+			raise PermissionError(5, "Access is denied")
+
+		monkeypatch.setattr(os, "replace", refused)
+		assert download_once("http://example.invalid/model.bin", dest, name="the model", label="downloading") == dest
+		assert dest.read_bytes() == b"theirs"
+		assert list(tmp_path.iterdir()) == [dest], "our duplicate must not be left behind"
+
+	def test_a_refused_rename_with_nothing_in_place_is_still_an_error(self, monkeypatch, tmp_path):
+		import os
+
+		monkeypatch.setattr(urllib.request, "urlretrieve", lambda url, filename, reporthook=None: Path(filename).write_bytes(b"ours"))
+		monkeypatch.setattr(os, "replace", lambda src, dst: (_ for _ in ()).throw(PermissionError(5, "Access is denied")))
+		with pytest.raises(RuntimeError, match="Access is denied"):
+			download_once("http://example.invalid/model.bin", tmp_path / "model.bin", name="the model", label="downloading")
+		assert list(tmp_path.iterdir()) == []
