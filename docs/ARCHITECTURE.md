@@ -1021,7 +1021,9 @@ split-screen in both preview and export; speaker diarisation, voices and faces
 both (`pyannote` community-1 plus LR-ASD lip-sync and Hungarian matching);
 smarter cutting (dead air and filler words, opt-in); burned-in captions; the
 Cutroom design system and the region-based framing editor; editor navigation
-(zoom, ruler, overview, shortcuts, undo, snapping).
+(zoom, ruler, overview, shortcuts, undo, snapping); dead air measured from
+the audio and shown on the timeline, an .srt and an MP3 beside the MP4,
+problem reports, and Windows fixes with CI on Windows (2026-09-29).
 
 **Next** (founder decisions: editing basics, then the desktop app, before the
 host test):

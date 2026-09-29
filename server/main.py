@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.background import BackgroundTask
 
 from pipeline.audio import NoAudioTrack, extract_wav
-from pipeline.captions import CaptionCue, build_caption_cues, write_ass
+from pipeline.captions import cues_for_edit, srt_text, write_ass
 from pipeline.diarize import (
 	MISSING_MODEL_MESSAGE,
 	Diarization,
@@ -52,10 +52,11 @@ from pipeline.render import (
 	Track,
 	build_render_segments,
 	has_ass_filter,
+	render_audio,
 	render_export,
 )
 from pipeline.transcribe import Word, transcribe
-from pipeline.trim import dead_air_ranges, filler_word_ranges, merge_ranges, remap_time
+from pipeline.trim import BadCuts, merge_ranges, parse_cuts
 from pipeline.turns import build_turns
 from pipeline.waveform import compute_timeline_thumbnails, compute_waveform_peaks
 
@@ -430,6 +431,14 @@ def _transcribe_work(wav_path: Path, job_id: str | None) -> tuple[dict, Diarizat
 		"words": [
 			{"start": w.start, "end": w.end, "text": w.text} for seg in segments for w in seg.words
 		],
+		# When anyone is making sound, measured from the audio: the diarisation
+		# segments merged across speakers. Turns can't stand in for this -- a
+		# turn runs straight through a pause in the middle of an answer, so
+		# dead air cut from turns only ever found the gaps between people.
+		# Deliberately speaker-free: separate per-person tracks, if they come,
+		# would each produce speech of their own and merge into this same list,
+		# since a pause is only dead air when everyone is silent.
+		"speech": [{"start": s, "end": e} for s, e in merge_ranges([(seg.start, seg.end) for seg in diarization.segments])],
 	}, diarization
 
 
@@ -641,10 +650,10 @@ async def process_local_endpoint(path: str = Body(..., embed=True), jobId: str |
 	actually picked or dropped (see `electron/preload.mjs`); nothing else in
 	this app lets the renderer name an arbitrary path.
 
-	Symlinked into the job's own directory rather than copied, so "reads it
-	where it is" is literal -- the trade-off being that moving or deleting
-	the source after this point breaks the job, same as it would break any
-	other app with the file open.
+	Linked from the job's own directory rather than copied (see
+	`jobs.link_input`), so "reads it where it is" is literal -- the
+	trade-off being that moving or deleting the source after this point
+	breaks the job, same as it would break any other app with the file open.
 	"""
 	if not diarization_configured():
 		raise HTTPException(400, MISSING_MODEL_MESSAGE)
@@ -664,8 +673,7 @@ async def process_local_endpoint(path: str = Body(..., embed=True), jobId: str |
 	job_id = jobId or str(uuid.uuid4())
 	report(job_id, "transcribe", "reading the recording")
 	report(job_id, "faces", "reading the recording")
-	input_path = jobs.save_input(job_id, source.name)
-	input_path.symlink_to(source.resolve())
+	input_path = jobs.link_input(job_id, source)
 
 	_start_pipeline(job_id, input_path, source.name)
 
@@ -686,16 +694,15 @@ async def export_endpoint(
 	# the way the old sessionId was.
 	jobId: str = Form(...),
 	regions: str = Form(...),
-	# Only needed when trimming: dead-air detection works from where speech
-	# actually is, which regions deliberately don't describe (a stretch nobody
-	# framed is still speech, and cutting it would be silent data loss).
-	turns: str = Form("[]"),
+	# What to cut out -- the pauses and filler words the editor showed, minus
+	# any put back (see src/features/timeline/cuts.ts). Empty when trimming
+	# is off.
+	cuts: str = Form("[]"),
 	# Also a file part, and for the same reason as faces: word timestamps grow
 	# with episode length. A 53-minute episode is ~550KB of them, which fits
 	# under the 1MB text-field cap only by luck; a two-hour one would not.
 	words: UploadFile | None = None,
 	captions: bool = Form(False),
-	trimDeadAir: bool = Form(False),
 	# Only sent by the desktop app, where a folder to write into actually
 	# exists -- see src/lib/electron.ts's chooseExportPath. A plain browser
 	# has nowhere to write to but the request's own response body.
@@ -706,7 +713,7 @@ async def export_endpoint(
 
 	try:
 		regions_data = json.loads(regions)
-		turns_data = json.loads(turns)
+		cuts_data = json.loads(cuts)
 		faces_data = json.loads(await faces.read())
 		words_data = json.loads(await words.read()) if words is not None else []
 	except json.JSONDecodeError as err:
@@ -772,17 +779,10 @@ async def export_endpoint(
 	try:
 		duration = await asyncio.to_thread(get_video_duration, str(input_path))
 
-		# Dead air / filler words to cut, if asked for. Computed from the
-		# speaker turns plus word-level timestamps when they're available --
-		# filler-word detection needs them, dead-air detection alone doesn't.
-		# See pipeline/trim.py for why these are deliberately conservative.
-		drop_ranges: list[tuple[float, float]] = []
-		if trimDeadAir:
-			turn_bounds = [(t["start"], t["end"]) for t in turns_data]
-			ranges = dead_air_ranges(turn_bounds, duration)
-			if words_list:
-				ranges += filler_word_ranges(words_list)
-			drop_ranges = merge_ranges(ranges)
+		try:
+			drop_ranges = parse_cuts(cuts_data, duration)
+		except BadCuts as err:
+			raise HTTPException(400, str(err)) from err
 
 		segments = build_render_segments(
 			duration=duration,
@@ -793,21 +793,8 @@ async def export_endpoint(
 
 		ass_path: Path | None = None
 		if captions and words_list:
-			cues = build_caption_cues(words_list)
-			if drop_ranges:
-				# Cue timestamps were computed against the untrimmed source;
-				# without this they'd drift out of sync with the trimmed
-				# video by however much was already cut before each cue.
-				cues = [
-					CaptionCue(
-						start=remap_time(cue.start, drop_ranges),
-						end=remap_time(cue.end, drop_ranges),
-						text=cue.text,
-					)
-					for cue in cues
-				]
 			ass_path = Path(tmp) / "captions.ass"
-			write_ass(cues, ass_path, frame_w, frame_h)
+			write_ass(cues_for_edit(words_list, drop_ranges), ass_path, frame_w, frame_h)
 
 		output_path = Path(tmp) / "export.mp4"
 		try:
@@ -855,6 +842,92 @@ async def export_endpoint(
 		filename=output_name,
 		background=BackgroundTask(shutil.rmtree, tmp, ignore_errors=True),
 	)
+
+
+@app.post("/export/audio")
+async def export_audio_endpoint(
+	jobId: str = Form(...),
+	cuts: str = Form("[]"),
+	outputPath: str | None = Form(None),
+) -> Response:
+	"""The episode as an MP3 for the podcast feed, with the same cuts as the
+	video. Two routes, like `/export`: written where the desktop app was told
+	to put it, or streamed back to a plain browser."""
+	if outputPath and not Path(outputPath).parent.is_dir():
+		raise HTTPException(400, f"That folder doesn't exist: {Path(outputPath).parent}")
+	input_path = jobs.input_path(jobId)
+	if input_path is None or not input_path.is_file():
+		raise HTTPException(404, "No readable recording for that episode -- it may have moved. Reopen it and point Cutroom at the file again.")
+	try:
+		cuts_data = json.loads(cuts)
+	except json.JSONDecodeError as err:
+		raise HTTPException(400, f"Malformed JSON in request field: {err}") from err
+
+	tmp = tempfile.mkdtemp()
+	try:
+		duration = await asyncio.to_thread(get_video_duration, str(input_path))
+		try:
+			drop_ranges = parse_cuts(cuts_data, duration)
+		except BadCuts as err:
+			raise HTTPException(400, str(err)) from err
+		output_path = Path(tmp) / "episode.mp3"
+		try:
+			await asyncio.to_thread(
+				render_audio,
+				input_path,
+				output_path,
+				drop_ranges,
+				duration,
+				on_progress=lambda f: report_render_progress(jobId, f),
+			)
+		finally:
+			clear_render_progress(jobId)
+	except subprocess.CalledProcessError as err:
+		shutil.rmtree(tmp, ignore_errors=True)
+		stderr_tail = (err.stderr or b"").decode(errors="replace")[-2000:]
+		raise HTTPException(500, f"Audio render failed: {stderr_tail}") from err
+	except Exception:
+		shutil.rmtree(tmp, ignore_errors=True)
+		raise
+
+	if outputPath:
+		shutil.move(str(output_path), outputPath)
+		shutil.rmtree(tmp, ignore_errors=True)
+		return JSONResponse({"outputPath": outputPath})
+
+	original_name = jobs.original_filename(jobId) or input_path.name
+	return FileResponse(
+		output_path,
+		media_type="audio/mpeg",
+		filename=f"{Path(original_name).stem}-edited.mp3",
+		background=BackgroundTask(shutil.rmtree, tmp, ignore_errors=True),
+	)
+
+
+@app.post("/export/subtitles")
+async def export_subtitles_endpoint(
+	words: UploadFile,
+	cuts: str = Form("[]"),
+	outputPath: str | None = Form(None),
+) -> Response:
+	"""A subtitle file (.srt) cut to the same edit as the video: the same cues
+	the burned-in captions use, moved to the trimmed timeline. Cheap, so no
+	progress and no temp directory."""
+	if outputPath and not Path(outputPath).parent.is_dir():
+		raise HTTPException(400, f"That folder doesn't exist: {Path(outputPath).parent}")
+	try:
+		words_data = json.loads(await words.read())
+		drop_ranges = parse_cuts(json.loads(cuts), float("inf"))
+	except json.JSONDecodeError as err:
+		raise HTTPException(400, f"Malformed JSON in request field: {err}") from err
+	except BadCuts as err:
+		raise HTTPException(400, str(err)) from err
+	words_list = [Word(start=w["start"], end=w["end"], text=w["text"]) for w in words_data]
+	text = srt_text(cues_for_edit(words_list, drop_ranges))
+	if outputPath:
+		Path(outputPath).write_text(text, encoding="utf-8")
+		return JSONResponse({"outputPath": outputPath})
+	return Response(text, media_type="application/x-subrip")
 
 
 @app.get("/export/progress/{job_id}")

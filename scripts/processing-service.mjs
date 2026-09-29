@@ -4,7 +4,7 @@
 // server (vite.config.ts) and the Electron shell (electron/main.mjs) so the
 // two never drift apart on how the service is started or how its state is
 // reported.
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
 
@@ -16,7 +16,11 @@ import path from "node:path";
 // sharing 8787 would either adopt someone's real library or be adopted by
 // their app. A separate port keeps the two from ever meeting. See `dev:qa`.
 export const SERVICE_PORT = Number(process.env.CUTROOM_SERVICE_PORT ?? 8787);
-const LOG_LINES = 40;
+// Kept long enough to hold a Python traceback or two for a problem report
+// (scripts/problem-report.mjs); the status below only sends the recent end,
+// which is all the setup screen shows.
+const LOG_LINES = 300;
+const STATUS_LOG_LINES = 40;
 // uvicorn's own line announcing it's actually listening.
 const READY_MARKER = "Application startup complete";
 
@@ -137,7 +141,16 @@ export function createProcessingService(cwd) {
 		const child = spawn(
 			"uv",
 			["run", "--directory", "server", "uvicorn", "main:app", "--port", String(SERVICE_PORT)],
-			{ cwd },
+			{
+				cwd,
+				// UTF-8 for everything Python reads, writes and prints. On Windows
+				// it would otherwise use the old ANSI code page, which can't
+				// encode a Cyrillic or Chinese username in a model path.
+				env: { ...process.env, PYTHONUTF8: "1" },
+				// A console program started from a windowed app gets a console
+				// window of its own on Windows, left open for as long as it runs.
+				windowsHide: true,
+			},
 		);
 		service.child = child;
 		child.stdout?.on("data", remember);
@@ -166,13 +179,23 @@ export function createProcessingService(cwd) {
 	}
 
 	function stop() {
-		service.child?.kill();
+		const pid = service.child?.pid;
+		if (process.platform === "win32" && pid) {
+			// Windows has no process groups for kill() to reach: it would end
+			// uv.exe alone and leave the Python it started holding the port,
+			// so the next launch adopts a stale service -- after an update,
+			// one still running the old code. Synchronous because this runs as
+			// the app quits. /T takes the whole tree.
+			spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
+		} else {
+			service.child?.kill();
+		}
 	}
 
 	function status() {
 		return {
 			state: service.state,
-			log: service.log,
+			log: service.log.slice(-STATUS_LOG_LINES),
 			ranBefore: Boolean(service.ranBefore),
 			// Only set for "foreign": the two libraries, so the screen can name
 			// them rather than saying something is wrong somewhere.
@@ -180,5 +203,5 @@ export function createProcessingService(cwd) {
 		};
 	}
 
-	return { start, stop, status };
+	return { start, stop, status, log: () => [...service.log] };
 }

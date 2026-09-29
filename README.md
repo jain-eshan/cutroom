@@ -70,8 +70,11 @@ rough edges and its packaged installer is untested outside this repo.
 - An editor with the transcript, a live preview that matches the export, and
   a framing timeline you can zoom, scrub, drag, snap and undo
 - Export to MP4 at the source resolution, with the audio copied through
-  untouched, optional burned-in captions, and optional trimming of long
-  pauses and filler words
+  untouched and optional burned-in captions, plus a subtitle file and an MP3
+  for the podcast feed if you want them
+- Trim dead air: long pauses (found from the audio, including mid-answer)
+  and filler words, shown on the timeline and skipped in the preview so you
+  can put any cut back before exporting
 - Keep your work if you close the browser tab: a job keeps processing in the
   background and reopens from the upload screen's recent-episodes list
   without reprocessing (in-progress edits and cast confirmations aren't
@@ -79,15 +82,14 @@ rough edges and its packaged installer is untested outside this repo.
 
 **Doesn't yet**
 
-- Ship a signed Mac installer or a Windows build anyone's tried running (the
-  desktop app and its installer pipeline exist -- see
-  [Download](#download) -- but neither has had real-world use yet)
+- Ship a signed Mac or Windows installer. Both builds exist (see
+  [Download](#download)), but neither is signed, and the Windows one hasn't
+  been used on a real machine yet
 - Stay on the main speaker through a quick "yeah" or "right". The rules for
   this are written up in [docs/EDGE_CASES.md](docs/EDGE_CASES.md), but not
   built
 - Reliably tell four people apart on a long episode
-- Run the actual processing pipeline on Windows or Linux (untested; help
-  wanted)
+- Run on Linux (untested; help wanted)
 
 The ordered roadmap is in [docs/STATUS.md](docs/STATUS.md).
 
@@ -100,9 +102,57 @@ ships inside the app, and it installs `uv` itself on first launch.
 
 These builds are new and haven't been tried outside this repo yet -- if
 something breaks, [open an issue](https://github.com/jain-eshan/cutroom/issues).
-The Mac build isn't code-signed, so Gatekeeper will block it on first open;
-right-click the app and choose Open to run it anyway. If you'd rather run
-from source, or you're on Linux, see Quick start below.
+If you'd rather run from source, or you're on Linux, see Quick start below.
+
+### On a Mac
+
+Apple silicon only. The app isn't code-signed yet, so Gatekeeper blocks it on
+first open: right-click the app and choose **Open** to run it anyway.
+
+### On Windows
+
+Windows 10 or 11, 64-bit. Run `Cutroom-Setup.exe`.
+
+Windows will show a blue box saying **"Windows protected your PC"**. It does
+this for any program whose author hasn't bought a code-signing certificate.
+Click **More info**, then **Run anyway**. Before you do, you can
+[check the download](#check-your-download) is the real file.
+
+Speaker detection runs on the processor on Windows, since there is no Apple
+graphics chip to hand it to, so processing is slower. Measured on a Mac's
+processor, speaker detection alone took about 40 minutes per hour of
+recording, against about 5 on its graphics chip.
+
+Windows support is new. It is tested automatically on every change, but hasn't
+yet been used on a real Windows machine; reports are especially welcome.
+
+**If processing fails with "DLL load failed"**, the computer is missing
+Microsoft's Visual C++ runtime, which the speech models need. Install it from
+[aka.ms/vs/17/release/vc_redist.x64.exe](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+and open Cutroom again.
+
+### Check your download
+
+Each release lists a SHA-256 for every file: a fingerprint of that exact file.
+If your copy gives the same one, it's byte-for-byte what was published and
+nothing changed it on the way to you. Worth doing while the builds are
+unsigned.
+
+On a Mac, in Terminal:
+
+```bash
+shasum -a 256 ~/Downloads/Cutroom-arm64.dmg
+```
+
+On Windows, in PowerShell:
+
+```powershell
+Get-FileHash $HOME\Downloads\Cutroom-Setup.exe
+```
+
+Compare the result with the release notes (upper or lower case doesn't
+matter). If it doesn't match, delete the file, download it again, and
+[tell us](https://github.com/jain-eshan/cutroom/issues).
 
 ## Quick start
 

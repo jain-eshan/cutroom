@@ -10,10 +10,12 @@ here invokes a real binary -- what's under test is entirely how this
 module reacts to what subprocess.run does, not ffmpeg's own behaviour."""
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from pipeline.faces import BBox
+from pipeline import render
 from pipeline.framing import MAX_UPSCALE, person_crop
 from pipeline.render import (
 	Keyframe,
@@ -489,3 +491,28 @@ class TestSegmentFilterPanes:
 		graph = self._filter(4, frame_h=1079)
 		assert "scale=1305:1077" in graph
 		assert graph.count("scale=615:359") == 3
+
+
+class TestRenderAudio:
+	"""The MP3 for the podcast feed. ffmpeg itself isn't run in CI, so this
+	checks the command: the same cuts as the video, and MP3 out."""
+
+	def _command(self, monkeypatch, drop_ranges):
+		seen = {}
+		monkeypatch.setattr(render, "_run_with_progress", lambda cmd, duration, on_progress: seen.update(cmd=cmd, duration=duration))
+		render.render_audio(Path("in.mp4"), Path("out.mp3"), drop_ranges, 10.0)
+		return seen
+
+	def test_uncut_audio_is_mapped_straight_through(self, monkeypatch):
+		seen = self._command(monkeypatch, [])
+		assert "-filter_complex" not in seen["cmd"]
+		assert seen["cmd"][seen["cmd"].index("-c:a") + 1] == "libmp3lame"
+		assert seen["duration"] == 10.0
+
+	def test_cut_audio_keeps_only_what_survives_the_cuts(self, monkeypatch):
+		seen = self._command(monkeypatch, [(2.0, 3.0), (9.0, 10.0)])
+		graph = seen["cmd"][seen["cmd"].index("-filter_complex") + 1]
+		assert "atrim=start=0.000:end=2.000" in graph
+		assert "atrim=start=3.000:end=9.000" in graph
+		assert "concat=n=2:v=0:a=1" in graph
+		assert seen["duration"] == pytest.approx(8.0)

@@ -1,87 +1,36 @@
-"""Tests for pipeline/trim.py -- dead-air and filler-word range detection,
-and the timeline remapping needed to keep captions in sync with a trimmed
-export. Pure logic, no ffmpeg."""
+"""Tests for pipeline/trim.py -- checking the editor's cut list, and the
+timeline remapping that keeps captions in sync with a trimmed export. Which
+pauses and filler words get cut is decided in the editor and tested in
+src/features/timeline/cuts.test.ts. Pure logic, no ffmpeg."""
 
 import pytest
 
-from pipeline.transcribe import Word
-from pipeline.trim import (
-	MIN_SILENCE_TO_TRIM,
-	SILENCE_KEEP,
-	dead_air_ranges,
-	filler_word_ranges,
-	merge_ranges,
-	remap_time,
-)
+from pipeline.trim import BadCuts, keep_ranges, merge_ranges, parse_cuts, remap_time
 
 
-class TestDeadAirRanges:
-	def test_short_gap_is_left_alone(self):
-		# Below MIN_SILENCE_TO_TRIM -- reads as a natural breath, not dead air.
-		gap = MIN_SILENCE_TO_TRIM - 0.1
-		ranges = dead_air_ranges([(0.0, 5.0), (5.0 + gap, 10.0)], 10.0)
-		assert ranges == []
+class TestParseCuts:
+	def test_spans_come_back_sorted_and_merged(self):
+		cuts = [{"start": 5, "end": 6}, {"start": 1, "end": 2}, {"start": 1.5, "end": 3}]
+		assert parse_cuts(cuts, 10.0) == [(1.0, 3.0), (5.0, 6.0)]
 
-	def test_long_gap_is_trimmed_down_not_removed_entirely(self):
-		ranges = dead_air_ranges([(0.0, 5.0), (10.0, 12.0)], 12.0)
-		assert len(ranges) == 1
-		start, end = ranges[0]
-		# The cut range should be strictly inside the gap (5.0, 10.0) -- some
-		# silence survives on both sides, per SILENCE_KEEP.
-		assert start > 5.0 and end < 10.0
-		kept_before = start - 5.0
-		kept_after = 10.0 - end
-		assert kept_before == pytest.approx(SILENCE_KEEP / 2)
-		assert kept_after == pytest.approx(SILENCE_KEEP / 2)
+	def test_spans_are_clipped_to_the_recording_and_empty_ones_dropped(self):
+		cuts = [{"start": -1, "end": 0.5}, {"start": 9, "end": 12}, {"start": 11, "end": 13}, {"start": 4, "end": 4}]
+		assert parse_cuts(cuts, 10.0) == [(0.0, 0.5), (9.0, 10.0)]
 
-	def test_leading_silence_before_the_first_turn_is_caught(self):
-		ranges = dead_air_ranges([(5.0, 8.0)], 8.0)
-		assert len(ranges) == 1
-		assert ranges[0][0] == pytest.approx(SILENCE_KEEP / 2)
-
-	def test_trailing_silence_after_the_last_turn_is_caught(self):
-		ranges = dead_air_ranges([(0.0, 3.0)], 10.0)
-		assert len(ranges) == 1
-		assert ranges[0][1] == pytest.approx(10.0 - SILENCE_KEEP / 2)
-
-	def test_overlapping_turn_bounds_do_not_produce_a_bogus_gap(self):
-		# Two people's turns can genuinely overlap (simultaneous speech) --
-		# this must not read the overlap itself as a gap.
-		ranges = dead_air_ranges([(0.0, 5.0), (3.0, 8.0)], 8.0)
-		assert ranges == []
-
-	def test_no_turns_at_all_treats_the_whole_clip_as_one_gap(self):
-		ranges = dead_air_ranges([], 20.0)
-		assert len(ranges) == 1
-		assert ranges[0][0] < ranges[0][1]
+	def test_anything_that_is_not_a_span_is_refused_rather_than_guessed_at(self):
+		for bad in ({"start": 1}, [1, 2], "cut", {"start": "soon", "end": 2}):
+			with pytest.raises(BadCuts):
+				parse_cuts([bad], 10.0)
+		with pytest.raises(BadCuts):
+			parse_cuts({"start": 1, "end": 2}, 10.0)
 
 
-class TestFillerWordRanges:
-	def test_standalone_filler_is_detected(self):
-		words = [Word(start=1.0, end=1.3, text="um")]
-		ranges = filler_word_ranges(words)
-		assert len(ranges) == 1
-		assert ranges[0][0] < 1.0  # padded
-		assert ranges[0][1] > 1.3
+class TestKeepRanges:
+	def test_nothing_cut_keeps_everything(self):
+		assert keep_ranges([], 10.0) == [(0.0, 10.0)]
 
-	def test_ambiguous_words_are_never_treated_as_filler(self):
-		# "like" and "so" are filler *sometimes* -- there's no way to tell
-		# from the word alone, so this pipeline never guesses.
-		words = [
-			Word(start=0.0, end=0.2, text="like"),
-			Word(start=0.5, end=0.7, text="so"),
-			Word(start=1.0, end=1.2, text="actually"),
-		]
-		assert filler_word_ranges(words) == []
-
-	def test_case_and_punctuation_do_not_matter(self):
-		words = [Word(start=0.0, end=0.3, text="Um,")]
-		assert len(filler_word_ranges(words)) == 1
-
-	def test_real_word_containing_a_filler_as_a_substring_is_not_matched(self):
-		# Guards against a naive substring check instead of an exact-token one.
-		words = [Word(start=0.0, end=0.3, text="uhm...ish")]
-		assert filler_word_ranges(words) == []
+	def test_cuts_at_either_end_leave_no_empty_piece(self):
+		assert keep_ranges([(0.0, 1.0), (4.0, 5.0), (9.0, 10.0)], 10.0) == [(1.0, 4.0), (5.0, 9.0)]
 
 
 class TestMergeRanges:

@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("cutroom", {
 	getPathForFile: (file) => webUtils.getPathForFile(file),
 	chooseExportPath: (defaultName) => ipcRenderer.invoke("choose-export-path", defaultName),
 	showItemInFolder: (path) => ipcRenderer.invoke("show-item-in-folder", path),
+	saveProblemReport: () => ipcRenderer.invoke("save-problem-report"),
 	// Project files. `chooseRecording` hands back a path the *user* picked in
 	// a native dialog, the same trust boundary as `getPathForFile`: the page
 	// can ask for a picker, it can't name a path itself.

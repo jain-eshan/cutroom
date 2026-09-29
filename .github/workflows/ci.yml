@@ -10,9 +10,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Both jobs run on Windows too. The installer is built for it on every
+  # release, and nothing else would notice a change that only breaks there:
+  # the app's developers work on Macs.
   frontend:
-    name: App and website
-    runs-on: ubuntu-latest
+    name: App and website (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,8 +40,12 @@ jobs:
         run: npm run site:build
 
   backend:
-    name: Processing service
-    runs-on: ubuntu-latest
+    name: Processing service (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

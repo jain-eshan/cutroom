@@ -90,3 +90,18 @@ test("the fingerprint changes when a shot moves", () => {
 	const b = edit({ regions: [{ ...REGION, end: 9 }] }) as SavedEdit<FramingRegion, FramingStyle>;
 	assert.notEqual(editFingerprint(a), editFingerprint(b));
 });
+
+test("an edit from before dead-air strength existed reads as the default with nothing put back", () => {
+	const restored = restorableEdit(edit());
+	assert.equal(restored?.cutStrength, "most");
+	assert.deepEqual(restored?.keptCuts, []);
+});
+
+test("cut settings survive, and anything that isn't a time is dropped", () => {
+	const restored = restorableEdit(
+		edit({ cutStrength: "tight", keptCuts: [12.5, "x", Number.NaN] as unknown as number[] }),
+	);
+	assert.equal(restored?.cutStrength, "tight");
+	assert.deepEqual(restored?.keptCuts, [12.5]);
+	assert.equal(restorableEdit(edit({ cutStrength: "wild" as never }))?.cutStrength, "most");
+});

@@ -712,3 +712,67 @@ class TestWavIsNotKept:
 
 		assert progress.snapshot("j")["error"] == "no model"
 		assert not (jobs.job_dir("j") / "audio.wav").exists()
+
+
+class TestExportCuts:
+	"""The export cuts exactly what the editor showed -- see
+	src/features/timeline/cuts.ts -- and refuses a list it can't read."""
+
+	def _prepare_job(self, monkeypatch, job_id="j"):
+		jobs.save_input(job_id, "clip.mp4").write_bytes(b"fake video")
+		monkeypatch.setattr(main, "get_video_duration", lambda *a, **k: 10.0)
+
+	def test_the_video_render_receives_the_editor_s_cuts(self, client, monkeypatch):
+		self._prepare_job(monkeypatch)
+		seen = {}
+
+		def fake_render_export(input_path, output_path, segments, *a, **k):
+			seen["spans"] = [(s.start, s.end) for s in segments]
+			Path(output_path).write_bytes(b"mp4")
+
+		monkeypatch.setattr(main, "render_export", fake_render_export)
+		response = client.post(
+			"/export",
+			files={"faces": ("faces.json", FACES, "application/json")},
+			data={"regions": "[]", "jobId": "j", "cuts": json.dumps([{"start": 2, "end": 3}])},
+		)
+		assert response.status_code == 200
+		assert seen["spans"] == [(0.0, 2.0), (3.0, 10.0)]
+
+	def test_a_malformed_cut_list_is_refused_before_rendering(self, client, monkeypatch):
+		self._prepare_job(monkeypatch)
+		monkeypatch.setattr(main, "render_export", lambda *a, **k: pytest.fail("rendered anyway"))
+		response = client.post(
+			"/export",
+			files={"faces": ("faces.json", FACES, "application/json")},
+			data={"regions": "[]", "jobId": "j", "cuts": json.dumps([{"start": 2}])},
+		)
+		assert response.status_code == 400
+
+	def test_audio_is_written_to_the_chosen_path(self, client, monkeypatch, tmp_path):
+		self._prepare_job(monkeypatch)
+		seen = {}
+
+		def fake_render_audio(input_path, output_path, drop_ranges, duration, on_progress=None):
+			seen["drops"] = drop_ranges
+			Path(output_path).write_bytes(b"mp3")
+
+		monkeypatch.setattr(main, "render_audio", fake_render_audio)
+		destination = tmp_path / "episode-edited.mp3"
+		response = client.post(
+			"/export/audio",
+			data={"jobId": "j", "cuts": json.dumps([{"start": 1, "end": 2}]), "outputPath": str(destination)},
+		)
+		assert response.status_code == 200
+		assert destination.read_bytes() == b"mp3"
+		assert seen["drops"] == [(1.0, 2.0)]
+
+	def test_subtitles_come_back_cut_to_the_same_edit(self, client):
+		words = [{"start": 0.0, "end": 0.5, "text": "Hello"}, {"start": 5.0, "end": 5.5, "text": "again"}]
+		response = client.post(
+			"/export/subtitles",
+			files={"words": ("words.json", json.dumps(words).encode(), "application/json")},
+			data={"cuts": json.dumps([{"start": 1, "end": 4}])},
+		)
+		assert response.status_code == 200
+		assert "00:00:02,000 --> 00:00:02,500\nagain" in response.text

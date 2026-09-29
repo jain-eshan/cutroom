@@ -1,0 +1,5 @@
+# The same line endings on every platform. Windows checkouts would otherwise
+# convert to CRLF, and CI runs there too.
+* text=auto eol=lf
+# Vendored as-is, with its original CRLF endings; left byte-for-byte.
+server/pipeline/lrasd/Model.py -text

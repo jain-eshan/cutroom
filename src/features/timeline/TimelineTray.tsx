@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Turn, Word } from "@/lib/api";
 import { LAYOUT_LABELS, type FramingRegion } from "@/features/timeline/types";
 import { wideGaps } from "@/features/timeline/regions";
+import { isKept, type Cut } from "@/features/timeline/cuts";
 import {
 	clampView,
 	formatTimecode,
@@ -62,6 +63,9 @@ export function TimelineTray({
 	onEditStart,
 	onResize,
 	onSeek,
+	cuts,
+	keptCuts,
+	onToggleCut,
 }: {
 	duration: number;
 	/** The stretch of the episode the detail lanes show. */
@@ -98,6 +102,11 @@ export function TimelineTray({
 	onEditStart: () => void;
 	onResize: (id: string, edge: "start" | "end", to: number) => void;
 	onSeek: (t: number) => void;
+	/** What "Trim dead air" removes, or empty while it's off. */
+	cuts: Cut[];
+	/** Moments whose cut was put back; see `isKept`. */
+	keptCuts: number[];
+	onToggleCut: (cut: Cut) => void;
 }) {
 	const [detail, setDetail] = useState<HTMLDivElement | null>(null);
 	const [width, setWidth] = useState(0);
@@ -393,6 +402,44 @@ export function TimelineTray({
 						);
 					})}
 				</div>
+
+				{/* Cuts: what the dead-air trim removes, so it can be checked and a
+				    cut put back before anything renders. Only there while trimming
+				    is on, since otherwise it would always be empty. */}
+				{cuts.length > 0 && (
+					<div
+						onPointerDown={(e) => {
+							if (e.target === e.currentTarget) onSeek(timeAt(e.clientX));
+						}}
+						className="relative h-[15px] w-full rounded-chip bg-track"
+					>
+						<span className="pointer-events-none absolute top-0 -left-[92px] flex h-full w-[84px] items-center font-mono text-mono-xs leading-none text-text3">
+							Cuts
+						</span>
+						{cuts.filter(inView).map((cut) => {
+							const kept = isKept(cut, keptCuts);
+							const what = cut.kind === "pause" ? "pause" : "filler word";
+							return (
+								<button
+									type="button"
+									key={`${cut.kind}-${cut.start}`}
+									onPointerDown={(e) => e.stopPropagation()}
+									onClick={() => onToggleCut(cut)}
+									title={
+										kept
+											? `Kept: ${(cut.end - cut.start).toFixed(1)}s ${what}. Click to cut it again.`
+											: `Cut: ${(cut.end - cut.start).toFixed(1)}s ${what}. Click to keep it.`
+									}
+									aria-pressed={!kept}
+									className={`absolute inset-y-0 min-w-[3px] rounded-[2px] border ${
+										kept ? "border-dashed border-text3 bg-transparent" : "border-warn-edge bg-warn-bg"
+									}`}
+									style={{ left: `${at(cut.start)}%`, width: `${at(cut.end) - at(cut.start)}%` }}
+								/>
+							);
+						})}
+					</div>
+				)}
 
 				{/* Speaker lanes -- who is actually talking, under the framing that
 				    covers them, so a region's disagreement with the speech is visible. */}

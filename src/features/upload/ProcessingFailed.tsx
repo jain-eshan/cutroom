@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button, EdgeCaseCard, Screen } from "@/components/ui";
+import { hasElectronBridge, saveProblemReport } from "@/lib/electron";
 import { formatDuration } from "@/lib/format";
 
 /**
@@ -58,6 +59,14 @@ export function ProcessingFailed({
 							Try again
 						</Button>
 						<Button onClick={copyDetails}>{copied ? "Copied" : "Copy the details"}</Button>
+						{hasElectronBridge() && (
+							<Button
+								onClick={() => void saveProblemReport()}
+								title="Saves a file to Downloads with what the processing service printed, to attach to an issue. Folder names are left out."
+							>
+								Save a problem report
+							</Button>
+						)}
 						{/* Not on the design's card, but without it a file that fails every
 						    time is a dead end short of reloading the page. */}
 						<Button variant="ghost" onClick={onPickAnother} className="ml-auto">

@@ -69,6 +69,16 @@ const overlapWindows: OverlapWindow[] = [{ start: 33.6, end: 34, speakers: [1, 2
 
 const words: Word[] = turns.flatMap(wordsFromTurn);
 
+/** When anyone is audible: the turns, with two pauses in the middle of an
+ * answer -- the dead air that trimming exists for, and which turn
+ * boundaries alone never show. */
+const speech = [
+	{ start: 0.3, end: 4.2 },
+	{ start: 6.6, end: 27 },
+	{ start: 27.5, end: 50.5 },
+	{ start: 52, end: 70 },
+];
+
 const people: Person[] = [
 	{
 		id: 0,
@@ -103,7 +113,7 @@ const match: MatchResult = {
 	notes: [{ kind: "low_confidence", speakers: [2], personIds: [2] }],
 };
 
-export const fixtureData: ProcessResponse = { turns, overlapWindows, words, faces, match };
+export const fixtureData: ProcessResponse = { turns, overlapWindows, words, speech, faces, match };
 
 export const fixtureCast: CastResult = {
 	names: { 0: "Alice", 1: "Bob", 2: "Cara" },

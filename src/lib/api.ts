@@ -51,6 +51,9 @@ export interface ProcessResponse {
 	turns: Turn[];
 	overlapWindows: OverlapWindow[];
 	words: Word[];
+	/** When anyone is audibly talking, from the audio rather than the
+	 * transcript. Absent from episodes processed before it was saved. */
+	speech?: { start: number; end: number }[];
 	faces: DetectFacesResponse;
 	match: MatchResult;
 	/** Only present from `getJob` -- a resumed or reopened session has no
@@ -380,11 +383,10 @@ export interface ExportRegion {
 function buildExportForm(
 	jobId: string,
 	regions: ExportRegion[],
-	turnRanges: { start: number; end: number }[],
 	faces: DetectFacesResponse,
 	words: Word[],
 	captions: boolean,
-	trimDeadAir: boolean,
+	cuts: { start: number; end: number }[],
 ): FormData {
 	const form = new FormData();
 	// The recording itself is already on disk from /process (see
@@ -392,9 +394,6 @@ function buildExportForm(
 	// time just to export it was pure waste. Also names the decision log.
 	form.append("jobId", jobId);
 	form.append("regions", JSON.stringify(regions));
-	// Only used when trimming: dead air is measured against where speech
-	// actually is, which regions deliberately don't describe.
-	form.append("turns", JSON.stringify(turnRanges));
 	// Sent as a file, not a text field: the server caps text fields at 1MB and
 	// face keyframes for a full-length episode are larger than that.
 	form.append("faces", new Blob([JSON.stringify(faces)], { type: "application/json" }), "faces.json");
@@ -402,7 +401,8 @@ function buildExportForm(
 	// episode length.
 	form.append("words", new Blob([JSON.stringify(words)], { type: "application/json" }), "words.json");
 	form.append("captions", String(captions));
-	form.append("trimDeadAir", String(trimDeadAir));
+	// Exactly what the editor showed as cut; the server removes nothing else.
+	form.append("cuts", JSON.stringify(cuts));
 	return form;
 }
 
@@ -429,43 +429,57 @@ async function exportErrorDetail(res: Response): Promise<string> {
 	return detail;
 }
 
-export async function exportVideo(
+/**
+ * Post an export and take the result one of two ways. With `outputPath` (the
+ * desktop app, from `chooseExportPath` in src/lib/electron.ts) the service
+ * writes the file there itself, so a multi-GB render never passes through
+ * this request's response body and into browser memory; without it, a plain
+ * browser gets the file back as a blob to download.
+ */
+async function postExport(route: string, form: FormData, outputPath?: string): Promise<Blob | null> {
+	if (outputPath) form.append("outputPath", outputPath);
+	const res = await fetch(new URL(route, API_BASE), { method: "POST", body: form });
+	if (!res.ok) throw new Error(`Export failed (${res.status}): ${await exportErrorDetail(res)}`);
+	return outputPath ? null : res.blob();
+}
+
+export function exportVideo(
 	jobId: string,
 	regions: ExportRegion[],
-	turnRanges: { start: number; end: number }[],
 	faces: DetectFacesResponse,
 	words: Word[],
 	captions: boolean,
-	trimDeadAir: boolean,
-): Promise<Blob> {
-	const form = buildExportForm(jobId, regions, turnRanges, faces, words, captions, trimDeadAir);
-	const res = await fetch(new URL("/export", API_BASE), { method: "POST", body: form });
-	if (!res.ok) throw new Error(`Export failed (${res.status}): ${await exportErrorDetail(res)}`);
-	return res.blob();
+	cuts: { start: number; end: number }[],
+	outputPath?: string,
+): Promise<Blob | null> {
+	return postExport("/export", buildExportForm(jobId, regions, faces, words, captions, cuts), outputPath);
 }
 
-/** Same as `exportVideo`, but for the desktop app: `outputPath` (from
- * `chooseExportPath`, src/lib/electron.ts) is a real folder on this
- * machine, so the service writes the render there directly instead of the
- * whole MP4 passing through this request's response body and into browser
- * memory. */
-export async function exportVideoToPath(
-	outputPath: string,
+/** The episode as an MP3 for the podcast feed, cut the same way as the video. */
+export function exportAudio(
 	jobId: string,
-	regions: ExportRegion[],
-	turnRanges: { start: number; end: number }[],
-	faces: DetectFacesResponse,
-	words: Word[],
-	captions: boolean,
-	trimDeadAir: boolean,
-): Promise<void> {
-	const form = buildExportForm(jobId, regions, turnRanges, faces, words, captions, trimDeadAir);
-	form.append("outputPath", outputPath);
-	const res = await fetch(new URL("/export", API_BASE), { method: "POST", body: form });
-	if (!res.ok) throw new Error(`Export failed (${res.status}): ${await exportErrorDetail(res)}`);
+	cuts: { start: number; end: number }[],
+	outputPath?: string,
+): Promise<Blob | null> {
+	const form = new FormData();
+	form.append("jobId", jobId);
+	form.append("cuts", JSON.stringify(cuts));
+	return postExport("/export/audio", form, outputPath);
 }
 
-/** Polled alongside the still-open `exportVideo`/`exportVideoToPath` call
+/** A subtitle file (.srt) on the same edit as the video. */
+export function exportSubtitles(
+	words: Word[],
+	cuts: { start: number; end: number }[],
+	outputPath?: string,
+): Promise<Blob | null> {
+	const form = new FormData();
+	form.append("words", new Blob([JSON.stringify(words)], { type: "application/json" }), "words.json");
+	form.append("cuts", JSON.stringify(cuts));
+	return postExport("/export/subtitles", form, outputPath);
+}
+
+/** Polled alongside the still-open `exportVideo`/`exportAudio` call
  * above -- real progress parsed from ffmpeg's own output (see
  * server/pipeline/render.py's `_progress_fraction`), not a guess from
  * elapsed time. */

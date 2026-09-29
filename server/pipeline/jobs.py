@@ -76,7 +76,7 @@ def _atomic_write_text(path: Path, text: str) -> None:
 	it always is one."""
 	fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
 	try:
-		with os.fdopen(fd, "w") as f:
+		with os.fdopen(fd, "w", encoding="utf-8") as f:
 			f.write(text)
 		os.replace(tmp_name, path)
 	except BaseException:
@@ -84,9 +84,19 @@ def _atomic_write_text(path: Path, text: str) -> None:
 		raise
 
 
+# Where a recording read in place (`link_input`) is recorded when a symlink
+# isn't allowed. Outside the `input.*` pattern on purpose: a recording's own
+# extension could be anything, so no `input.<ext>` name is safe to reserve.
+SOURCE_LINK = "source-link.txt"
+
+
 def input_path(job_id: str) -> Path | None:
 	"""The original upload, wherever `save_input` put it -- named `input.<ext>`,
-	so the extension (ffprobe/ffmpeg both use it to sniff format) survives."""
+	so the extension (ffprobe/ffmpeg both use it to sniff format) survives --
+	or the recording itself, for one `link_input` couldn't symlink."""
+	link = job_dir(job_id) / SOURCE_LINK
+	if link.is_file():
+		return Path(link.read_text(encoding="utf-8"))
 	matches = sorted(job_dir(job_id).glob("input.*"))
 	return matches[0] if matches else None
 
@@ -108,8 +118,24 @@ def save_input(job_id: str, filename: str) -> Path:
 	"""
 	for stale in job_dir(job_id).glob("input.*"):
 		stale.unlink(missing_ok=True)
+	(job_dir(job_id) / SOURCE_LINK).unlink(missing_ok=True)
 	suffix = Path(filename or "input").suffix or ".bin"
 	return _ensure_dir(job_id) / f"input{suffix}"
+
+
+def link_input(job_id: str, source: Path) -> Path:
+	"""Point a job at a recording where it already is, instead of copying a
+	multi-GB file. A symlink where the OS allows one; Windows only lets
+	administrators (or Developer Mode) create them, and refuses everyone
+	else with WinError 1314, so there the path is written down instead.
+	Returns what `input_path` will now give."""
+	destination = save_input(job_id, source.name)
+	try:
+		destination.symlink_to(source.resolve())
+	except OSError:
+		_atomic_write_text(job_dir(job_id) / SOURCE_LINK, str(source.resolve()))
+		return source.resolve()
+	return destination
 
 
 def save_result(job_id: str, filename: str, result: dict) -> None:

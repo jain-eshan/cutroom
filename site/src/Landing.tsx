@@ -299,7 +299,13 @@ function Limits() {
 			help: false,
 			href: doc("docs/EDGE_CASES.md"),
 		},
-		{ what: "Run on Windows or Linux", status: "Untested, help wanted", help: true, href: doc("CONTRIBUTING.md") },
+		{
+			what: "Run on a real Windows PC",
+			status: "Tested automatically, not yet by a person. Help wanted",
+			help: true,
+			href: doc("README.md#on-windows"),
+		},
+		{ what: "Run on Linux", status: "Untested, help wanted", help: true, href: doc("CONTRIBUTING.md") },
 		{ what: "Cut short clips for social media", status: "Not started", help: false, href: doc("docs/FEATURES.md") },
 		{ what: "Handle more than one camera angle", status: "Not planned yet", help: false, href: doc("docs/FEATURES.md") },
 	];

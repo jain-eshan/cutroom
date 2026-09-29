@@ -30,7 +30,8 @@ either ships with it or downloads by itself.
 5. **Publish** — a real MP4: hard cuts where the framing changes, medium-shot
    framing, multi-person composites, source resolution preserved, original
    audio stream-copied, and optional burned-in captions cut from the Whisper
-   word timestamps (not the coarser turn boundaries).
+   word timestamps (not the coarser turn boundaries). Optionally also a
+   subtitle file (.srt) and an MP3 for the podcast feed, on the same edit.
 
 ---
 
@@ -255,6 +256,46 @@ ordering; [ARCHITECTURE.md](ARCHITECTURE.md)'s Roadmap mirrors it.
     screen with no token at all. (While this was built it still wanted one,
     which is why the notes above mention a placeholder; that requirement is
     gone.)
+- **Dead air measured from the audio, and shown before export, 2026-09-29.**
+  Borrowed from a look at Wavefield, an open-source multi-track podcast
+  cutter (GPL-3, so ideas and numbers only, no code). The old trim cut gaps
+  between speaker *turns*, and a turn runs straight through a pause in the
+  middle of an answer, so most dead air was never found. Pauses now come
+  from the diarisation model's speech segments (saved as `speech` in the
+  result; older episodes fall back to word timings), with three strengths
+  and a quarter second of air left each side. The cuts are worked out in
+  the editor: a Cuts row on the timeline, skipped during playback, each one
+  clickable to put back, and the export renders that exact list. The same
+  export can now also write an `.srt` and an MP3 beside the MP4. See
+  FEATURES.md #7 and #8.
+  - Measured on the 53-minute reference episode (diarisation re-run on its
+    saved audio, 639s on MPS; 388 speech spans): the old turn-gap method
+    would cut 52 pauses, 2m53s -- but **96s of those 173s were measured as
+    someone making sound**, stretches Whisper produced no words for. 28 of
+    its 52 cuts removed more than a second of sound; the worst, at 47:03,
+    was 19.0s with 15.7s audible. The new method cuts only measured
+    silence: 13 pauses / 44s at *Over 2s*, 60 pauses / 1m27s at *Over 1s*
+    (22 of them inside a turn, invisible to the old method), 164 / 1m54s at
+    *Over 0.5s*. So it removes less, and what it removes is silence. Not
+    listened to: "sound" here is the diarisation model's judgement.
+  - Still unverified: preview skipping on real media (the fixture has no
+    video), and the whole flow in the packaged desktop app.
+- **Windows, audited and fixed, 2026-09-29; not yet run on a real PC.** The
+  installer has been built on every release, but nothing had ever been run
+  on Windows. An audit of the code found one blocker -- every recording
+  opened from the desktop app was symlinked into its job, and Windows
+  refuses symlinks without admin rights, so nothing would have opened --
+  and a handful of likely bugs. All fixed (see FEATURES.md #16), CI now runs
+  both test suites on `windows-latest`, a `.gitattributes` keeps line
+  endings the same there, and the README has Windows install steps,
+  including the SmartScreen warning. Still open: a fresh Windows machine,
+  which is the only way to learn whether the Visual C++ runtime is needed,
+  and whether OpenCV reads a video under a non-Latin folder name.
+- **Problem reports and release checksums, 2026-09-29.** "report a problem"
+  saves a text file with the service's recent output, folder names removed
+  (FEATURES.md #19). Releases now carry SHA-256s in their notes and a
+  `SHA256SUMS.txt`, and the README says how to check one. Both borrowed from
+  Wavefield, which ships unsigned too.
 - **The host test still hasn't happened.** A host is lined up within two weeks.
 
 ### How progress is measured

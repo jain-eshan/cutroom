@@ -6,6 +6,18 @@ import { buildCaptionCues, cueAt } from "@/lib/captions";
 import { occurrencesOf, recased, wordAt, wordRoot, wordSlice } from "@/lib/transcript";
 import { TimelineTray } from "@/features/timeline/TimelineTray";
 import {
+	CUT_PAUSES_OVER_S,
+	CUT_STRENGTH_LABELS,
+	activeCuts,
+	findCuts,
+	isKept,
+	skipTo,
+	totalCut,
+	type Cut,
+	type CutStrength,
+	type Span,
+} from "@/features/timeline/cuts";
+import {
 	FRAMING_STYLE_LABELS,
 	LAYOUT_LABELS,
 	framingStyleRule,
@@ -517,8 +529,13 @@ export function EditorView({
 	onCaptionsChange,
 	missingRecording,
 	onRelink,
+	speech,
 	trimDeadAirEnabled,
 	onTrimDeadAirChange,
+	cutStrength,
+	onCutStrengthChange,
+	keptCuts,
+	onKeptCutsChange,
 	framingStyle,
 	onFramingStyleChange,
 	onPublish,
@@ -557,8 +574,16 @@ export function EditorView({
 	/** Ask the user for the recording. Absent in a plain browser, which has
 	 * no way to hand the service a path to link to. */
 	onRelink?: () => void;
+	/** When anyone is audibly talking, which is what pauses are found from.
+	 * Absent for episodes processed before it was saved; see `findCuts`. */
+	speech?: Span[];
 	trimDeadAirEnabled: boolean;
 	onTrimDeadAirChange: (enabled: boolean) => void;
+	cutStrength: CutStrength;
+	onCutStrengthChange: (strength: CutStrength) => void;
+	/** Moments whose cut the editor put back. */
+	keptCuts: number[];
+	onKeptCutsChange: (kept: number[]) => void;
 	/** Owned by App, same reasoning as regions: survives a trip to the
 	 * publish screen, and resets to the default on a fresh cast confirm. */
 	framingStyle: FramingStyle;
@@ -635,6 +660,16 @@ export function EditorView({
 		playingRef.current?.scrollIntoView({ block: "nearest" });
 	}, [playingTurn]);
 	const view = zoomed ?? { start: 0, end: duration };
+	const cuts = useMemo(
+		() => (trimDeadAirEnabled ? findCuts(speech, words, duration, cutStrength) : []),
+		[trimDeadAirEnabled, speech, words, duration, cutStrength],
+	);
+	const drops = useMemo(() => activeCuts(cuts, keptCuts), [cuts, keptCuts]);
+	// Read by the `timeupdate` listener, which is attached once per recording.
+	const dropsRef = useRef(drops);
+	useEffect(() => {
+		dropsRef.current = drops;
+	});
 	// Undo covers framing edits. It lives with the editor, so it starts fresh
 	// after a trip to the publish screen.
 	const [history, setHistory] = useState<{ past: FramingRegion[][]; future: FramingRegion[][] }>({
@@ -673,6 +708,11 @@ export function EditorView({
 		const video = videoRef.current;
 		if (!video) return;
 		const onTime = () => {
+			// Playing, the preview skips what the export will cut, so a trim can
+			// be heard before it's rendered. Paused, a scrub into a cut still
+			// shows it -- that's how one gets found and put back.
+			const jump = video.paused ? null : skipTo(video.currentTime, dropsRef.current);
+			if (jump !== null) video.currentTime = jump;
 			setCurrentTime(video.currentTime);
 			followTo(video.currentTime);
 		};
@@ -832,6 +872,17 @@ export function EditorView({
 	function followTo(t: number) {
 		const length = videoRef.current?.duration;
 		setZoomed((z) => (z ? reveal(z, t, Number.isFinite(length) && length ? length : Infinity) : z));
+	}
+
+	/** Put a cut back, or take it out again. A kept cut is remembered by its
+	 * middle, which stays inside the same pause when the strength moves its
+	 * edges. */
+	function toggleCut(cut: Cut) {
+		onKeptCutsChange(
+			isKept(cut, keptCuts)
+				? keptCuts.filter((t) => t < cut.start || t >= cut.end)
+				: [...keptCuts, (cut.start + cut.end) / 2],
+		);
 	}
 
 	function seek(t: number) {
@@ -1625,6 +1676,9 @@ export function EditorView({
 					}}
 					onResize={resize}
 					onSeek={seek}
+					cuts={cuts}
+					keptCuts={keptCuts}
+					onToggleCut={toggleCut}
 				/>
 			</div>
 
@@ -1712,12 +1766,41 @@ export function EditorView({
 						role="checkbox"
 						aria-checked={trimDeadAirEnabled}
 						onClick={() => onTrimDeadAirChange(!trimDeadAirEnabled)}
-						title="Cuts long pauses down to a short beat and removes standalone filler words (um, uh). Conservative on purpose -- see docs/FEATURES.md."
+						title="Cuts long pauses down to a short beat and removes standalone filler words (um, uh). Every cut shows on the timeline, where you can put it back."
 						className="inline-flex items-center gap-[9px] rounded-control border border-line bg-raised px-[11px] py-2 text-mono-sm leading-none font-medium text-text2 hover:bg-control"
 					>
 						<CheckMark checked={trimDeadAirEnabled} size={15} />
 						Trim dead air
 					</button>
+					{trimDeadAirEnabled && (
+						<span className="flex items-center gap-[5px]">
+							{(Object.keys(CUT_STRENGTH_LABELS) as CutStrength[]).map((strength) => (
+								<Button
+									key={strength}
+									size="sm"
+									variant={strength === cutStrength ? "secondary" : "quiet"}
+									onClick={() => onCutStrengthChange(strength)}
+									title={`Cut every pause longer than ${CUT_PAUSES_OVER_S[strength]} seconds down to a short beat.`}
+								>
+									{CUT_STRENGTH_LABELS[strength]}
+								</Button>
+							))}
+							<span className="font-mono text-mono-xs leading-none whitespace-nowrap text-text3">
+								−{formatTime(totalCut(drops))}
+							</span>
+							{/* Older episodes have no measured speech, and word gaps also
+							    cover laughs and murmurs Whisper wrote nothing for -- on the
+							    reference episode, 96s of 173s "silence" was sound. */}
+							{!speech?.length && (
+								<span
+									className="font-mono text-mono-xs leading-none whitespace-nowrap text-warn"
+									title="This episode was processed before Cutroom measured pauses from the audio, so these are estimated from the transcript and can include laughs or murmurs. Process the recording again for measured pauses, and check each cut before exporting."
+								>
+									estimated
+								</span>
+							)}
+						</span>
+					)}
 					<button
 						type="button"
 						onClick={() => setExplainTrim((on) => !on)}
@@ -1732,10 +1815,11 @@ export function EditorView({
 					    wraps it. Nothing below moves when it opens. */}
 					{explainTrim && (
 						<p className="absolute right-5 bottom-full z-10 mb-2 w-[420px] rounded-card border border-line bg-raised px-[14px] py-3 text-meta text-pretty text-text2 shadow-lg">
-							Cuts a pause longer than a beat down to a beat, and removes standalone filler words —
-							um, uh, hmm. Deliberately narrow: words that are only sometimes filler (“like”, “so”,
-							“right”) are left alone, because there’s no way to tell one from the other and cutting
-							the wrong one removes meaning. Nothing else in the audio is touched.
+							Cuts every pause longer than the setting you pick down to a short beat, and removes
+							standalone filler words — um, uh, hmm. Each cut shows on the timeline and is skipped
+							when you play; click one to put it back. Words that are only sometimes filler (“like”,
+							“so”, “right”) are left alone, because there’s no way to tell one from the other and
+							cutting the wrong one removes meaning.
 						</p>
 					)}
 					<span className="flex gap-1.5">

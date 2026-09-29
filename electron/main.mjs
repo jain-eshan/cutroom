@@ -4,7 +4,8 @@
 // so server/main.py's CORS allowlist and the /__service contract SetupGate
 // depends on both work unchanged -- see scripts/processing-service.mjs.
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +14,7 @@ import ffmpegPath from "ffmpeg-static";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import electronUpdater from "electron-updater";
 import { ensureUv } from "../scripts/ensure-uv.mjs";
+import { buildReport } from "../scripts/problem-report.mjs";
 import { createProcessingService } from "../scripts/processing-service.mjs";
 
 // electron-updater is CommonJS, so its named export comes off the default.
@@ -95,7 +97,11 @@ async function serveStatic(req, res) {
 	const requestedPath = new URL(req.url, "http://localhost").pathname;
 	// Single-page app: anything that isn't a real file falls back to index.html.
 	let filePath = path.join(distDir, decodeURIComponent(requestedPath));
-	if (!(await stat(filePath).catch(() => null))?.isFile()) {
+	// URL parsing folds a literal "/../" but not an encoded one ("..%2f", or
+	// "..%5c" on Windows), which decodes into a path out of dist/. Anything
+	// outside it is treated like any other missing file.
+	const inside = filePath.startsWith(distDir + path.sep);
+	if (!inside || !(await stat(filePath).catch(() => null))?.isFile()) {
 		filePath = path.join(distDir, "index.html");
 	}
 	res.setHeader("Content-Type", MIME_TYPES[path.extname(filePath)] ?? "application/octet-stream");
@@ -140,9 +146,12 @@ function createWindow() {
 		// On macOS the app draws its own title bar (src/components/ui.tsx,
 		// AppWindow), and the real traffic lights sit in the slot it leaves
 		// for them, centred in its 44px height.
+		// Elsewhere the native title bar stays; the menu bar under it is
+		// Electron's default File/Edit/View, which this app doesn't use, so it
+		// hides until Alt is pressed and its shortcuts keep working.
 		...(process.platform === "darwin"
 			? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 14, y: 16 } }
-			: {}),
+			: { autoHideMenuBar: true }),
 		webPreferences: { preload: path.join(__dirname, "preload.cjs") },
 	});
 	// A target="_blank" link -- the credits sheet's licence links -- would
@@ -191,6 +200,26 @@ ipcMain.handle("choose-recording", async (_event, defaultName) => {
 
 ipcMain.handle("show-item-in-folder", (_event, filePath) => {
 	shell.showItemInFolder(filePath);
+});
+
+// "Report a problem": written to Downloads and shown there, for the person
+// to read and attach to an issue. Nothing is sent. See scripts/problem-report.mjs
+// for what goes in and why no folder names do.
+ipcMain.handle("save-problem-report", async () => {
+	const report = buildReport({
+		version: app.getVersion(),
+		platform: process.platform,
+		arch: process.arch,
+		osVersion: os.release(),
+		service: service.status(),
+		log: service.log(),
+		home: os.homedir(),
+	});
+	const stamp = new Date().toISOString().slice(0, 19).replaceAll(":", "-");
+	const file = path.join(app.getPath("downloads"), `cutroom-problem-report-${stamp}.txt`);
+	await writeFile(file, report, "utf8");
+	shell.showItemInFolder(file);
+	return file;
 });
 
 // Updates. electron-updater reads latest.yml / latest-mac.yml from the newest

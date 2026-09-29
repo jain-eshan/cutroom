@@ -2,7 +2,7 @@
 grouping logic. ASS file writing (write_ass) just delegates to pysubs2, so
 it isn't re-tested here."""
 
-from pipeline.captions import build_caption_cues
+from pipeline.captions import CaptionCue, build_caption_cues, cues_for_edit, srt_text
 from pipeline.transcribe import Word
 
 
@@ -53,3 +53,19 @@ class TestBuildCaptionCues:
 		words = [_word("{hi}", 0.0, 0.3)]
 		cues = build_caption_cues(words)
 		assert cues[0].text == "hi"
+
+
+class TestSubtitleFile:
+	def test_cues_move_earlier_by_what_was_cut_before_them(self):
+		words = [Word(0.0, 0.5, "Hello"), Word(5.0, 5.5, "again")]
+		cues = cues_for_edit(words, [(1.0, 4.0)])
+		assert [(c.start, c.end, c.text) for c in cues] == [(0.0, 0.5, "Hello"), (2.0, 2.5, "again")]
+
+	def test_a_cue_that_was_entirely_cut_is_dropped(self):
+		words = [Word(0.0, 0.5, "Right"), Word(2.0, 2.3, "um"), Word(4.0, 4.5, "so")]
+		cues = cues_for_edit(words, [(1.9, 2.4)])
+		assert [c.text for c in cues] == ["Right", "so"]
+
+	def test_srt_numbers_cues_and_uses_comma_milliseconds(self):
+		text = srt_text([CaptionCue(1.5, 3.25, "Hi"), CaptionCue(3661.0, 3662.001, "Later")])
+		assert text == "1\n00:00:01,500 --> 00:00:03,250\nHi\n\n2\n01:01:01,000 --> 01:01:02,001\nLater\n\n"
