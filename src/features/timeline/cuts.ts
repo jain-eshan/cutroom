@@ -28,7 +28,8 @@ export interface Span {
 }
 
 export interface Cut extends Span {
-	kind: "pause" | "filler";
+	/** "words" are the ones the editor struck out of the transcript. */
+	kind: "pause" | "filler" | "words";
 }
 
 /** How tight to cut, named for the rule rather than a temperament -- the same
@@ -105,6 +106,38 @@ export function findCuts(speech: Span[] | undefined, words: Word[], duration: nu
 	return cuts.sort((a, b) => a.start - b.start);
 }
 
+/** How far a cut of struck-out words reaches into the silence either side
+ * of them, at most half of it. Enough to take the breath before a sentence
+ * with it; the rest of each pause stays, so the words left either side meet
+ * with about one natural pause between them rather than none. */
+const WORD_EDGE_S = 0.15;
+
+/** The words the editor struck out, as cuts: one per run of consecutive
+ * word indices. `removed` holds indices into `words`, the same keys
+ * `wordEdits` uses, so a correction and a cut can sit on the same word. */
+export function wordCuts(words: Word[], removed: number[]): Cut[] {
+	const indices = [...new Set(removed)].filter((i) => words[i]).sort((a, b) => a - b);
+	const cuts: Cut[] = [];
+	for (let i = 0; i < indices.length; i++) {
+		const first = indices[i];
+		while (indices[i + 1] === indices[i] + 1) i++;
+		const last = indices[i];
+		const before = words[first - 1];
+		const after = words[last + 1];
+		const start = words[first].start - Math.min(WORD_EDGE_S, before ? (words[first].start - before.end) / 2 : WORD_EDGE_S);
+		const end = words[last].end + Math.min(WORD_EDGE_S, after ? (after.start - words[last].end) / 2 : WORD_EDGE_S);
+		cuts.push({ start: Math.max(0, start), end, kind: "words" });
+	}
+	return cuts;
+}
+
+/** The words still in the edit, for captions and subtitle files: a word
+ * whose middle falls inside a cut is gone from the picture, so it shouldn't
+ * be on screen either. */
+export function wordsLeft(words: Word[], drops: Span[]): Word[] {
+	return words.filter((word) => skipTo((word.start + word.end) / 2, drops) === null);
+}
+
 /** Whether the editor put this cut back. Kept cuts are remembered as moments
  * rather than as the cuts themselves, so changing the strength -- which moves
  * every cut's edges -- still keeps the same pause. */
@@ -112,11 +145,13 @@ export function isKept(cut: Span, kept: number[]): boolean {
 	return kept.some((t) => t >= cut.start && t < cut.end);
 }
 
-/** What the export removes: every cut not put back, merged so neighbouring
- * ones (a filler at the edge of a pause) become one. */
-export function activeCuts(cuts: Cut[], kept: number[]): Span[] {
+/** What the export removes: every cut not put back, plus the words struck
+ * out of the transcript, merged so neighbouring ones (a filler at the edge of
+ * a pause) become one. Struck-out words are never "kept" -- putting them back
+ * means un-striking them -- so they're added after the kept filter. */
+export function activeCuts(cuts: Cut[], kept: number[], struck: Span[] = []): Span[] {
 	return mergeSpans(
-		cuts.filter((cut) => !isKept(cut, kept)),
+		[...cuts.filter((cut) => !isKept(cut, kept)), ...struck],
 		MIN_KEEP_S,
 	);
 }

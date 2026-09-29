@@ -16,6 +16,7 @@ import {
 	type Cut,
 	type CutStrength,
 	type Span,
+	wordCuts,
 } from "@/features/timeline/cuts";
 import {
 	FRAMING_STYLE_LABELS,
@@ -71,7 +72,8 @@ const SHORTCUTS: [string, string][] = [
 	["Shift Z", "Show the whole episode"],
 	["⌘Z", "Undo. With Shift, redo"],
 	["S", "Split the picked shot at the playhead"],
-	["Delete", "Make the picked shot wide"],
+	["Delete", "Cut the picked words, or make the picked shot wide"],
+	["X", "Cut the picked words, or the picked lines"],
 	["Esc", "Unpick the shot"],
 ];
 
@@ -216,6 +218,10 @@ function SpokenLine({
 	at,
 	onSeek,
 	onCorrect,
+	removed,
+	picked,
+	onPick,
+	onRestore,
 }: {
 	turn: Turn;
 	words: Word[];
@@ -238,6 +244,14 @@ function SpokenLine({
 	 * same. `null` for `at` means this line is shown for editing rather than
 	 * because it is being spoken, so nothing is lit. */
 	onCorrect: (index: number, text: string) => void;
+	/** Words struck out of the edit: shown struck through, not hidden, so
+	 * what was cut can still be read and put back with a click. */
+	removed: Set<number>;
+	/** The words picked for cutting, inclusive, or null. */
+	picked: [number, number] | null;
+	/** Pick this word; `extend` reaches back to the last one picked. */
+	onPick: (index: number, extend: boolean) => void;
+	onRestore: (index: number) => void;
 }) {
 	const [editing, setEditing] = useState<number | null>(null);
 	const [draft, setDraft] = useState("");
@@ -289,19 +303,34 @@ function SpokenLine({
 								// The line's own click would seek to its start, which is
 								// the opposite of asking for this word.
 								e.stopPropagation();
-								onSeek(word.start);
+								if (removed.has(index)) {
+									onRestore(index);
+									return;
+								}
+								if (!e.shiftKey) onSeek(word.start);
+								onPick(index, e.shiftKey);
 							}}
 							onDoubleClick={(e) => {
 								e.stopPropagation();
 								setDraft(word.text.trim());
 								setEditing(index);
 							}}
-							title="Double-click to correct this word"
+							title={
+								removed.has(index)
+									? "Cut from the episode. Click to put it back"
+									: "Shift-click another word to pick the words between. Double-click to correct this word"
+							}
 							// The wash alone is 9% accent, which is right for a drop zone
 							// and too quiet for the one word you are meant to be reading.
 							// Accent ink carries it; both tokens already exist.
 							className={`cursor-text rounded-[3px] ${
-								index === current ? "bg-accent-wash font-medium text-accent-text" : ""
+								removed.has(index)
+									? "text-text3 line-through opacity-60"
+									: picked && index >= picked[0] && index <= picked[1]
+										? "bg-accent text-on-accent"
+										: index === current
+											? "bg-accent-wash font-medium text-accent-text"
+											: ""
 							}`}
 						>
 							{word.text.trim()}
@@ -536,6 +565,8 @@ export function EditorView({
 	onCutStrengthChange,
 	keptCuts,
 	onKeptCutsChange,
+	removedWords,
+	onRemovedWordsChange,
 	framingStyle,
 	onFramingStyleChange,
 	onPublish,
@@ -584,6 +615,9 @@ export function EditorView({
 	/** Moments whose cut the editor put back. */
 	keptCuts: number[];
 	onKeptCutsChange: (kept: number[]) => void;
+	/** Words struck out of the transcript, by index into `words`. */
+	removedWords: number[];
+	onRemovedWordsChange: (removed: number[]) => void;
 	/** Owned by App, same reasoning as regions: survives a trip to the
 	 * publish screen, and resets to the default on a fresh cast confirm. */
 	framingStyle: FramingStyle;
@@ -664,7 +698,15 @@ export function EditorView({
 		() => (trimDeadAirEnabled ? findCuts(speech, words, duration, cutStrength) : []),
 		[trimDeadAirEnabled, speech, words, duration, cutStrength],
 	);
-	const drops = useMemo(() => activeCuts(cuts, keptCuts), [cuts, keptCuts]);
+	const struck = useMemo(() => wordCuts(words, removedWords), [words, removedWords]);
+	const removed = useMemo(() => new Set(removedWords), [removedWords]);
+	const drops = useMemo(() => activeCuts(cuts, keptCuts, struck), [cuts, keptCuts, struck]);
+	// Every cut on the timeline's Cuts row: the dead-air trim's and the words'.
+	const allCuts = useMemo(() => [...cuts, ...struck].sort((a, b) => a.start - b.start), [cuts, struck]);
+	// Words picked for cutting, as the first one picked and the last.
+	const [wordPick, setWordPick] = useState<{ anchor: number; end: number } | null>(null);
+	// The last cut made from the transcript, so it can be put back straight away.
+	const [lastCut, setLastCut] = useState<{ indices: number[]; seconds: number } | null>(null);
 	// Read by the `timeupdate` listener, which is attached once per recording.
 	const dropsRef = useRef(drops);
 	useEffect(() => {
@@ -707,12 +749,27 @@ export function EditorView({
 	useEffect(() => {
 		const video = videoRef.current;
 		if (!video) return;
+		let skipTimer: ReturnType<typeof setTimeout> | undefined;
 		const onTime = () => {
 			// Playing, the preview skips what the export will cut, so a trim can
 			// be heard before it's rendered. Paused, a scrub into a cut still
 			// shows it -- that's how one gets found and put back.
 			const jump = video.paused ? null : skipTo(video.currentTime, dropsRef.current);
 			if (jump !== null) video.currentTime = jump;
+			// timeupdate comes about four times a second, which lets up to a
+			// quarter second of a cut word be heard before the jump. So the
+			// next cut ahead also gets a timer of its own, re-armed each tick.
+			clearTimeout(skipTimer);
+			const next = video.paused ? undefined : dropsRef.current.find((d) => d.start > video.currentTime);
+			if (next) {
+				skipTimer = setTimeout(
+					() => {
+						const t = video.currentTime;
+						if (!video.paused && t >= next.start - 0.05 && t < next.end) video.currentTime = next.end;
+					},
+					((next.start - video.currentTime) / (video.playbackRate || 1)) * 1000,
+				);
+			}
 			setCurrentTime(video.currentTime);
 			followTo(video.currentTime);
 		};
@@ -720,7 +777,10 @@ export function EditorView({
 			if (Number.isFinite(video.duration) && video.duration > 0) setDuration(video.duration);
 		};
 		const onPlay = () => setPlaying(true);
-		const onPause = () => setPlaying(false);
+		const onPause = () => {
+			clearTimeout(skipTimer);
+			setPlaying(false);
+		};
 		const onRate = () => setRate(video.playbackRate);
 		const onError = () => setErroredUrl(videoUrl);
 		video.addEventListener("timeupdate", onTime);
@@ -730,6 +790,7 @@ export function EditorView({
 		video.addEventListener("ratechange", onRate);
 		video.addEventListener("error", onError);
 		return () => {
+			clearTimeout(skipTimer);
 			video.removeEventListener("timeupdate", onTime);
 			video.removeEventListener("loadedmetadata", onMeta);
 			video.removeEventListener("play", onPlay);
@@ -878,6 +939,10 @@ export function EditorView({
 	 * middle, which stays inside the same pause when the strength moves its
 	 * edges. */
 	function toggleCut(cut: Cut) {
+		if (cut.kind === "words") {
+			putBack(removedWords.filter((i) => words[i] && words[i].start < cut.end && words[i].end > cut.start));
+			return;
+		}
 		onKeptCutsChange(
 			isKept(cut, keptCuts)
 				? keptCuts.filter((t) => t < cut.start || t >= cut.end)
@@ -892,6 +957,49 @@ export function EditorView({
 		if (video) video.currentTime = t;
 	}
 
+	/** Pick a word to cut; Shift-click reaches back to the last word picked,
+	 * within the same line. Across lines, pick the lines instead. */
+	function pickWord(index: number, extend: boolean) {
+		setLastCut(null);
+		setWordPick((pick) => (extend && pick ? { ...pick, end: index } : { anchor: index, end: index }));
+	}
+
+	/** What X cuts: the picked words, or else every word of the picked lines. */
+	function cutTarget(): number[] {
+		if (wordPick) {
+			const [a, b] = [Math.min(wordPick.anchor, wordPick.end), Math.max(wordPick.anchor, wordPick.end)];
+			return Array.from({ length: b - a + 1 }, (_, i) => a + i);
+		}
+		if (!selectedSpan) return [];
+		const [from, to] = wordSlice(words, selectedSpan.start, selectedSpan.end);
+		return Array.from({ length: to - from }, (_, i) => from + i);
+	}
+
+	function cutPicked() {
+		const indices = cutTarget().filter((i) => !removed.has(i));
+		setWordPick(null);
+		if (indices.length === 0) return;
+		const next = [...removedWords, ...indices].sort((a, b) => a - b);
+		const seconds = totalCut(wordCuts(words, next)) - totalCut(struck);
+		onRemovedWordsChange(next);
+		setLastCut({ indices, seconds });
+	}
+
+	function putBack(indices: number[]) {
+		const back = new Set(indices);
+		onRemovedWordsChange(removedWords.filter((i) => !back.has(i)));
+		setLastCut(null);
+	}
+
+	/** Clicking a struck-out word puts back the whole run it belongs to --
+	 * what was cut together comes back together. */
+	function restoreRun(index: number) {
+		let [a, b] = [index, index];
+		while (removed.has(a - 1)) a--;
+		while (removed.has(b + 1)) b++;
+		putBack(Array.from({ length: b - a + 1 }, (_, i) => a + i));
+	}
+
 	/** Click picks a line; Shift-click reaches back to the last one picked, so
 	 * a stretch of the conversation can be framed as a stretch. The transcript
 	 * is where a section *is* -- an introduction, a long answer, the bit where
@@ -904,6 +1012,7 @@ export function EditorView({
 		}
 		setSelectedTurn(index);
 		setSelectedTurnEnd(index);
+		setWordPick(null);
 		seek(turns[index].start);
 		const covering = regionAt(regions, turns[index].start + 0.01);
 		setSelectedRegionId(covering?.id ?? null);
@@ -1086,10 +1195,17 @@ export function EditorView({
 				break;
 			case "Delete":
 			case "Backspace":
-				if (selectedRegion) goWide(selectedRegion.id);
+				// Picked words are the more specific thing the key could mean.
+				if (wordPick) cutPicked();
+				else if (selectedRegion) goWide(selectedRegion.id);
+				break;
+			case "x":
+			case "X":
+				cutPicked();
 				break;
 			case "Escape":
 				setSelectedRegionId(null);
+				setWordPick(null);
 				break;
 			case "Tab":
 				// Let Tab move focus normally away from a button/link -- only treat
@@ -1260,6 +1376,8 @@ export function EditorView({
 							const selected = i === selectedTurn;
 							const inRange = selectedSpan !== null && i >= selectedSpan.from && i <= selectedSpan.to;
 							const spoken = i === playingTurn;
+							const [lineFrom, lineTo] = wordSlice(words, t.start, t.end);
+							const hasCut = removedWords.some((w) => w >= lineFrom && w < lineTo);
 							const needsAttention = assigned === null;
 							// The left rail carries state: selection over overlap over a missing face.
 							const rail = selected
@@ -1303,13 +1421,21 @@ export function EditorView({
 										)}
 									</span>
 									<span className={`text-pretty ${selected ? "text-body text-text" : "text-ui text-text3"}`}>
-										{spoken || selected ? (
+										{spoken || selected || hasCut ? (
 											<SpokenLine
 												turn={t}
 												words={words}
 												at={spoken ? currentTime : -1}
 												onSeek={seek}
 												onCorrect={correctWord}
+												removed={removed}
+												picked={
+													wordPick
+														? [Math.min(wordPick.anchor, wordPick.end), Math.max(wordPick.anchor, wordPick.end)]
+														: null
+												}
+												onPick={pickWord}
+												onRestore={restoreRun}
 											/>
 										) : (
 											t.text
@@ -1323,6 +1449,40 @@ export function EditorView({
 							);
 						})}
 					</div>
+
+					{/* Cutting from the transcript: what's picked and the one button
+					    that cuts it, or the cut just made and the one that puts it
+					    back. Nothing when there's nothing to act on. */}
+					{(lastCut || wordPick || selectedSpan) && (
+						<div className="flex shrink-0 items-center gap-[9px] border-t border-line bg-chrome px-[17px] py-3">
+							{lastCut ? (
+								<>
+									<p className="flex-1 text-meta text-pretty text-text2">
+										Cut {lastCut.indices.length} {lastCut.indices.length === 1 ? "word" : "words"},{" "}
+										{lastCut.seconds.toFixed(1)}s.
+									</p>
+									<Button size="sm" variant="quiet" onClick={() => putBack(lastCut.indices)}>
+										Put back
+									</Button>
+								</>
+							) : (
+								<>
+									<p className="flex-1 text-meta text-pretty text-text3">
+										{wordPick
+											? "Shift-click another word to pick more."
+											: "Click a word to cut part of this line."}
+									</p>
+									<Button size="sm" variant="quiet" onClick={cutPicked} title="Cut from the episode (X)">
+										{wordPick
+											? `Cut ${Math.abs(wordPick.end - wordPick.anchor) + 1 === 1 ? "word" : `${Math.abs(wordPick.end - wordPick.anchor) + 1} words`}`
+											: selectedSpan && selectedSpan.to > selectedSpan.from
+												? `Cut ${selectedSpan.to - selectedSpan.from + 1} lines`
+												: "Cut line"}
+									</Button>
+								</>
+							)}
+						</div>
+					)}
 
 					{alsoSeen && (
 						<div className="flex shrink-0 flex-col gap-[9px] border-t border-line bg-chrome px-[17px] py-3">
@@ -1676,7 +1836,7 @@ export function EditorView({
 					}}
 					onResize={resize}
 					onSeek={seek}
-					cuts={cuts}
+					cuts={allCuts}
 					keptCuts={keptCuts}
 					onToggleCut={toggleCut}
 				/>

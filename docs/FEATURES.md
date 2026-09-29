@@ -255,6 +255,13 @@ that evicted it to cloud-only -- and the episode still opens fully editable
 with only the picture missing, and the editor asks for the file ("Find the
 recording&hellip;"). Relinking points at the file rather than copying it.
 
+**Cutting from the transcript.** Pick a line (Shift-click for several) and
+press X or "Cut line"; or click a word and Shift-click another in the same
+line to pick part of it. Cut words stay in the transcript, struck through,
+and the timeline's Cuts row shows them; clicking either puts them back. The
+preview skips them, and the export, captions and subtitle file leave them
+out.
+
 Open a project by dropping it on the upload screen, picking it there, or
 choosing "Open a .cutroom file". A project from a newer version of Cutroom is
 refused with a sentence rather than half-read, and a file that isn't a project

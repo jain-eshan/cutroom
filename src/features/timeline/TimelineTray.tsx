@@ -403,9 +403,9 @@ export function TimelineTray({
 					})}
 				</div>
 
-				{/* Cuts: what the dead-air trim removes, so it can be checked and a
-				    cut put back before anything renders. Only there while trimming
-				    is on, since otherwise it would always be empty. */}
+				{/* Cuts: what the dead-air trim removes and the words struck out of
+				    the transcript, so each can be checked and put back before
+				    anything renders. Only there when something is cut. */}
 				{cuts.length > 0 && (
 					<div
 						onPointerDown={(e) => {
@@ -418,7 +418,8 @@ export function TimelineTray({
 						</span>
 						{cuts.filter(inView).map((cut) => {
 							const kept = isKept(cut, keptCuts);
-							const what = cut.kind === "pause" ? "pause" : "filler word";
+							const what =
+								cut.kind === "pause" ? "pause" : cut.kind === "filler" ? "filler word" : "of struck-out words";
 							return (
 								<button
 									type="button"
@@ -426,9 +427,11 @@ export function TimelineTray({
 									onPointerDown={(e) => e.stopPropagation()}
 									onClick={() => onToggleCut(cut)}
 									title={
-										kept
-											? `Kept: ${(cut.end - cut.start).toFixed(1)}s ${what}. Click to cut it again.`
-											: `Cut: ${(cut.end - cut.start).toFixed(1)}s ${what}. Click to keep it.`
+										cut.kind === "words"
+											? `Cut: ${(cut.end - cut.start).toFixed(1)}s ${what}. Click to put them back.`
+											: kept
+												? `Kept: ${(cut.end - cut.start).toFixed(1)}s ${what}. Click to cut it again.`
+												: `Cut: ${(cut.end - cut.start).toFixed(1)}s ${what}. Click to keep it.`
 									}
 									aria-pressed={!kept}
 									className={`absolute inset-y-0 min-w-[3px] rounded-[2px] border ${
