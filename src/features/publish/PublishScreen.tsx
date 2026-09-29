@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+	exportAudio,
+	exportSubtitles,
 	exportVideo,
-	exportVideoToPath,
 	getRenderProgress,
 	type DetectFacesResponse,
 	type Health,
@@ -13,16 +14,28 @@ import { track } from "@/lib/telemetry";
 import { formatDuration } from "@/lib/format";
 import { Button, ButtonLink, CheckMark, CommandBlock, RawMessage, Screen, ScreenHeading, SectionLabel } from "@/components/ui";
 import type { FramingRegion } from "@/features/timeline/types";
+import { activeCuts, findCuts, totalCut, type CutStrength, type Span } from "@/features/timeline/cuts";
+
+/** One finished file. The desktop app writes straight to a path and never
+ * holds the render in memory; a plain browser has nothing but a blob. */
+interface Made {
+	filename: string;
+	save: { kind: "download"; url: string } | { kind: "path"; outputPath: string };
+}
 
 type RenderState =
 	| { status: "idle" }
 	// Real progress, parsed by the service from ffmpeg's own output -- 0
 	// until the first update arrives, same as the pipeline's own stages.
-	| { status: "rendering"; fraction: number }
-	// The desktop app writes straight to `outputPath` and never holds the
-	// render in memory; a plain browser has nothing but the downloaded blob.
-	| { status: "done"; filename: string; save: { kind: "download"; url: string } | { kind: "path"; outputPath: string } }
+	| { status: "rendering"; what: string; fraction: number }
+	| { status: "done"; made: Made[] }
 	| { status: "error"; message: string };
+
+/** The same file name with another extension, so everything an export makes
+ * sits together in the folder the episode was saved to. */
+function sibling(path: string, extension: string): string {
+	return path.replace(/\.[^./\\]+$/, "") + extension;
+}
 
 /**
  * One thing the episode can come out with. Unbuilt artefacts are shown at
@@ -92,7 +105,10 @@ export function PublishScreen({
 	health,
 	captions,
 	onCaptionsChange,
+	speech,
 	trimDeadAir,
+	cutStrength,
+	keptCuts,
 	onBack,
 	onNew,
 }: {
@@ -106,11 +122,21 @@ export function PublishScreen({
 	health: Health | null;
 	captions: boolean;
 	onCaptionsChange: (enabled: boolean) => void;
+	speech?: Span[];
 	trimDeadAir: boolean;
+	cutStrength: CutStrength;
+	keptCuts: number[];
 	onBack: () => void;
 	onNew: () => void;
 }) {
 	const [render, setRender] = useState<RenderState>({ status: "idle" });
+	const [subtitles, setSubtitles] = useState(false);
+	const [audio, setAudio] = useState(false);
+	// The same cuts the editor showed and skipped, worked out the same way.
+	const cuts = useMemo(
+		() => (trimDeadAir ? activeCuts(findCuts(speech, words, duration, cutStrength), keptCuts) : []),
+		[trimDeadAir, speech, words, duration, cutStrength, keptCuts],
+	);
 	const captionsAvailable = health?.captions ?? false;
 	const burnCaptions = captions && captionsAvailable;
 	const changed = regions.filter((r) => r.source === "user").length;
@@ -120,9 +146,9 @@ export function PublishScreen({
 	// true for the plain-browser path; the desktop app's render never
 	// touches an object URL at all.
 	useEffect(() => {
-		if (render.status !== "done" || render.save.kind !== "download") return;
-		const { url } = render.save;
-		return () => URL.revokeObjectURL(url);
+		if (render.status !== "done") return;
+		const urls = render.made.flatMap((m) => (m.save.kind === "download" ? [m.save.url] : []));
+		return () => urls.forEach((url) => URL.revokeObjectURL(url));
 	}, [render]);
 
 	// Closing the tab aborts the request, and the server doesn't yet kill its
@@ -145,20 +171,28 @@ export function PublishScreen({
 		// Asked before rendering starts, not after: rendering is up to 15
 		// minutes of work, and only the desktop app has a real folder to
 		// offer -- a plain browser has nowhere to save to but its own
-		// downloads flow, via the returned blob below.
-		let outputPath: string | null = null;
+		// downloads flow, via the returned blobs below. The audio and
+		// subtitle files go beside the video, under the same name.
+		let outputPath: string | undefined;
 		if (hasElectronBridge()) {
-			outputPath = await chooseExportPath(filename);
-			if (outputPath === null) return; // the user cancelled the save dialog
+			outputPath = (await chooseExportPath(filename)) ?? undefined;
+			if (outputPath === undefined) return; // the user cancelled the save dialog
 		}
 
-		setRender({ status: "rendering", fraction: 0 });
-		// Polled independently of the request below, which stays open for the
-		// whole render and carries no progress of its own -- this is a side
+		const made: Made[] = [];
+		const keep = (name: string, path: string | undefined, blob: Blob | null) =>
+			made.push({
+				filename: name,
+				save: path ? { kind: "path", outputPath: path } : { kind: "download", url: URL.createObjectURL(blob!) },
+			});
+
+		setRender({ status: "rendering", what: "the episode", fraction: 0 });
+		// Polled independently of the requests below, which stay open for the
+		// whole render and carry no progress of their own -- this is a side
 		// channel onto the same job id, not part of that request/response.
 		const pollId = setInterval(() => {
 			void getRenderProgress(sessionId)
-				.then(({ fraction }) => setRender((r) => (r.status === "rendering" ? { status: "rendering", fraction } : r)))
+				.then(({ fraction }) => setRender((r) => (r.status === "rendering" ? { ...r, fraction } : r)))
 				.catch(() => {}); // transient -- the next tick retries
 		}, 700);
 		try {
@@ -170,19 +204,23 @@ export function PublishScreen({
 				source: r.source,
 				cropNudge: r.cropNudge,
 			}));
-			const turnArgs = turns.map((t) => ({ start: t.start, end: t.end }));
-			if (outputPath) {
-				await exportVideoToPath(outputPath, sessionId, regionArgs, turnArgs, faces, words, burnCaptions, trimDeadAir);
-				setRender({ status: "done", filename, save: { kind: "path", outputPath } });
-			} else {
-				const blob = await exportVideo(sessionId, regionArgs, turnArgs, faces, words, burnCaptions, trimDeadAir);
-				setRender({ status: "done", filename, save: { kind: "download", url: URL.createObjectURL(blob) } });
+			keep(filename, outputPath, await exportVideo(sessionId, regionArgs, faces, words, burnCaptions, cuts, outputPath));
+			if (audio) {
+				setRender({ status: "rendering", what: "the audio", fraction: 0 });
+				const path = outputPath && sibling(outputPath, ".mp3");
+				keep(`${stem}-edited.mp3`, path, await exportAudio(sessionId, cuts, path));
 			}
+			if (subtitles) {
+				const path = outputPath && sibling(outputPath, ".srt");
+				keep(`${stem}-edited.srt`, path, await exportSubtitles(words, cuts, path));
+			}
+			setRender({ status: "done", made });
 			// One event for both routes: a saved file and a downloaded one are
 			// the same outcome, and this one is the only real proof that
 			// Cutroom worked for somebody.
 			track({ name: "export_finished", captions: burnCaptions, trimDeadAir, shots: regions.length });
 		} catch (err) {
+			made.forEach((m) => m.save.kind === "download" && URL.revokeObjectURL(m.save.url));
 			setRender({
 				status: "error",
 				message: err instanceof Error ? err.message : "The render failed for an unknown reason.",
@@ -212,7 +250,7 @@ export function PublishScreen({
 		status = (
 			<div className="flex flex-col gap-[13px] rounded-[10px] border border-line bg-bg p-5">
 				<span className="font-mono text-label font-medium tracking-[0.08em] text-accent-text">RENDERING</span>
-				<span className="text-section font-semibold text-text">Rendering the episode</span>
+				<span className="text-section font-semibold text-text">Rendering {render.what}</span>
 				{/* Real progress, parsed by the service from ffmpeg's own output
 				    -- see getRenderProgress. Sits at 0% until the encode itself
 				    starts, which is honest: nothing has rendered yet. */}
@@ -227,10 +265,7 @@ export function PublishScreen({
 			</div>
 		);
 	} else if (render.status === "done") {
-		// Narrowing `render.save.kind` doesn't carry into an onClick closure --
-		// TS can't prove the property won't change by the time it runs -- so
-		// it's captured in a local first.
-		const save = render.save;
+		const firstPath = render.made.find((m) => m.save.kind === "path")?.save;
 		status = (
 			<div className="flex flex-col gap-[13px] rounded-[10px] border border-ok-edge bg-bg p-5">
 				<span className="font-mono text-label font-medium tracking-[0.08em] text-ok">DONE</span>
@@ -239,20 +274,26 @@ export function PublishScreen({
 					MP4{burnCaptions ? " with captions burned in" : ""}
 					{trimDeadAir ? ", dead air trimmed" : ""}.
 				</p>
-				<span className="font-mono text-mono-sm break-all text-text3">
-					{save.kind === "path" ? save.outputPath : render.filename}
-				</span>
+				{render.made.map((m) =>
+					m.save.kind === "path" ? (
+						<span key={m.filename} className="font-mono text-mono-sm break-all text-text3">
+							{m.save.outputPath}
+						</span>
+					) : (
+						<ButtonLink key={m.filename} className="w-full" href={m.save.url} download={m.filename}>
+							Save {m.filename}
+						</ButtonLink>
+					),
+				)}
 				<div className="flex gap-[7px]">
-					{save.kind === "path" ? (
-						<Button variant="primary" full onClick={() => showItemInFolder(save.outputPath)}>
+					{firstPath?.kind === "path" && (
+						<Button variant="primary" full onClick={() => showItemInFolder(firstPath.outputPath)}>
 							Show me
 						</Button>
-					) : (
-						<ButtonLink variant="primary" className="flex-1" href={save.url} download={render.filename}>
-							Save the MP4
-						</ButtonLink>
 					)}
-					<Button onClick={onNew}>New</Button>
+					<Button full={firstPath === undefined} onClick={onNew}>
+						New
+					</Button>
 				</div>
 			</div>
 		);
@@ -285,7 +326,7 @@ export function PublishScreen({
 						<Artefact
 							title="The episode"
 							subline={`${stem}-edited.mp4 · ${size} · ${
-								trimDeadAir ? "dead air trimmed, audio re-encoded" : "original audio untouched"
+								trimDeadAir ? `${formatDuration(totalCut(cuts))} of dead air cut, audio re-encoded` : "original audio untouched"
 							}`}
 							checked
 						/>
@@ -294,6 +335,18 @@ export function PublishScreen({
 							subline={captionsAvailable ? "burned in, cut from the word timings" : "need an ffmpeg built with libass"}
 							checked={burnCaptions}
 							onToggle={captionsAvailable ? () => onCaptionsChange(!captions) : undefined}
+						/>
+						<Artefact
+							title="Subtitles file"
+							subline={`${stem}-edited.srt · for YouTube or your host, viewers can switch them off`}
+							checked={subtitles}
+							onToggle={() => setSubtitles(!subtitles)}
+						/>
+						<Artefact
+							title="Audio for the podcast feed"
+							subline={`${stem}-edited.mp3 · the same edit, for Apple Podcasts, Spotify and the rest`}
+							checked={audio}
+							onToggle={() => setAudio(!audio)}
 						/>
 						<Artefact title="Chapters" subline="the transcript has what they'd need" checked={false} unbuilt />
 						<Artefact title="Show notes" subline="a draft from the transcript, yours to rewrite" checked={false} unbuilt />
@@ -308,7 +361,7 @@ export function PublishScreen({
 					<section className="flex flex-col gap-[9px]">
 						<SectionLabel>Where it goes</SectionLabel>
 						<div className="flex flex-wrap gap-[9px]">
-							<Destination label="A folder on this Mac" selected />
+							<Destination label="A folder on this computer" selected />
 							<Destination label="YouTube" />
 							<Destination label="RSS / podcast host" />
 						</div>

@@ -4,6 +4,7 @@ from pathlib import Path
 import pysubs2
 
 from .transcribe import Word
+from .trim import remap_time
 
 # Subtitle line-length guideline (broadcast captioning conventions land around
 # 32-42 chars/line for a single line at this font size). A long, uninterrupted
@@ -72,6 +73,34 @@ def build_caption_cues(
 
 	flush()
 	return cues
+
+
+def cues_for_edit(words: list[Word], drop_ranges: list[tuple[float, float]]) -> list[CaptionCue]:
+	"""Cues on the exported timeline rather than the recording's.
+
+	Cue times come from the untrimmed source; once pauses and filler words
+	are cut, each has to move earlier by whatever was cut before it, or the
+	captions drift further out of sync with every cut. A cue left with no
+	length -- nothing but a cut filler word -- is dropped."""
+	cues = []
+	for cue in build_caption_cues(words):
+		start, end = remap_time(cue.start, drop_ranges), remap_time(cue.end, drop_ranges)
+		if end > start:
+			cues.append(CaptionCue(start=start, end=end, text=cue.text))
+	return cues
+
+
+def _srt_time(seconds: float) -> str:
+	ms = int(round(seconds * 1000))
+	return f"{ms // 3_600_000:02d}:{ms // 60_000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}"
+
+
+def srt_text(cues: list[CaptionCue]) -> str:
+	"""A SubRip file: the subtitle format YouTube, Spotify and every podcast
+	host accept, which viewers can switch off -- unlike burned-in captions."""
+	return "".join(
+		f"{i}\n{_srt_time(cue.start)} --> {_srt_time(cue.end)}\n{cue.text}\n\n" for i, cue in enumerate(cues, 1)
+	)
 
 
 def write_ass(cues: list[CaptionCue], path: Path, frame_w: int, frame_h: int) -> None:

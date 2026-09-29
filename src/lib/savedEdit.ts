@@ -13,6 +13,7 @@
  * pulls in nothing at runtime.
  */
 import type { CastResult } from "@/features/faces/CastScreen";
+import type { CutStrength } from "@/features/timeline/cuts";
 import type { FramingRegion, FramingStyle } from "@/features/timeline/types";
 import type { WordEdits } from "@/lib/transcript";
 
@@ -34,6 +35,11 @@ export interface SavedEdit<Region = unknown, Style = string> {
 	framingStyle: Style;
 	captions: boolean;
 	trimDeadAir: boolean;
+	/** How tight dead air is cut, and the moments whose cuts were put back.
+	 * Absent in an edit saved before either existed, which reads as the
+	 * default strength with nothing put back. */
+	cutStrength?: CutStrength;
+	keptCuts?: number[];
 	/** Transcription corrections, as word index -> replacement. Absent in an
 	 * edit saved before corrections existed, which is not an error: it means
 	 * nothing was corrected. */
@@ -47,10 +53,13 @@ export interface RestoredEdit {
 	framingStyle: FramingStyle;
 	captions: boolean;
 	trimDeadAir: boolean;
+	cutStrength: CutStrength;
+	keptCuts: number[];
 	wordEdits: WordEdits;
 }
 
 const FRAMING_STYLES: FramingStyle[] = ["wideOnly", "gentle", "dynamic"];
+const CUT_STRENGTHS: CutStrength[] = ["long", "most", "tight"];
 
 /**
  * A saved edit read back, or `null` if it isn't one this build understands.
@@ -75,6 +84,8 @@ export function restorableEdit(edit: SavedEdit | null | undefined): RestoredEdit
 		framingStyle: FRAMING_STYLES.find((style) => style === edit.framingStyle) ?? "gentle",
 		captions: Boolean(edit.captions),
 		trimDeadAir: Boolean(edit.trimDeadAir),
+		cutStrength: CUT_STRENGTHS.find((strength) => strength === edit.cutStrength) ?? "most",
+		keptCuts: Array.isArray(edit.keptCuts) ? edit.keptCuts.filter((t) => typeof t === "number" && Number.isFinite(t)) : [],
 		// Every value is re-checked: this is a file, and `applyWordEdits`
 		// ignores an index that isn't a word, but a non-string replacement
 		// would reach the DOM.

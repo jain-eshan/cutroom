@@ -10,6 +10,7 @@ from .audio import FFPROBE_TIMEOUT_S
 from .faces import BBox
 from .ffmpeg import FFMPEG, FFPROBE
 from .framing import CropRect, person_crop
+from .trim import keep_ranges
 
 Layout = Literal["original", "zoom", "split"]
 
@@ -417,14 +418,6 @@ def has_ass_filter() -> bool:
 	return any(parts[1] == "ass" for line in out.stdout.splitlines() if len(parts := line.split()) > 1)
 
 
-def _escape_filter_path(path: Path) -> str:
-	"""Escape a filesystem path for use as an ffmpeg filtergraph argument.
-	The filter parser treats `\\`, `:` and `'` specially even inside quotes,
-	so all three need escaping before wrapping the result in single quotes."""
-	escaped = str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-	return f"'{escaped}'"
-
-
 def _progress_fraction(line: str, duration: float) -> float | None:
 	"""One line of ffmpeg's `-progress pipe:1` output, or `None` if it isn't
 	a time update (most lines are frame counts, bitrate, speed -- one line
@@ -478,7 +471,11 @@ def render_export(
 	concat_label = "vconcat" if ass_path is not None else "vout"
 	filter_complex = ";".join(filter_parts) + f";{concat_inputs}concat=n={len(segments)}:v=1:a=0[{concat_label}]"
 	if ass_path is not None:
-		filter_complex += f";[{concat_label}]ass=filename={_escape_filter_path(ass_path)}[vout]"
+		# By name, with ffmpeg run from the captions' own folder: no escaping
+		# survives both of ffmpeg's filter parsers for every path. An
+		# apostrophe (C:\\Users\\O'Brien\\...\\Temp on Windows) fails the render
+		# outright, and libass can't open a non-ASCII path there either.
+		filter_complex += f";[{concat_label}]ass=filename={ass_path.name}[vout]"
 
 	trimmed_audio = not _segments_are_contiguous(segments, duration)
 	if trimmed_audio:
@@ -494,7 +491,8 @@ def render_export(
 	cmd = [
 		FFMPEG,
 		"-y",
-		"-i", str(input_path),
+		# Absolute, since ffmpeg may run from the captions' folder (below).
+		"-i", str(Path(input_path).absolute()),
 		"-filter_complex", filter_complex,
 		"-map", "[vout]",
 		"-c:v", "libx264",
@@ -509,14 +507,50 @@ def render_export(
 	# otherwise also write to stderr -- -progress pipe:1 is the only progress
 	# reporting wanted, and it goes to stdout so it can't be confused with
 	# the real error output on stderr that a failure needs.
-	cmd += ["-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(output_path)]
+	cmd += ["-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(Path(output_path).absolute())]
+	_run_with_progress(cmd, duration, on_progress, cwd=ass_path.parent if ass_path is not None else None)
 
+
+# The podcast feed's own file. MP3 because every host and app takes it;
+# 192k is transparent for speech, and a 1-hour episode comes out near 85MB.
+PODCAST_AUDIO_BITRATE = "192k"
+
+
+def render_audio(
+	input_path: Path,
+	output_path: Path,
+	drop_ranges: list[tuple[float, float]],
+	duration: float,
+	on_progress: Callable[[float], None] | None = None,
+) -> None:
+	"""The episode's sound on its own, as an MP3, with the same cuts as the
+	video so the audio feed and the video are the same edit."""
+	cmd = [FFMPEG, "-y", "-i", str(input_path), "-vn"]
+	if drop_ranges:
+		kept = keep_ranges(drop_ranges, duration)
+		parts = [
+			f"[0:a]atrim=start={_fmt(start)}:end={_fmt(end)},asetpts=PTS-STARTPTS[a{i}]"
+			for i, (start, end) in enumerate(kept)
+		]
+		inputs = "".join(f"[a{i}]" for i in range(len(kept)))
+		cmd += ["-filter_complex", ";".join(parts) + f";{inputs}concat=n={len(kept)}:v=0:a=1[aout]", "-map", "[aout]"]
+	else:
+		cmd += ["-map", "0:a"]
+	cmd += ["-c:a", "libmp3lame", "-b:a", PODCAST_AUDIO_BITRATE, "-progress", "pipe:1", "-nostats", str(output_path)]
+	_run_with_progress(cmd, duration - sum(end - start for start, end in drop_ranges), on_progress)
+
+
+def _run_with_progress(
+	cmd: list[str], duration: float, on_progress: Callable[[float], None] | None, cwd: Path | None = None
+) -> None:
+	"""Run ffmpeg, reporting progress parsed from its `-progress pipe:1`
+	output (see `_progress_fraction`) against the output's own length."""
 	# stderr goes to a real file, not a pipe: a pipe's OS buffer is small
 	# (~64KB) and nothing here drains it concurrently with stdout, so a
 	# verbose ffmpeg run (warnings, an unusual codec) could fill it and
 	# deadlock the subprocess. A file has no such limit.
 	with tempfile.TemporaryFile() as stderr_capture:
-		proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=stderr_capture, text=True, bufsize=1)
+		proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=stderr_capture, text=True, bufsize=1, cwd=cwd)
 		assert proc.stdout is not None
 		for line in proc.stdout:
 			fraction = _progress_fraction(line, duration)

@@ -7,6 +7,7 @@ import { SetupGate } from "@/features/setup/SetupGate";
 import { TelemetryConsent } from "@/features/setup/TelemetryConsent";
 import { EditorView } from "@/features/timeline/EditorView";
 import { suggestRegions } from "@/features/timeline/regions";
+import type { CutStrength, Span } from "@/features/timeline/cuts";
 import type { FramingRegion, FramingStyle } from "@/features/timeline/types";
 import { ProcessingFailed } from "@/features/upload/ProcessingFailed";
 import { ProcessingScreen } from "@/features/upload/ProcessingScreen";
@@ -99,6 +100,7 @@ type Status =
 			turns: Turn[];
 			overlapWindows: OverlapWindow[];
 			words: Word[];
+			speech?: Span[];
 			faces: DetectFacesResponse;
 	  }
 	| {
@@ -109,6 +111,7 @@ type Status =
 			turns: Turn[];
 			overlapWindows: OverlapWindow[];
 			words: Word[];
+			speech?: Span[];
 			faces: DetectFacesResponse;
 			match: MatchResult;
 	  }
@@ -120,6 +123,7 @@ type Status =
 			turns: Turn[];
 			overlapWindows: OverlapWindow[];
 			words: Word[];
+			speech?: Span[];
 			faces: DetectFacesResponse;
 			cast: CastResult;
 	  }
@@ -134,6 +138,7 @@ type Status =
 			turns: Turn[];
 			overlapWindows: OverlapWindow[];
 			words: Word[];
+			speech?: Span[];
 			faces: DetectFacesResponse;
 			cast: CastResult;
 			/** Measured by the editor's video element: the recording's real length. */
@@ -165,6 +170,7 @@ function fixtureStatus(): Status {
 		turns: fixtureData.turns,
 		overlapWindows: fixtureData.overlapWindows,
 		words: fixtureData.words,
+		speech: fixtureData.speech,
 		faces: fixtureData.faces,
 		cast: fixtureCast,
 	};
@@ -206,6 +212,8 @@ function App() {
 	const [wordEdits, setWordEdits] = useState<WordEdits>({});
 	const [captions, setCaptions] = useState(false);
 	const [trimDeadAir, setTrimDeadAir] = useState(false);
+	const [cutStrength, setCutStrength] = useState<CutStrength>("most");
+	const [keptCuts, setKeptCuts] = useState<number[]>([]);
 	const [uploadFraction, setUploadFraction] = useState(0);
 	const [progress, setProgress] = useState<JobProgress | null>(null);
 	const [elapsed, setElapsed] = useState(0);
@@ -264,6 +272,8 @@ function App() {
 			framingStyle,
 			captions,
 			trimDeadAir,
+			cutStrength,
+			keptCuts,
 			wordEdits,
 			savedAt: Date.now(),
 		};
@@ -292,7 +302,7 @@ function App() {
 			clearTimeout(timer);
 			window.removeEventListener("pagehide", flush);
 		};
-	}, [editSessionId, editCast, regions, framingStyle, captions, trimDeadAir, wordEdits]);
+	}, [editSessionId, editCast, regions, framingStyle, captions, trimDeadAir, cutStrength, keptCuts, wordEdits]);
 
 	/** Save the open episode as a `.cutroom` file the user keeps.
 	 *
@@ -378,6 +388,7 @@ function App() {
 		turns: Turn[];
 		overlapWindows: OverlapWindow[];
 		words: Word[];
+		speech?: Span[];
 		faces: DetectFacesResponse;
 		match: MatchResult;
 		edit?: SavedEdit | null;
@@ -389,6 +400,8 @@ function App() {
 			setFramingStyle(saved.framingStyle);
 			setCaptions(saved.captions);
 			setTrimDeadAir(saved.trimDeadAir);
+			setCutStrength(saved.cutStrength);
+			setKeptCuts(saved.keptCuts);
 			setWordEdits(saved.wordEdits);
 			// Seeded here rather than left null, so reopening an episode and
 			// changing nothing doesn't write an identical edit straight back.
@@ -401,6 +414,7 @@ function App() {
 				turns: result.turns,
 				overlapWindows: result.overlapWindows,
 				words: result.words,
+				speech: result.speech,
 				faces: result.faces,
 				cast: saved.cast,
 			});
@@ -415,6 +429,7 @@ function App() {
 				turns: result.turns,
 				overlapWindows: result.overlapWindows,
 				words: result.words,
+				speech: result.speech,
 				faces: result.faces,
 			});
 			return;
@@ -427,6 +442,7 @@ function App() {
 			turns: result.turns,
 			overlapWindows: result.overlapWindows,
 			words: result.words,
+			speech: result.speech,
 			faces: result.faces,
 			match: result.match,
 		});
@@ -610,6 +626,8 @@ function App() {
 					setRegions([]);
 					setCaptions(health?.captions ?? false);
 					setTrimDeadAir(false);
+					setCutStrength("most");
+					setKeptCuts([]);
 					setStatus({
 						state: "editing",
 						videoUrl: status.videoUrl,
@@ -618,6 +636,7 @@ function App() {
 						turns: status.turns,
 						overlapWindows: status.overlapWindows,
 						words: status.words,
+						speech: status.speech,
 						faces: status.faces,
 						cast: { names: {}, speakerToPerson: {}, voiceNames: {} },
 					});
@@ -657,6 +676,8 @@ function App() {
 					setCaptions(health?.captions ?? false);
 					// Off by default: it removes content rather than adding to it.
 					setTrimDeadAir(false);
+					setCutStrength("most");
+					setKeptCuts([]);
 					setStatus({
 						state: "editing",
 						videoUrl: status.videoUrl,
@@ -665,6 +686,7 @@ function App() {
 						turns: status.turns,
 						overlapWindows: status.overlapWindows,
 						words: status.words,
+						speech: status.speech,
 						faces: status.faces,
 						cast,
 					});
@@ -701,8 +723,13 @@ function App() {
 				}
 				missingRecording={missingRecording}
 				onRelink={hasElectronBridge() ? handleRelink : undefined}
+				speech={status.speech}
 				trimDeadAirEnabled={trimDeadAir}
 				onTrimDeadAirChange={setTrimDeadAir}
+				cutStrength={cutStrength}
+				onCutStrengthChange={setCutStrength}
+				keptCuts={keptCuts}
+				onKeptCutsChange={setKeptCuts}
 				framingStyle={framingStyle}
 				onFramingStyleChange={setFramingStyle}
 				onPublish={(duration) => setStatus({ ...status, state: "publishing", duration })}
@@ -721,7 +748,10 @@ function App() {
 				health={health}
 				captions={captions}
 				onCaptionsChange={setCaptions}
+				speech={status.speech}
 				trimDeadAir={trimDeadAir}
+				cutStrength={cutStrength}
+				keptCuts={keptCuts}
 				onBack={() => setStatus({ ...status, state: "editing" })}
 				onNew={startOver}
 			/>

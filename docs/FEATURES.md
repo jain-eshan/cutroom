@@ -27,6 +27,7 @@ design). For measured accuracy and performance numbers, see
 | 16 | [Desktop packaging](#16-desktop-packaging) | Shipped |
 | 17 | [Credits](#17-credits) | Shipped |
 | 18 | [Opt-in usage counts](#18-opt-in-usage-counts) | Shipped |
+| 19 | [Problem reports](#19-problem-reports) | Shipped |
 | — | [Vary shot length](#vary-shot-length-deferred) | Deferred |
 
 ---
@@ -275,38 +276,66 @@ podcast's audio is never actually edited, so there's no reason to pay a
 quality-loss generation for it). Verified frame-accurate and duration-exact
 against real footage — see [STATUS.md](STATUS.md#measured-not-asserted).
 
-*Implementation:* `server/pipeline/render.py`, `POST /export` in
-`server/main.py`.
+Two more files can come out of the same export, ticked on the publish
+screen and written beside the MP4 under the same name:
+
+- **Subtitles file** (`.srt`): the same cues as the burned-in captions, moved
+  to the trimmed timeline. YouTube and podcast hosts accept it, and viewers
+  can switch it off, which burned-in captions can't do.
+- **Audio for the podcast feed** (`.mp3`, 192k): the same edit, dead-air cuts
+  included, for Apple Podcasts, Spotify and the rest.
+
+*Implementation:* `server/pipeline/render.py` (`render_export`,
+`render_audio`), `server/pipeline/captions.py` (`cues_for_edit`,
+`srt_text`), `POST /export`, `/export/audio` and `/export/subtitles` in
+`server/main.py`, `src/features/publish/PublishScreen.tsx`.
 
 ### 8. Smarter cutting
 
-An opt-in export checkbox ("Trim dead air & filler words") that cuts a real
-edit closer to what a human editor would leave in:
+"Trim dead air" in the editor, off by default because it is the one option
+that removes content rather than adding to it:
 
-- **Dead air.** A pause longer than about 1.2s gets trimmed down to a short
-  beat (~0.35s), not removed entirely — a hard cut to total silence reads as
-  a jump cut, so a little breathing room survives every cut.
+- **Dead air.** Every pause longer than the chosen setting -- *Over 2s*,
+  *Over 1s* (the default) or *Over 0.5s* -- is cut down to a short beat.
+  A quarter second of air is left on each side (never more than 35% of the
+  pause per side, so a short pause still loses something): a slightly long
+  pause is invisible, a clipped first letter is not.
 - **Filler words.** Standalone disfluencies (`um`, `uh`, `erm`, and similar)
   get cut from both audio and video. Deliberately narrow: words that are
   *sometimes* filler ("like", "so", "actually") are never touched, because
-  there's no way to tell filler "like" from a real one from the word alone,
-  and cutting the wrong one removes meaning instead of dead air.
+  there's no way to tell filler "like" from a real one from the word alone.
 
-Off by default, unlike captions — this is the one export option that
-actually removes content rather than adding something on top of it. Turning
-it on forces a real audio re-encode (the source audio can no longer be
-copied through untouched once something's cut from it), and if captions are
-also on, caption timing is remapped to the trimmed timeline so the two stay
-in sync.
+Pauses are measured from the audio -- the diarisation model's own speech
+segments, merged across speakers -- not from speaker turns. Turns ran
+straight through a pause in the middle of an answer, so the old trim only
+ever found the gaps *between* people and missed most of the dead air.
+Episodes processed before the speech segments were saved fall back to word
+timings, and the editor marks those cuts "estimated": word gaps also cover
+laughs and murmurs Whisper wrote nothing for (on the reference episode the
+old method's "silence" was 96s sound out of 173s), so each is worth checking,
+or the recording worth processing again. A pause only counts when nobody is talking, so if separate
+per-person tracks are ever supported, each track's speech merges into the
+same list and nothing else changes.
 
-Not measured against real footage the way [auto-framing](#4-auto-framing)'s
-constants are — there's no reference edit to tune the "how long is too long
-a pause" cutoff against yet. Treat the current thresholds as reasoned
-defaults, not settled numbers.
+The cuts are worked out in the editor, not at export. They show in a
+**Cuts** row on the timeline, playback skips them so the trim can be heard
+before rendering, and clicking one puts it back (click again to cut it). A
+put-back cut is remembered by its middle, so changing the setting, which
+moves every cut's edges, keeps the same pause. The export is sent this
+exact list and cuts nothing else. Anything left between two cuts shorter
+than 0.3s is cut with them, since it is only their leftover air and would be
+two jump cuts a blink apart.
 
-*Implementation:* `server/pipeline/trim.py` (range detection + timeline
-remapping), `server/pipeline/render.py` (segment dropping, trimmed-audio
-render path).
+The setting and the put-back cuts save with the edit. Thresholds came from
+a multi-track podcast tool's measurements (pauses there ran 0.46s median,
+1.39s at the 95th percentile), not from a single-camera reference edit, so
+treat them as reasoned defaults.
+
+*Implementation:* `src/features/timeline/cuts.ts` (finding cuts, putting
+them back, the export list), the Cuts row in `TimelineTray.tsx`, playback
+skipping in `EditorView.tsx`, `server/pipeline/trim.py` (checking the list,
+keep ranges, caption remapping), `speech` in the result from
+`_transcribe_work` in `server/main.py`.
 
 #### Vary shot length (deferred)
 
@@ -390,6 +419,22 @@ Windows `.exe` build in CI), which checks for updates from v0.3.0 on:
 automatic on Windows, a "new version" prompt on the Mac until the app is
 signed. Not signed/notarised yet. See [STATUS.md](STATUS.md).
 
+**Windows.** CI runs every test on Windows as well as Linux, and the fixes a
+Windows audit turned up are in: a recording is linked by a written-down path
+where Windows refuses a symlink (it does for anyone without admin rights),
+quitting ends the whole Python process tree, Python runs in UTF-8 so a
+non-Latin username can't break it, the face models load from bytes rather
+than paths OpenCV can't open, captions render by file name from their own
+folder (an apostrophe in a path failed the render, on the Mac too), no
+console windows appear, and there are no drawn Mac window buttons or empty
+menu bar. Not yet run on a real Windows machine; the one thing only that can
+answer is whether a fresh PC needs Microsoft's Visual C++ runtime (the README
+says how to install it if so).
+
+Every release lists a SHA-256 for each installer in its notes, and attaches
+`SHA256SUMS.txt`, so an unsigned download can be checked (README, "Check
+your download").
+
 ### 17. Credits
 
 The licences of everything Cutroom ships — five sets of model weights and an
@@ -429,3 +474,21 @@ that is the complete list), `src/features/setup/TelemetryConsent.tsx` (the
 first-run card), `src/components/UsageData.tsx` (changing it later). Dormant
 without `VITE_POSTHOG_KEY`. Documented for users in
 [PRIVACY.md](../PRIVACY.md).
+
+### 19. Problem reports
+
+"report a problem" in the title bar, and "Save a problem report" on the
+processing-failed screen, desktop app only. Writes a text file to Downloads
+and shows it there: Cutroom's version, the system, the processing service's
+state and its last 300 lines of output, which is where a Python traceback
+lands. Nothing is sent; the person reads it and attaches it to an issue.
+
+Folder names are taken out, since the file is written to be sent to a
+stranger and a path carries a person's name and how they organise their
+disk. The home folder is replaced as a whole string first (so a path with
+spaces still loses the username), then every path is cut to its last part:
+enough to see which recording or which line of code was involved.
+
+*Implementation:* `scripts/problem-report.mjs` (tested in
+`problem-report.test.mjs`), the `save-problem-report` handler in
+`electron/main.mjs`.
