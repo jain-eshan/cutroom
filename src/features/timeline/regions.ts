@@ -1,4 +1,4 @@
-import type { BBox, OverlapWindow, Person, Turn } from "@/lib/api";
+import type { BBox, OverlapWindow, Person, Turn, Word } from "@/lib/api";
 // Relative, not the `@/` alias used everywhere else: this file's tests run
 // under Node's own module resolution (see regions.test.ts), which can't
 // follow the Vite-only alias. faceCrop.ts has no other runtime imports of
@@ -8,7 +8,7 @@ import { bboxAtTime, isVisibleAt } from "../../lib/faceCrop.ts";
 // Relative for the same reason as faceCrop.ts above: this is a *value*
 // import, so unlike the type-only line below it survives to runtime, and
 // these tests run under Node's own resolution.
-import { FRAMING_STYLE_MIN_LINE_S } from "./types.ts";
+import { FRAMING_STYLE_BREAK_S, FRAMING_STYLE_MIN_LINE_S } from "./types.ts";
 import type { FramingRegion, FramingStyle, RegionLayout } from "@/features/timeline/types";
 
 /** Shorter than this and a region is a flash rather than a shot, and the drag
@@ -43,6 +43,10 @@ const MAX_SUGGESTED_COMPOSITE = 3;
  * whoever speaks next starts, instead of flashing wide in the hand-off gap
  * (EDGE_CASES.md A11, rule 6). */
 const WIDE_AFTER_SILENCE_S = 3;
+
+/** A pause between two words at least this long is a beat even without a
+ * full stop -- Whisper doesn't punctuate every sentence it hears. */
+const BEAT_PAUSE_S = 1;
 
 /** Words that carry nothing on their own, so a line made only of them is an
  * acknowledgement rather than a contribution. Deliberately excludes "no" and
@@ -148,6 +152,14 @@ function takeoverAt(
 	return { outgoingIndex, incomingIndex };
 }
 
+/** The moments a close-up may come out to wide: the end of every sentence,
+ * and every real pause. Cutting anywhere else moves the camera mid-thought. */
+function beatsIn(words: Word[]): number[] {
+	return words
+		.filter((word, i) => /[.?!]["')]*$/.test(word.text.trim()) || (words[i + 1]?.start ?? 0) - word.end >= BEAT_PAUSE_S)
+		.map((word) => word.end);
+}
+
 let nextId = 0;
 function makeId(): string {
 	nextId += 1;
@@ -230,6 +242,39 @@ function mergeTouching(regions: FramingRegion[]): FramingRegion[] {
 }
 
 /**
+ * Break a long close-up with wide shots, so a long answer isn't one face for
+ * minutes on end. Every cut lands on a beat: out to wide on the first one
+ * after `hold` seconds on the face, back in on the first one after `wide`
+ * seconds out. A piece too short to be worth a cut stays with the shot
+ * around it -- the break is skipped rather than leaving a stub under half a
+ * hold at the end of the answer.
+ *
+ * Close-ups only. A composite exists because people are talking over each
+ * other, which is the moment least worth cutting away from.
+ */
+function breakLongCloseUps(
+	regions: FramingRegion[],
+	beats: number[],
+	pace: { hold: number; wide: number },
+): FramingRegion[] {
+	return regions.flatMap((region) => {
+		if (region.layout !== "zoom") return [region];
+		const pieces: FramingRegion[] = [];
+		let start = region.start;
+		for (;;) {
+			const out = beats.find((t) => t >= start + pace.hold);
+			if (out === undefined || region.end - out < pace.wide + pace.hold / 2) break;
+			const backIn = beats.find((t) => t >= out + pace.wide);
+			if (backIn === undefined || region.end - backIn < pace.hold / 2) break;
+			pieces.push({ ...region, id: pieces.length ? makeId() : region.id, start, end: out });
+			start = backIn;
+		}
+		pieces.push({ ...region, id: pieces.length ? makeId() : region.id, start });
+		return pieces;
+	});
+}
+
+/**
  * The framing the pipeline proposes, as regions: close on whoever is speaking,
  * both on screen wherever people genuinely talk over each other, and wide
  * wherever we don't know who is talking.
@@ -291,6 +336,7 @@ export function suggestRegions(
 	speakerToPerson: Record<number, number>,
 	people: Person[],
 	style: FramingStyle,
+	words: Word[] = [],
 ): FramingRegion[] {
 	// Rule 8: no automatic framing at all -- not even the both-on-screen
 	// composite for a genuine overlap. The same result as an editor deleting
@@ -396,7 +442,11 @@ export function suggestRegions(
 		closeUps.push(...subtract(region, holes));
 	});
 
-	return mergeTouching([...splits, ...closeUps]);
+	// Broken up after merging, not per shot: two lines in a row from one
+	// person are one close-up, and it's the length of that which needs a break.
+	const merged = mergeTouching([...splits, ...closeUps]);
+	const pace = FRAMING_STYLE_BREAK_S[style];
+	return pace ? breakLongCloseUps(merged, beatsIn(words), pace) : merged;
 }
 
 /**
@@ -448,10 +498,11 @@ export function applyStyleWithin(
 	people: Person[],
 	style: FramingStyle,
 	span: { start: number; end: number },
+	words: Word[] = [],
 ): FramingRegion[] {
 	const userRegions = regions.filter((r) => r.source === "user");
 	const outside = regions.filter((r) => r.source !== "user").flatMap((r) => subtract(r, [span]));
-	const inside = suggestRegions(turns, overlapWindows, speakerToPerson, people, style).flatMap((r) =>
+	const inside = suggestRegions(turns, overlapWindows, speakerToPerson, people, style, words).flatMap((r) =>
 		clipTo(r, span),
 	);
 
@@ -469,9 +520,10 @@ export function reconcileWithStyle(
 	speakerToPerson: Record<number, number>,
 	people: Person[],
 	style: FramingStyle,
+	words: Word[] = [],
 ): FramingRegion[] {
 	const userRegions = regions.filter((r) => r.source === "user");
-	let result = suggestRegions(turns, overlapWindows, speakerToPerson, people, style);
+	let result = suggestRegions(turns, overlapWindows, speakerToPerson, people, style, words);
 	for (const userRegion of userRegions) {
 		result = [...result.flatMap((existing) => subtract(existing, [userRegion])), userRegion];
 	}

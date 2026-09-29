@@ -595,8 +595,8 @@ export function EditorView({
 	const [frameRef, available] = useElementSize();
 
 	const suggested = useMemo(
-		() => suggestRegions(turns, overlapWindows, cast.speakerToPerson, faces.people, framingStyle),
-		[turns, overlapWindows, cast.speakerToPerson, faces.people, framingStyle],
+		() => suggestRegions(turns, overlapWindows, cast.speakerToPerson, faces.people, framingStyle, words),
+		[turns, overlapWindows, cast.speakerToPerson, faces.people, framingStyle, words],
 	);
 
 	// Lines worth a second look: no face to frame, or talking over someone
@@ -924,7 +924,7 @@ export function EditorView({
 	function frameAs(style: FramingStyle) {
 		onFramingStyleChange(style);
 		const span = selectedSpan ?? { start: 0, end: duration || Infinity };
-		edit(applyStyleWithin(regions, turns, overlapWindows, cast.speakerToPerson, faces.people, style, span));
+		edit(applyStyleWithin(regions, turns, overlapWindows, cast.speakerToPerson, faces.people, style, span, words));
 	}
 
 	function togglePlay() {

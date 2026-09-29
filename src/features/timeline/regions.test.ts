@@ -15,7 +15,7 @@ import {
 	wideGaps,
 } from "./regions.ts";
 import type { FramingRegion } from "./types.ts";
-import type { Person, Turn } from "../../lib/api.ts";
+import type { Person, Turn, Word } from "../../lib/api.ts";
 
 const EPISODE = 600;
 
@@ -492,6 +492,75 @@ test("gentle still cuts to a genuinely long stretch", () => {
 	const turns = [turn(0, 0, 20), turn(1, 21, 40), turn(2, 50, 70)];
 	const gentle = suggestRegions(turns, [], CAST, PEOPLE, "gentle");
 	assert.ok(gentle.some((r) => r.personIds.includes(11)), "19s is well past gentle's cutoff too");
+});
+
+// --- Long answers go wide on a beat ----------------------------------------
+
+/** One word every `every` seconds from `start` to `end`, each ending its own
+ * sentence unless `text` says otherwise -- a beat at every word's end. */
+function wordsEvery(start: number, end: number, every: number, text = "done."): Word[] {
+	const words: Word[] = [];
+	for (let t = start; t + every <= end + 1e-9; t += every) words.push({ start: t, end: t + every - 0.1, text });
+	return words;
+}
+
+test("a long answer comes out to wide on a sentence end, and back in on another", () => {
+	// Two minutes of one person, a sentence every 3s. Dynamic: 12s on the face, then 5s wide.
+	const words = wordsEvery(0, 120, 3);
+	const ends = new Set(words.map((w) => w.end));
+	const regions = suggestRegions([turn(0, 0, 120)], [], CAST, PEOPLE, "dynamic", words);
+	assert.ok(regions.length > 4, `${regions.length} close-ups`);
+	for (const r of regions) {
+		assert.deepEqual(r.personIds, [10]);
+		assert.ok(r.end - r.start <= 12 + 3 + 6, `a close-up of ${r.end - r.start}s`); // hold, one sentence, a short tail
+		assert.ok(r.end - r.start >= 6, `a stub of ${r.end - r.start}s`); // never less than half a hold
+	}
+	for (const gap of wideGaps(regions, 120)) {
+		assert.ok(gap.end - gap.start >= 5, `a wide flash of ${gap.end - gap.start}s`);
+		assert.ok(ends.has(gap.start) && ends.has(gap.end), `cut at ${gap.start}/${gap.end}, not on a sentence end`);
+	}
+});
+
+test("with no sentence end or pause to cut on, a long answer stays on the face", () => {
+	const words = wordsEvery(0, 120, 0.5, "and");
+	const regions = suggestRegions([turn(0, 0, 120)], [], CAST, PEOPLE, "dynamic", words);
+	assert.deepEqual(
+		regions.map((r) => [r.start, r.end]),
+		[[0, 120]],
+	);
+});
+
+test("a real pause counts as a beat even when Whisper didn't punctuate it", () => {
+	// 1.6s pauses after 13.9s and 29.9s: one to go out on, one to come back in on.
+	const words = [...wordsEvery(0, 14, 0.5, "and"), ...wordsEvery(15.5, 30, 0.5, "and"), ...wordsEvery(31.5, 60, 0.5, "and")];
+	const regions = suggestRegions([turn(0, 0, 60)], [], CAST, PEOPLE, "dynamic", words);
+	assert.deepEqual(
+		regions.map((r) => [r.start, r.end]),
+		[
+			[0, 13.9],
+			[29.9, 60],
+		],
+	);
+});
+
+test("long answers hold the face longer than most answers do", () => {
+	const words = wordsEvery(0, 300, 3);
+	const turns = [turn(0, 0, 300)];
+	const gentle = suggestRegions(turns, [], CAST, PEOPLE, "gentle", words);
+	const dynamic = suggestRegions(turns, [], CAST, PEOPLE, "dynamic", words);
+	assert.ok(gentle.length < dynamic.length, `${gentle.length} against ${dynamic.length}`);
+	assert.ok(Math.min(...gentle.map((r) => r.end - r.start)) >= 25);
+});
+
+test("people talking over each other aren't cut away from, however long it runs", () => {
+	const words = wordsEvery(0, 100, 3);
+	const overlaps = [{ start: 10, end: 80, speakers: [0, 1] }];
+	const regions = suggestRegions([turn(0, 0, 100)], overlaps, CAST, PEOPLE, "dynamic", words);
+	const splits = regions.filter((r) => r.layout === "split");
+	assert.deepEqual(
+		splits.map((r) => [r.start, r.end]),
+		[[10, 80]],
+	);
 });
 
 test("reconcileWithStyle keeps a shot the editor made and only replaces suggested ones around it", () => {
