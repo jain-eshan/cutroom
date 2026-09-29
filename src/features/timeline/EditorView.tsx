@@ -102,13 +102,15 @@ function useElementSize() {
 
 /**
  * One pane showing a crop of the source video, positioned in real pixels so
- * it matches exactly what ffmpeg will render. Kept in sync with the primary
- * "driver" video by one idempotent sync() on every relevant driver event --
- * splitting time-correction and play/pause into separate listeners lets them
- * race, because a currentTime write can interrupt an in-flight play().
+ * it matches exactly what ffmpeg will render.
+ *
+ * Drawn from the driver video onto a canvas on every frame it presents,
+ * rather than mounting a second <video> per pane. That used to mean two to
+ * four decodes of the same 1080p recording kept in step with each other, and
+ * the editor ran at about 4fps through any close-up (STATUS.md, "Found
+ * 2026-09-20"). One decode, copied into each pane, can't drift either.
  */
 function CroppedVideo({
-	videoUrl,
 	bbox,
 	frameWidth,
 	frameHeight,
@@ -118,7 +120,6 @@ function CroppedVideo({
 	cropNudge,
 	driverRef,
 }: {
-	videoUrl: string;
 	bbox: BBox | undefined;
 	frameWidth: number;
 	frameHeight: number;
@@ -133,55 +134,56 @@ function CroppedVideo({
 	cropNudge?: { x: number; y: number };
 	driverRef: React.RefObject<HTMLVideoElement | null>;
 }) {
-	const paneRef = useRef<HTMLVideoElement>(null);
+	const canvasRef = useRef<HTMLCanvasElement>(null);
+	const crop =
+		bbox && pane.width > 0 && pane.height > 0 && displayWidth > 0
+			? personCrop(bbox, frameWidth, frameHeight, pane.width, pane.height, undefined, cropNudge)
+			: null;
+	const cropX = crop?.x ?? 0;
+	const cropY = crop?.y ?? 0;
+	const cropWidth = crop?.width ?? 0;
+	const cropHeight = crop?.height ?? 0;
 
 	useEffect(() => {
 		const driver = driverRef.current;
-		const pane = paneRef.current;
-		if (!driver || !pane) return;
-
-		const sync = () => {
-			if (Math.abs(pane.currentTime - driver.currentTime) > 0.15) {
-				pane.currentTime = driver.currentTime;
-			}
-			pane.playbackRate = driver.playbackRate;
-			if (driver.paused && !pane.paused) pane.pause();
-			else if (!driver.paused && pane.paused) pane.play().catch(() => {});
+		const context = canvasRef.current?.getContext("2d");
+		if (!driver || !context || cropWidth === 0) return;
+		const draw = () => {
+			const { canvas } = context;
+			context.drawImage(driver, cropX, cropY, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
 		};
-
-		for (const ev of ["timeupdate", "seeked", "play", "pause", "ratechange"]) {
-			driver.addEventListener(ev, sync);
-		}
-		sync();
+		// Every presented frame while playing; seeked and loadeddata cover a
+		// paused driver, which presents none.
+		let frame = 0;
+		const onFrame = () => {
+			draw();
+			frame = driver.requestVideoFrameCallback(onFrame);
+		};
+		frame = driver.requestVideoFrameCallback(onFrame);
+		driver.addEventListener("seeked", draw);
+		driver.addEventListener("loadeddata", draw);
+		draw();
 		return () => {
-			for (const ev of ["timeupdate", "seeked", "play", "pause", "ratechange"]) {
-				driver.removeEventListener(ev, sync);
-			}
+			driver.cancelVideoFrameCallback(frame);
+			driver.removeEventListener("seeked", draw);
+			driver.removeEventListener("loadeddata", draw);
 		};
-	}, [driverRef]);
+	}, [driverRef, cropX, cropY, cropWidth, cropHeight, displayWidth]);
 
-	if (!bbox || pane.width === 0 || pane.height === 0 || displayWidth === 0) {
+	if (!crop) {
 		return <div className="h-full w-full bg-plate-b" />;
 	}
 
-	const crop = personCrop(bbox, frameWidth, frameHeight, pane.width, pane.height, undefined, cropNudge);
-	const displayScale = displayWidth / crop.width;
-
+	// Backing store at device pixels, so a close-up is as sharp as the
+	// recording allows and no sharper than the screen can show.
+	const pixelRatio = window.devicePixelRatio || 1;
 	return (
 		<div className="relative h-full w-full overflow-hidden">
-			<video
-				ref={paneRef}
-				src={videoUrl}
-				muted
-				playsInline
-				style={{
-					position: "absolute",
-					left: -crop.x * displayScale,
-					top: -crop.y * displayScale,
-					width: frameWidth * displayScale,
-					height: frameHeight * displayScale,
-					maxWidth: "none",
-				}}
+			<canvas
+				ref={canvasRef}
+				width={Math.round(displayWidth * pixelRatio)}
+				height={Math.round((displayWidth * crop.height * pixelRatio) / crop.width)}
+				className="block h-full w-full"
 			/>
 			{label && (
 				<span className="absolute bottom-2 left-2 rounded-control bg-black/55 px-2 py-[5px] text-mono-xs leading-none text-[oklch(0.92_0.005_80)]">
@@ -1409,7 +1411,6 @@ export function EditorView({
 						{!mediaError && videoUrl && framing.kind === "zoom" && (
 							<div className="absolute inset-0">
 								<CroppedVideo
-									videoUrl={videoUrl}
 									bbox={framing.subjects[0].bbox}
 									frameWidth={faces.frameWidth}
 									frameHeight={faces.frameHeight}
@@ -1431,7 +1432,6 @@ export function EditorView({
 												className="h-full flex-1 border-l border-plate-a first:border-l-0"
 											>
 												<CroppedVideo
-													videoUrl={videoUrl}
 													bbox={subject.bbox}
 													frameWidth={faces.frameWidth}
 													frameHeight={faces.frameHeight}
@@ -1450,7 +1450,6 @@ export function EditorView({
 									<div className="flex h-full">
 										<div style={{ width: panes[0].width * displayScale }} className="h-full">
 											<CroppedVideo
-												videoUrl={videoUrl}
 												bbox={framing.subjects[0].bbox}
 												frameWidth={faces.frameWidth}
 												frameHeight={faces.frameHeight}
@@ -1468,7 +1467,6 @@ export function EditorView({
 													className="flex-1 border-t border-plate-a first:border-t-0"
 												>
 													<CroppedVideo
-														videoUrl={videoUrl}
 														bbox={subject.bbox}
 														frameWidth={faces.frameWidth}
 														frameHeight={faces.frameHeight}

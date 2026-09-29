@@ -483,19 +483,19 @@ actually left assigned to `<video>` was never revoked. This produces one
 `oxlint` warning (`react/set-state-in-effect`) that's correct to ignore
 here — see the comment in `EditorView.tsx`.
 
-**The multi-speaker composite preview** (`EditorView.tsx`'s `CompositePane`)
-renders N separate `<video>` elements (same `src`, one per visible speaker)
-rather than compositing crops of a single element — a browser can't show two
-different crops of the same `<video>` at once. Two things worth knowing if
-you touch this: (1) the pane container is measured with a callback ref, not
+**Cropped panes in the preview** (`EditorView.tsx`'s `CroppedVideo`, for
+close-ups and composites alike) are canvases drawn from the one driver
+`<video>` on every frame it presents (`requestVideoFrameCallback`, plus
+`seeked`/`loadeddata` for a paused driver). Until 2026-09-29 each pane was
+its own `<video>` on the same file, kept in step by a `sync()` function; that
+cost a decode per pane and carried the race in bug #11 below. Two things
+worth knowing if you touch this: (1) the pane container is measured with a callback ref, not
 a plain `useRef` + `useEffect([])`, because the composite only mounts
 conditionally (only while the playhead is inside a both-on-screen region) — a plain ref/effect pair only
 ever fires for what exists at the *component's own* mount time and silently
-never re-attaches later (see `ARCHITECTURE.md`'s bugs log, #10). (2) Keeping
-the panes in sync with the primary "driver" video is one idempotent
-`sync()` function reacting to `timeupdate`/`seeked`/`play`/`pause` on the
-driver, not separate handlers per concern — splitting time-correction and
-play/pause into separate listeners let them race each other (#11).
+never re-attaches later (see `ARCHITECTURE.md`'s bugs log, #10). (2) The
+driver stays mounted under the panes at `opacity-0`; it has to keep
+presenting frames for the canvases to have anything to draw.
 
 ---
 
