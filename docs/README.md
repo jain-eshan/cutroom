@@ -17,6 +17,8 @@ behind those two.
 | [BUSINESS_MODEL.md](BUSINESS_MODEL.md) | Why it's free, local and open source, and stays that way. |
 | [../PRIVACY.md](../PRIVACY.md) | What leaves your machine and what never does: the app's opt-in usage counts, event by event, and the website's analytics. |
 | [MARKET_RESEARCH.md](MARKET_RESEARCH.md) | The other tools that edit podcast video, and where Cutroom differs. |
+| [PLATFORM_ROADMAP.md](PLATFORM_ROADMAP.md) | The plan beyond one episode: a Library, clips, covers, packaging, the user journey after download, and the single priority order. |
+| [PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md) | What a professional conversation edit is made of, measured on a real agency edit, and the spec for Cutroom's Professional style. |
 
 ## Historical: design records
 

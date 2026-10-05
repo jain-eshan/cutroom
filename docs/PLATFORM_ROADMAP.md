@@ -1,8 +1,9 @@
 # Cutroom as a place to work on a show: user journey and roadmap
 
-Status: **proposal for the founder to review, written 2026-10-04.** Nothing here is
-adopted yet. [STATUS.md](STATUS.md) stays the source of truth for "what's next" until
-this is accepted, and section 14 lists the doc changes that acceptance would trigger.
+Status: **accepted by the founder on 2026-10-05; nothing here is built yet.**
+[STATUS.md](STATUS.md) carries the headline plan and points here for the order and the
+gates. Section 14 lists the doc changes that acceptance triggered, and what was left alone
+on purpose.
 
 **Re-prioritised 2026-10-05**, after the agency-edit analysis in [PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md)
 and three founder decisions: Professional is the default style for every new episode; the hook
@@ -826,17 +827,19 @@ opener), `cover_exported`. No text of any kind, as today.
 
 ---
 
-## 14. What accepting this changes in the other docs
+## 14. What accepting this changed in the other docs
 
-Not done yet. Each follows only after you say yes.
+**Done on 2026-10-05**, after the founder accepted the plan:
 
-| Doc | Change |
+| Doc | What changed |
 |---|---|
-| [PRODUCT.md](PRODUCT.md) | Rewrite "what this deliberately is not": replace "not a general video editor" and "a general media library isn't" with the scope line and the deliverables idea |
-| [STATUS.md](STATUS.md) | Add the priority order, phases and gates to "What's left"; unpark "Automatic social clips" in stages; replace "text annotations" with epic G |
-| [FEATURES.md](FEATURES.md) | #11 becomes overlays (G); #14 becomes clips (E); add Library, queue, covers, packaging, brand kit |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | New routes, the deliverable model, project file v2, endpoints |
-| [PRIVACY.md](../PRIVACY.md) | New events; remembered faces |
-| [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) | Library, tabs, activity panel and clip editor, built from the existing primitives |
-| [EDGE_CASES.md](EDGE_CASES.md) | Cut-point rules from section 3.1 (snap to silence, neighbour-word guard, phantom words) |
-| [docs/README.md](README.md) | Link this doc and PRO_EDIT_SPEC.md in the "Current" table |
+| [PRODUCT.md](PRODUCT.md) | "Not a general video editor" now carries the scope test from section 4 (use what Cutroom knows about the episode, or put it in a destination's shape); the Library is named; "where it's headed" puts the Professional edit first |
+| [STATUS.md](STATUS.md) | A "Re-planned 2026-10-05" section with the order, a "Found 2026-10-05" section with the measurements, social clips un-parked in stages, the hook and introductions parked, four new decisions |
+| [FEATURES.md](FEATURES.md) | #11 became overlays and #14 became clips; new planned entries 19 to 23 (Professional style, Library and queue, cover studio, packaging, brand kit) |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | A "Planned platform changes" section (objects, routes, data model, engines, endpoints) and a re-planned roadmap |
+| [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) | A "Planned screens, not yet designed" section; each needs a design before it is built |
+| [EDGE_CASES.md](EDGE_CASES.md) | Rules 9 to 14 for the Professional style; cases A14 to A16; A9, A10 and E2 updated with the measurements; decisions 5 and 6 reopened; the reference-edit comparison marked done |
+| [docs/README.md](README.md) | Links to this doc and PRO_EDIT_SPEC.md |
+
+**Left alone on purpose:** [PRIVACY.md](../PRIVACY.md) describes what the app does today, event by
+event. The new events and remembered faces change it in the same commit that adds them, not before.

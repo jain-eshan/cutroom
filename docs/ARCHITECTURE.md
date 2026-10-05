@@ -1010,11 +1010,77 @@ re-discovers them the hard way.
 
 ---
 
+## Planned platform changes (not built)
+
+A proposal the founder accepted on 2026-10-05; **none of it exists yet.** Why, and in
+what order: [PLATFORM_ROADMAP.md](PLATFORM_ROADMAP.md) (§ 8 holds the priority order).
+The editing rules and the scorecard: [PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md).
+
+**Objects.** Library → Show (optional) → Episode → Deliverables (the full episode,
+clips, covers, transcript and chapter files) → Exports. Today there is only the
+Episode: `jobs/{id}/` with `result.json` and `edit.json`.
+
+**Navigation.** The one-way state machine in `src/App.tsx` (idle, processing, cast,
+editing, publish) becomes a route per episode with tabs (Cast, Edit, Clips, Covers,
+Publish), reached from a Library. `savedEpisodes`, `handleReopen`, `handleDelete` and
+`startOver` are the starting point. This refactor counts as upkeep, not a feature.
+
+**Data.** The saved edit and the `.cutroom` format go to version 2: a new framing style
+`professional` beside `wideOnly` and `gentle`; deliverables (ranges of source time,
+shots, overlays, caption style, preset, status); a reference to a Show. Version 1 is
+migrated. A newer file is refused with a sentence, as today, and a style this build
+does not know falls back to Gentle (already how `savedEdit.ts` reads it).
+
+```
+Show        { id, name, logos[], colours, captionStyle, defaultFraming, regularCast[] }
+Episode     { id, showId?, recording ref, transcript, cast, mainEdit, deliverables[] }
+Deliverable { id, type: episode|clip|cover|files, preset, ranges[], shots[],
+              overlays[], captionStyle, output spec, status, lastExport }
+Preset      { destination, aspect, size, maxLength, loudness, safeZones }
+Job         { id, kind: process|render, state, progress, startedAt }
+```
+
+**Engines** (`server/pipeline/`, mirrored in `src/` where the preview needs them):
+
+- **The Professional cutting model.** A rhythm clock decides when the next cut is
+  due, inside a turn as well as at speaker changes; the next shot comes from a grammar
+  (wide, a closer shot, wide); the cut moves to the nearest pause. Three scales are cut
+  from the one recording (wide, about 2x, about 3x), each offered only if the upscale
+  to the output stays within `MAX_UPSCALE` (2.6, in both `framing.py` and
+  `faceCrop.ts`). The numbers live in one place and are pinned by a test on each side,
+  the way `exportPanes` and `_segment_filter` are.
+- **The cut engine.** Word ranges in, clean cut points out: snap to a real silence,
+  refuse a cut inside a neighbouring word, use a word's spoken end, drop words found
+  inside silence (EDGE_CASES A16). Shared with `trim.py`.
+- **Pause policy, loudness and fades.** Extends `trim.py`. Loudness through ffmpeg's
+  `loudnorm`; a fade at the end.
+- **Overlays.** Captions stay on libass (`captions.py`, `.ass`). Callouts, name tags,
+  the brand mark and the end card are drawn as overlay frames and composited by ffmpeg,
+  an approach that worked in a one-off on 2026-10-03/04 using Pillow (already a
+  dependency). Decide between that and `.ass` before building: `.ass` handles position,
+  colour and fades but per-word animation is awkward. Fonts are open-licence (SIL OFL),
+  bundled and credited on the Credits screen.
+- **Jobs.** Process and render jobs in a queue that survives leaving a screen and
+  quitting (`jobs.py`, `progress.py`).
+
+**Endpoints (suggested names).** A clip per deliverable (`POST /jobs/{id}/clips` and a
+render for it), a queue listing, `POST /covers`, chapters and transcript-file endpoints,
+shows and brand-kit storage. All local.
+
+**The scorecard.** A script that prints the metrics in PRO_EDIT_SPEC.md § 8.4 for any
+video, plus the reference edit's shot list as a fixture. Its first job is the baseline
+for today's Cutroom.
+
+**Telemetry and privacy.** New events (`library_resumed`, `clip_started`,
+`clip_exported`, `cover_exported`) go into the `Event` union in `telemetry.ts` and into
+[PRIVACY.md](../PRIVACY.md) in the same change. So does remembering faces across
+episodes, which keeps face data on disk between sessions.
+
 ## Roadmap
 
 Synced to [STATUS.md](STATUS.md)'s "What's left", which is the source of truth
 for ordering: read it for the problem, the evidence and the measure behind each
-item. Re-planned on 2026-09-15.
+item. Re-planned on 2026-09-15 and again on 2026-10-05.
 
 **Done:** export (hard cuts, bust-shot framing, multi-speaker composite);
 split-screen in both preview and export; speaker diarisation, voices and faces
@@ -1073,10 +1139,18 @@ recordings, text-based editing, per-instant face visibility and crop smoothing,
 the 3-pane cap decision, real render progress, and the landing page with the
 repo rename.
 
-**Parked:** jargon annotations, audio effects and presets, style learning,
-social clips.
+**Re-planned 2026-10-05** (STATUS.md, "Re-planned 2026-10-05"): ahead of everything
+else, a **Professional** framing style as the default for new episodes (PE1 to PE3),
+then a Library, a job queue and the cut engine, then clips and callouts. See "Planned
+platform changes" above.
+
+**Parked:** jargon annotations, audio effects and presets, style learning, and, by
+decision on 2026-10-05, the hook montage, show and speaker introductions and portrait
+cut-outs. Social clips are un-parked in stages, after the Professional edit and the
+Library.
 
 **Cut from this horizon:** voice ducking, multi-camera support, Docker setup.
 
-**Not placed yet:** the automatic framing rules, and the edge cases and
-decisions behind them, in [EDGE_CASES.md](EDGE_CASES.md).
+**Placed 2026-10-05:** the automatic framing rules are now the Professional style
+(rules 9 to 14 and cases A14 to A16 in [EDGE_CASES.md](EDGE_CASES.md)), the next item
+after the reference and scorecard.

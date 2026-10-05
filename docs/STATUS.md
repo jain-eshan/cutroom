@@ -272,6 +272,37 @@ comes from test sessions:
   find more. If fixes pass 40% of a cycle, new features stop until they're
   paid down.
 
+### Re-planned 2026-10-05: the Professional edit first
+
+Three founder decisions, after an agency's edit of a real episode was measured
+against Cutroom's (see "Found 2026-10-05" below): **Professional is the
+default style for every new episode**; the trailer-style hook montage and the
+show and speaker introductions are **deprioritised**, not cut; and the
+reference edit's closer shots were zooms of a single clip, so one recording is
+enough to reproduce them. The plan is in
+[PLATFORM_ROADMAP.md § 8](PLATFORM_ROADMAP.md) (one priority order for
+everything) and [PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md) (the measurements, the
+rules and the scorecard). In short:
+
+- **Now (the host-test window):** a reference file and a scorecard that scores
+  any video (PE0); a "Home" link from every screen; a prototype of the
+  Professional cutting model, rendered through today's export; and, at the
+  host test, a blind comparison of today's edit against that prototype.
+- **Next:** the Professional cutting model in the app (PE1), pause cap,
+  loudness target and fades as defaults (PE2), Professional as the default
+  for new episodes with a scorecard bar and rhythm controls (PE3), and the
+  upkeep they need (playback while cropped, a raw and edited test set).
+- **Then:** a Library, add-with-intent and a job queue; the cut engine for
+  word ranges; clips with caption styles, an opener and a brand mark; callouts.
+- **Later:** covers, chapters and transcript files, the brand kit, variants,
+  search. **Parked by decision:** the hook montage, show and speaker
+  introductions, portrait cut-outs.
+
+Until PE1 and PE3 ship there is nothing to default to, so new episodes keep
+Light (the Gentle rule) until then. Saved episodes keep the style they were
+saved with. The older list below is kept as history; where it disagrees with
+this section, this section wins.
+
 ### Next: editing basics, then the desktop app, then one host test
 
 Two founder decisions on 2026-09-15. First, the desktop app before any host
@@ -843,6 +874,43 @@ the founder's call, to find testers and contributors early:
     server proxying a 5.3GB file over HTTP range requests, and a local file
     may do better.
 
+### Found 2026-10-05: the professional reference, measured
+
+The reference edit that [EDGE_CASES.md § 5](EDGE_CASES.md) said was missing
+now exists: an agency's edit of a 44-minute, four-person conversation (one
+clip, with the closer shots made by zooming). Every frame was scored for picture
+change, every half second for faces and text, and the audio for loudness and
+pauses; full method and numbers in [PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md).
+Cutroom's own pipeline and its own `suggestRegions` were then run on the same file.
+
+| | Agency | Cutroom |
+|---|---|---|
+| Shots | 331 | 14 |
+| Cuts a minute | 6.9 | 0.31 (22 times fewer) |
+| Median shot | 6.8 s | 63 s |
+| Longest shot | 50.6 s | 874 s (14.6 minutes on the guest) |
+| Time on the wide shot | 52% | 0% |
+| People found | 4 | 2 |
+
+- **The cause is the cutting model, not only the identification.** 92% of the
+  agency's cuts fall inside one person's turn; only 8% are within a second of a
+  speaker change. Cutroom cuts at speaker changes, so a conversation of long
+  answers (here the guest's turns run a median 66 s, longest 257 s) leaves it
+  nothing to cut to. The same effect was already visible on the 53-minute
+  reference episode above (33 to 37 shots).
+- The agency stays on the wide shot about half the time even while the guest
+  talks, goes to a close-up for one second in eight, and never close-ups anyone
+  but the guest. 80% of its cuts land inside a pause; there are 4 pauses over
+  1.2 s in 43 minutes.
+- Other gaps: no callouts, no pause policy by default, the original audio
+  copied unchanged (the reference is steady at -16.8 LUFS), no fade out, no
+  reaction shots.
+- Cutroom found 2 of 4 people on this file, which zooms between 1.0x and 3.1x
+  (EDGE_CASES E2). Raw single-camera footage should not do this.
+- **This settles the open question above.** Gentle and Dynamic were never the
+  right shape: both wait for a speaker change. The answer is a Professional
+  style built on a rhythm clock (PE1), not a better threshold.
+
 ### Then, ordered by what the host test shows
 
 - **Batched processing for long recordings**, if the wait loses people. The
@@ -864,11 +932,18 @@ the founder's call, to find testers and contributors early:
 
 - **Jargon info-text annotations**: novel, but no evidence anyone needs them
   yet.
-- **Audio effects, intro/outro presets**: no problem evidence yet.
+- **Audio effects, music, intro/outro presets**: no problem evidence yet. A
+  loudness target and fades are not effects; they are part of PE2.
+- **Hook montage (a trailer in front of the episode), show name and speaker
+  introductions, portrait cut-outs**: parked by decision on 2026-10-05. Editors
+  in general want them; the core edit comes first. Spec kept in
+  [PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md) (R13, R14).
 - **Style learning from corrections**: needs repeat editors making repeat
   corrections. The `decisions.jsonl` data keeps being captured meanwhile.
-- **Automatic social clips**: revisit after the host test. Publish already
-  shows them as unbuilt.
+- ~~**Automatic social clips**: revisit after the host test.~~ Un-parked in
+  stages on 2026-10-05: planned after the Professional edit and the Library
+  ([PLATFORM_ROADMAP.md](PLATFORM_ROADMAP.md) epic E). Publish still shows them
+  as unbuilt.
 - **Smoothing as a standalone layer**: folded into the framing item above.
 
 ### Cut from this horizon
@@ -1425,3 +1500,7 @@ the founder's call, to find testers and contributors early:
 | **Stream-copy audio**, re-encode only as fallback | Audio is never edited, so paying a generation of loss for it was pure waste. Source is almost always already AAC. |
 | Framing constants **measured from real edits** | Guessing produced the tight, face-centred crop that looked wrong on seated subjects. |
 | **No cap on speakers** | Four-person podcasts are normal. What adapts is the layout (2 → split, 3+ → speaker-focus), not the guest list. |
+| **Professional** is the default style for new episodes | Decided 2026-10-05, after the measurement above. The speaker-driven styles cut 22 times too rarely on a real conversation. Saved episodes keep their own style; Light and Wide only stay available. |
+| The scope test is "does it use what Cutroom knows about the episode" | Set 2026-10-05, replacing "not a general video editor" as the working test ([PRODUCT.md](PRODUCT.md)). It admits clips, covers and packaging and keeps out a free timeline, stock media and effects. |
+| The hook montage and introductions are parked, not cut | The founder's call on 2026-10-05: the core edit first. The spec stays in PRO_EDIT_SPEC.md. |
+| Callouts and cards need a brand kit, not Cutroom's colours | The reference's look (maroon, yellow, paper texture) is one show's brand. Cutroom's own design rules stand for the app. |

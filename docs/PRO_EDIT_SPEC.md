@@ -1,7 +1,7 @@
 # What a professional conversation edit is made of, measured, and the spec for Cutroom to match it
 
-Status: **proposal for the founder to review, written 2026-10-05.** Nothing here is
-built or adopted. It feeds [PLATFORM_ROADMAP.md](PLATFORM_ROADMAP.md) (the plan for clips,
+Status: **accepted by the founder on 2026-10-05, with the decisions recorded below.**
+Nothing here is built yet. It feeds [PLATFORM_ROADMAP.md](PLATFORM_ROADMAP.md) (the plan for clips,
 covers and a Library) and answers the open item in [EDGE_CASES.md](EDGE_CASES.md) section 5:
 "compare against a professional edit of a similar show... Not done yet."
 

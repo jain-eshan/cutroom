@@ -19,14 +19,19 @@ design). For measured accuracy and performance numbers, see
 | 8 | [Smarter cutting (dead air & filler words)](#8-smarter-cutting) | Shipped |
 | 9 | [Burned-in captions](#9-burned-in-captions) | Shipped |
 | 10 | [Decision logging](#10-decision-logging) | Shipped, unused so far |
-| 11 | [Text/bubble annotations](#11-text-bubble-annotations) | Stub |
+| 11 | [Overlays (callouts, name tags, brand mark)](#11-overlays-callouts-name-tags-brand-mark) | Stub; planned |
 | 12 | [Voice ducking for overlapping speech](#12-voice-ducking) | Not started |
 | 13 | [Style learning from corrections](#13-style-learning) | Not started |
-| 14 | [Automatic social clips](#14-automatic-social-clips) | Not started |
+| 14 | [Clips](#14-clips) | Not started; planned |
 | 15 | [Multi-camera support](#15-multi-camera-support) | Not started |
 | 16 | [Desktop packaging](#16-desktop-packaging) | Shipped |
 | 17 | [Credits](#17-credits) | Shipped |
 | 18 | [Opt-in usage counts](#18-opt-in-usage-counts) | Shipped |
+| 19 | [Professional framing style](#19-professional-framing-style-planned) | Planned (next) |
+| 20 | [Library and job queue](#20-library-and-job-queue-planned) | Planned |
+| 21 | [Cover studio](#21-cover-studio-planned) | Planned (later) |
+| 22 | [Episode packaging](#22-episode-packaging-planned) | Planned (later) |
+| 23 | [Show and brand kit](#23-show-and-brand-kit-planned) | Planned (later) |
 | — | [Vary shot length](#vary-shot-length-deferred) | Deferred |
 
 ---
@@ -342,11 +347,17 @@ needing to be built retroactively.
 *Implementation:* `_log_decision()` in `server/main.py`, written to
 `server/logs/<session_id>/decisions.jsonl` (gitignored).
 
-### 11. Text/bubble annotations
+### 11. Overlays (callouts, name tags, brand mark)
 
 The button exists in the editor and explains why it's disabled. No backend
-support yet. Scoped as a later roadmap item — see
-[STATUS.md § What's left](STATUS.md#whats-left).
+support yet. Re-scoped on 2026-10-05 from "text/bubble annotations" to what a
+professional edit actually uses: **callout cards** (a giant keyword with a few
+small words around it, 2 to 5 words from the speaker's own, 1.5 to 2.5 seconds,
+placed away from faces), **name tags**, a **brand mark** and an **end card**.
+Every callout is a suggestion the person accepts, edits or deletes, with the
+reason it was suggested. Planned, after the Professional edit and the Library.
+See [PLATFORM_ROADMAP.md](PLATFORM_ROADMAP.md) epic G and
+[PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md) (R11, R12).
 
 ### 12. Voice ducking
 
@@ -366,12 +377,16 @@ evidence of repeat editors making repeat corrections — the data collection
 for this already exists ([#10](#10-decision-logging)), the learning doesn't,
 and building it before there's a pattern to learn from would be guessing.
 
-### 14. Automatic social clips
+### 14. Clips
 
-Auto-selecting short, shareable clips from a full episode. Planned to use
-an offline scoring heuristic (pace, silence, turn density) rather than a
-cloud LLM call, to stay consistent with the local-first design. Not
-started.
+Cutting short, shareable pieces from a full episode: pick a range of words in
+the transcript, or choose from a ranked list of moments, then export it to a
+destination preset (shape, length limit, loudness, safe zones) with captions,
+an opener and a brand mark. Moment suggestions are rules over the transcript,
+speakers and pauses, not a cloud model, and each shows a reason rather than a
+score. Not started; planned after the Professional edit and the Library, in
+slices (range picker, composer, reframe, moments, presets). See
+[PLATFORM_ROADMAP.md](PLATFORM_ROADMAP.md) epic E.
 
 ### 15. Multi-camera support
 
@@ -429,3 +444,55 @@ that is the complete list), `src/features/setup/TelemetryConsent.tsx` (the
 first-run card), `src/components/UsageData.tsx` (changing it later). Dormant
 without `VITE_POSTHOG_KEY`. Documented for users in
 [PRIVACY.md](../PRIVACY.md).
+
+### 19. Professional framing style (planned)
+
+The default style for every new episode, decided 2026-10-05. Measured against
+an agency's edit of a real conversation, where Cutroom's speaker-driven styles
+cut 22 times too rarely ([PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md)). It adds:
+
+- a **rhythm clock** that decides when the next cut is due, so there are cuts
+  inside a long answer (about 7 a minute) and not only at speaker changes;
+- three scales cut from the one recording (wide, a two-person medium at about
+  2x, a close-up at about 3x), limited by the source's resolution;
+- the wide shot as home (about half the screen time), alternation between wide
+  and a closer shot, and close-ups only for the featured people;
+- cuts placed in pauses, loosely synchronised with speaker changes;
+- reaction shots, and a pause cap (about 1.0 s) with a loudness target and
+  fades as defaults.
+
+A live scorecard under the preview shows cuts a minute, share on wide, cuts on
+a pause, longest pause and loudness. Light and Wide only stay available; an
+episode saved earlier keeps its own style. Until it ships, new episodes keep
+Light. Not started.
+
+### 20. Library and job queue (planned)
+
+A Home to come back to: every episode with a status (processing, needs cast,
+editing, ready, exported) and a "continue where you left off", a way to choose
+what to do with a new recording (edit the episode, find clips, transcript only,
+covers), and a queue so several recordings process, and renders run, in the
+background and survive leaving a screen or quitting. Today the upload screen
+doubles as the only home, with saved episodes listed under it. The smallest
+slice, a "Library" link from every screen, comes first. Not started.
+
+### 21. Cover studio (planned)
+
+Choose a frame from the video (scored on face visible, eyes open, sharpness) or
+bring a photo; pick a destination (YouTube, LinkedIn, podcast art, Instagram);
+add a title, guest and role with text placed away from faces; export a JPG or
+PNG within the platform's limits. Not started.
+
+### 22. Episode packaging (planned)
+
+Chapter timestamps from topic shifts (editable), the transcript as TXT, SRT and
+VTT, and a description template with the chapters filled in. The Publish screen
+already lists chapters and show notes as unbuilt. Not started.
+
+### 23. Show and brand kit (planned)
+
+A Show groups episodes and holds a name, logos, brand colours, a caption style,
+default framing and the regular cast, so a recognised host is named once and the
+second episode starts set up. Remembering faces across episodes keeps face data
+on disk between sessions: local, deletable per person, and documented in
+[PRIVACY.md](../PRIVACY.md) before it ships. Not started.

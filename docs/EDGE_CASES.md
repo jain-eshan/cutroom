@@ -89,11 +89,38 @@ measured instead of guessed.
    - *Gentle*: close-ups only for longer stretches, and wide through quick
      exchanges.
    - *Dynamic*: all of the rules above.
+   - *Professional*: rules 9 to 14 below, the default for new episodes once
+     it is built (decided 2026-10-05). Gentle stays the default until then.
 
    Changing the style never touches shots the editor made.
 
 All of these rules work from the word timings Cutroom already has. None of
 them needs a new model.
+
+**Rules for the Professional style (proposed 2026-10-05).** Measured on an
+agency's edit of a real 44-minute conversation, where one clip was zoomed to
+make the closer shots ([PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md)). Where rules 1, 5
+and 6 above conflict with these (a shot runs until the next speaker starts; a
+pause never goes wide), these win for Professional only.
+
+9. **A clock decides when the next cut is due, not only a speaker change.**
+   About 5 to 9 cuts a minute overall and about 7 a minute inside a long
+   answer. Faster early (7 to 9 a minute in the first 15 minutes), slower after
+   minute 30 (4 to 6). No shot over 45 s.
+10. **Wide is home.** About half the screen time is the wide shot, and about
+    43% of cuts return to it. The speaker is not always on screen: while the
+    guest talks, about 50% wide, 30% medium, 12% close.
+11. **Consecutive shots differ in scale by at least 1.4x, or show a different
+    subject.** At least 80% of cuts are between wide and a closer shot.
+    Close-ups are only of the featured people.
+12. **Cuts go in pauses.** At least 80% inside a pause of 80 ms or more, at
+    most 5% mid-speech. Handoffs are loose: show a new speaker within about 2
+    seconds of their first word, early or late.
+13. **Pauses are tightened.** A pause over 1.0 s becomes about 0.5 s, with the
+    cut hidden under a change of shot size. Same-shot jump cuts only in
+    close-ups.
+14. **Reaction shots, sparingly.** 5% to 8% of screen time, 3 to 6 s each, of a
+    listener whose face is visible, at most once a minute.
 
 ## 3. The catalogue
 
@@ -181,7 +208,7 @@ them needs a new model.
 - Should: an overlap counts only when the second person says words in it
   (rule 3). A laugh can become a reaction shot later (A10).
 
-**A9. A long monologue** (several minutes from one person). P2.
+**A9. A long monologue** (several minutes from one person). P1, measured 2026-10-05.
 - **Improved, 2026-09-17, not fully.** `WIDE_AFTER_SILENCE_S` (rule 6) holds
   through any pause under 3s, including the 2-3s band where `build_turns`
   already split the monologue into two turns -- narrower than A9's literal
@@ -189,11 +216,20 @@ them needs a new model.
 - Should: no wide breaks for pauses (rule 6). Adding variety, like a wide
   shot or a listener's reaction every 20–40 s, is the deferred "Vary shot
   length" item in [FEATURES.md](FEATURES.md).
+- **Measured, 2026-10-05.** On a real 44-minute conversation one voice held
+  78% of the speech in 23 turns (median 66 s, longest 257 s). Cutroom
+  suggested 14 shots for the whole episode, one of them 874 s long. The
+  professional edit cut 7.2 times a minute inside turns of a minute or longer.
+- For Professional, rule 9 replaces "no wide breaks": a clock cuts inside a
+  long turn and returns to wide on a pause (see A14).
 
-**A10. Reaction shots.** A listener laughs, nods or pulls a face. P3.
+**A10. Reaction shots.** A listener laughs, nods or pulls a face. P2, measured 2026-10-05.
 - Today: listeners are never shown unless they speak.
 - Should: later, and optional. Lip-sync scores and face movement could find
   these moments. Not for the first version.
+- **Measured, 2026-10-05.** The reference edit spends 6% of screen time on
+  reaction two-shots (35 shots, about 4.7 s each), roughly evenly while a host
+  speaks and while the guest speaks. Part of the Professional style (rule 14).
 
 **A11. Pauses between speakers.** P1.
 - ~~Today: any gap between two lines renders wide, even a 0.1 s one
@@ -218,6 +254,34 @@ them needs a new model.
   The quieter person's words go missing or are credited to the wrong person.
 - Should: flag long overlaps for review. The "TALKING OVER" chip in the
   transcript already does this.
+
+**A14. Cutting for rhythm inside a turn.** P1, measured 2026-10-05.
+- Today: nothing cuts inside a turn. A shot holds until the next speaker, or
+  3 s of silence (rule 6, `holdUntil`).
+- Measured: 276 of the reference edit's 299 cuts (92%) fall inside one
+  person's turn; only 8% are within a second of a speaker change.
+- Should: rules 9 to 11. Pick the next shot from the grammar (wide, then a
+  closer shot, then wide), then move the cut to the nearest pause (rule 12).
+
+**A15. A pause longer than about a second inside an answer.** P1, measured
+2026-10-05.
+- Today: pauses are kept unless the "Trim dead air" export option is on
+  (pauses over 1.2 s become 0.35 s), and a shot holds through them.
+- Measured: the reference edit has 4 pauses over 1.2 s in 43 minutes and none
+  over 2 s.
+- Should: rule 13. Tighten pauses over 1.0 s to about 0.5 s by default in
+  Professional, hiding the cut under a change of shot size.
+
+**A16. Cutting at a word time.** P1, for clips and the Professional style.
+- Today: word times from the speech model can be off by up to about a second at
+  word edges (found 2026-10-04 cutting clips of a real episode: two passes
+  disagreed, and the source's own on-screen text showed which was closer). The
+  end of a word that carries punctuation stretches across the pause after it.
+  The model can also place invented words inside a silent gap.
+- Should: snap every cut to a real silence in the audio; refuse a cut that
+  would land inside a neighbouring word; use a word's spoken end, not its
+  punctuation's; drop words found inside silence. One shared module for clips,
+  the Professional cuts and dead-air trimming. Extends A12.
 
 ### B. Identity: which voice is which face
 
@@ -466,6 +530,11 @@ them needs a new model.
 - Should: detect cuts in the video during processing. Then either turn off
   automatic framing and explain why, or treat each camera angle separately.
   At the very least, warn.
+- **Measured, 2026-10-05.** On an agency-edited episode whose zoom moves
+  between 1.0x and 3.1x, Cutroom found 2 of 4 people and 5 voices for the 4
+  people. One face is 125 px tall in the wide shot and 333 px in a close-up, so
+  the tracker meets one person at several sizes, and two hosts are mostly seen
+  small. Raw single-camera footage should not do this.
 
 **E3. The camera moves or zooms** (handheld, or an operator zooming). P3.
 - Today: faces are sighted about once a second and crops are fixed per shot,
@@ -518,9 +587,13 @@ All six decided; five of six built. See each item's own case for how.
    it -- the grid itself isn't built, since nothing has asked for it yet.
    See C3.
 5. ~~**Default style for a new episode**~~: **decided.** Gentle. See rule 8.
+   **Reopened and decided again, 2026-10-05:** Professional, once it is built.
+   Gentle stays the default until then.
 6. ~~**Reaction shots and shot variety**~~: **decided, 2026-09-18: later.**
    No evidence yet that editors want this, and it adds real complexity to
    the framing rules. See A9/A10.
+   **Reopened, 2026-10-05:** now evidenced (6% of screen time in the reference
+   edit) and part of the Professional style, rules 9 to 14.
 
 ## 5. How to build it
 
@@ -551,12 +624,19 @@ A suggested order. Where it sits on the roadmap is a separate decision.
    still gets a composite every time (with the floor holder large, now
    that C2 is built), rather than "usually" going wide the way A6
    recommends. No evidence yet on how often that matters in practice.
-6. **Detecting cuts in already-edited videos** (E2). Still open.
+6. **Detecting cuts in already-edited videos** (E2). Still open. Now measured
+   (see E2) and on the roadmap as an on-demand item (PE9).
+7. **The Professional style** (rules 9 to 14, A14 to A16): planned as PE1 to PE3
+   in [PLATFORM_ROADMAP.md § 8](PLATFORM_ROADMAP.md). Not started.
 
 To tell whether the rules work, measure real episodes before and after:
 cuts per minute, shots under 2 s, and wide flashes under a second. Then
 compare against a professional edit of a similar show, the way `framing.py`'s
-numbers were measured. **Not done yet** -- 2026-09-17's verification used the
+numbers were measured. **Done for the first time on 2026-10-05:** an agency's
+edit was measured and Cutroom's own pipeline was run on the same file
+([PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md); STATUS.md "Found 2026-10-05"). The
+scorecard in PRO_EDIT_SPEC.md § 8.4 is what to compare against from now on.
+**Still not done:** 2026-09-17's verification used the
 section 1 table and fixture data, not a real recording; the founder's own
 "We have to improve the video editing a lot" complaint hasn't had a
 real-footage retest since these fixes landed.

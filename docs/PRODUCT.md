@@ -14,6 +14,14 @@ edited video: zoomed to whoever's talking, split-screen when people talk
 over each other, cut cleanly between speaker turns. You upload a recording,
 name the people in it once, and get an MP4 out.
 
+The edit is the first thing it makes. The plan is for the same recording to
+produce what a show publishes from it: clips, covers, caption files and
+chapters, all from the transcript, speakers and framing Cutroom already has.
+The default editing style is also moving to **Professional**: a cut every few
+seconds with the wide shot as home, the rhythm measured on an agency's edit
+of a real conversation. See [PLATFORM_ROADMAP.md](PLATFORM_ROADMAP.md) and
+[PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md); none of this is built yet.
+
 Nothing about the recording leaves your machine. Transcription, speaker
 identification, face recognition, and rendering all run locally.
 
@@ -91,12 +99,18 @@ Two decisions shaped everything else:
   sent to, no account, no subscription. That's a constraint, not just a
   feature — it's what keeps this free to run. See
   [BUSINESS_MODEL.md](BUSINESS_MODEL.md).
-- **Not a general video editor.** No multiple video tracks, effects, colour
-  grading or transitions; the framing is the edit. Navigating and adjusting
-  that framing precisely (a time ruler, scrubbing, zoom, shortcuts, undo,
-  snapping) is the basic toolkit anyone editing video expects, so it is in
-  scope. Content gets cut through the transcript, not a blade tool, and a
-  list of saved episodes is planned but a general media library isn't.
+- **Not a general video editor.** No free-form timeline with several tracks,
+  effects, transitions or colour grading. The test for what belongs (set on
+  2026-10-05): a feature is in scope only if it uses something Cutroom already
+  knows about the episode (the words, who said them, who is on camera and
+  where, the shots, the silences), or is needed to put that knowledge into a
+  destination's shape (size, length, loudness, safe zone, branding). A feature
+  that needs neither belongs to a general editor, which does it better.
+  Navigating and adjusting the framing precisely (a time ruler, scrubbing,
+  zoom, shortcuts, undo, snapping) is the basic toolkit anyone editing video
+  expects, so it is in scope. Content gets cut through the transcript, not a
+  blade tool. Episodes are kept in a Library you can come back to (planned);
+  a general media library of unrelated footage isn't.
 
 ## Where it's headed
 
@@ -104,10 +118,12 @@ Full detail and current priority order lives in
 [STATUS.md § What's left](STATUS.md#whats-left) — that's the living
 roadmap and it's kept current; this section is deliberately short so it
 doesn't drift out of sync with it. In one line: automatic
-speaker-to-face matching is done; next is a desktop app that needs no
-terminal and survives closing the window, then an unassisted test with a
-real podcast host to find out whether the edit is good enough to matter
-before building much past that.
+speaker-to-face matching and the desktop app are done. Next, ahead of
+everything else, is making the edit itself professional by default (the
+Professional style, decided 2026-10-05), then a Library to come back to, then
+clips, callouts and covers. The unassisted test with a real podcast host
+stays in the plan, and now includes a blind comparison of today's edit
+against the new one. Order and gates: [PLATFORM_ROADMAP.md § 8](PLATFORM_ROADMAP.md).
 
 ## Related docs
 
@@ -119,3 +135,7 @@ before building much past that.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — the plan, the system design, every
   dependency and why
 - [STATUS.md](STATUS.md) — what's measured, what's working, what's next
+- [PLATFORM_ROADMAP.md](PLATFORM_ROADMAP.md) — the plan beyond one episode,
+  and the single priority order
+- [PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md) — what a professional edit is made of,
+  measured, and the spec for the Professional style

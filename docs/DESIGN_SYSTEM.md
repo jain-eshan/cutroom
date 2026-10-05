@@ -350,6 +350,25 @@ changes what gets exported. It imports through the `@/` path shortcut, which
 Node can't follow, so that has to be sorted first. The rest of the editor is
 verified in the browser against a synthetic clip.
 
+## Planned screens, not yet designed
+
+The platform roadmap ([PLATFORM_ROADMAP.md](PLATFORM_ROADMAP.md) § 5) needs screens the design
+handoff does not contain. **None of these is built or designed.** Each needs a design in the Claude
+Design project before it is built, and the brand rules stand: dark app, one accent action per
+screen, mono only for measured values, no icon set, no emoji, no "AI" or "magic" in copy, and no
+invented colour.
+
+| Screen | What it needs from the design |
+|---|---|
+| Library (Home) | One accent action, "Add a recording". A "Continue" card. Episode rows with a status word, and durations and sizes in mono. A bar at the top that is always there (`Cutroom / Library / <Show> / <Episode>`), text only. |
+| Episode tabs | Cast, Edit, Clips, Covers, Publish as tabs, not a one-way funnel. |
+| Activity panel | Processing and render queue with real progress, as a panel, not a page. |
+| Style picker and scorecard bar | Wide only, Light, Professional, each with a sentence and the numbers it produces. The scorecard numbers (cuts a minute, share on wide, longest pause, loudness) are measured values, so mono; "in range" and "out of range" are words, never colour alone. |
+| Review lane | Ghost shots and callouts on the timeline; accept, reject, next; a count of what is left. |
+| Callouts lane and clip editor | Built from the existing timeline tray and primitives. |
+| Cover studio | Frame or photo, destination, text, safe areas. |
+| Brand kit | Logos, colours, caption styles. Colours the person chooses for their show are theirs; Cutroom's own palette does not change. |
+
 ## Open questions, not decided here
 
 **The name.** Decided on 2026-09-15: everything is **Cutroom**. The GitHub
