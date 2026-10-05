@@ -4,6 +4,11 @@ Status: **proposal for the founder to review, written 2026-10-04.** Nothing here
 adopted yet. [STATUS.md](STATUS.md) stays the source of truth for "what's next" until
 this is accepted, and section 14 lists the doc changes that acceptance would trigger.
 
+**Re-prioritised 2026-10-05**, after the agency-edit analysis in [PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md)
+and three founder decisions: Professional is the default style for every new episode; the hook
+montage and speaker introductions are deprioritised; and the closer shots in the reference edit
+were zooms of one clip. The order in section 8 replaces the earlier one.
+
 How to read the tags used throughout:
 
 | Tag | Meaning |
@@ -52,19 +57,19 @@ Why it is still worth planning now:
   one episode. What took the effort is a clear list of jobs (section 3), and most of
   them reuse things Cutroom already knows: the words, the speakers, the faces, the shots.
 
-What I recommend, in order:
+What I recommend, in order (updated 2026-10-05):
 
-1. **Next 14 days: small and cheap.** Make "Home" reachable from everywhere (S). Add
-   two questions to the host test script (section 8). Spike one thing: pick a range
-   of words in the transcript and export a captioned vertical clip using the
-   existing render path (M, throwaway UI). Nothing else.
-2. **At the host test:** ask what they publish from an episode besides the video,
-   before showing them anything new. That answer sets the order of H2.
-3. **After it, if hosts want clips:** build the library and the cut engine first
-   (H1), then clips (H2). If they don't, H1 still ships, because Home and a job
-   queue are needed whatever the answer is.
-4. **Hold the rest.** Brand kit, overlays, audio polish, intro/outro, publishing
-   destinations all wait for evidence (H3 and later).
+1. **Now (the host-test window, about 2 weeks):** the reference and scorecard (PE0), "Home" from
+   every screen, a prototype of the Professional cutting model scored on the Practo episode and one
+   more recording, and the host test with its two added questions plus a blind comparison of
+   today's edit against the prototype.
+2. **Next:** the Professional edit for real, as the default for every new episode (PE1 to PE3),
+   with the upkeep it needs (playback speed, a real-footage test set). This comes before the
+   Library because the full-episode edit is the product and the largest measured gap is in it.
+3. **Then:** the Library, add-with-intent and the job queue (A, B, C), the shared cut engine (D),
+   then clips with caption styles and the clip opener and brand mark (E, F, G), then callouts.
+4. **Later or parked:** covers, packaging, variants, search, the full brand kit. Parked by decision:
+   the trailer-style hook montage and the speaker introductions.
 
 ---
 
@@ -438,7 +443,7 @@ north star in STATUS.md: **episodes a host would publish without asking for help
 - **Metric:** cuts that need a hand correction (recorded per clip like framing decisions already are).
 - **Scope (L):** one module that takes a list of word ranges and returns clean cut points: snaps in and out to real silences; refuses a cut that would land inside a neighbouring word; drops words the transcript placed in silence; trims long pauses; can remove one speaker's interjection; stitches ranges with a short fade. The same engine serves clips and, later, text-based cutting of the full episode.
 - **Out:** a free-hand blade tool; keyframes.
-- **Builds on:** `trim.py` (dead air), word timings, speakers, `regions.ts` shot model.
+- **Builds on:** `trim.py` (dead air), word timings, speakers, `regions.ts` shot model. The snap-to-pause logic is shared with the Professional cutting model (PRO_EDIT_SPEC.md PE1).
 - **Done when:** a test set of real stretches shows no cut inside a word (checked by energy at the cut), and the same ranges give the same cuts every time.
 
 ### E. Clips
@@ -482,6 +487,7 @@ north star in STATUS.md: **episodes a host would publish without asking for help
   - *Brand mark:* logo or logos in a corner chosen from safe positions, with size and opacity.
   - *End card:* one line, such as "Full episode: link in the post."
 - **Out:** free text layers anywhere on the frame.
+- **Parked by decision (2026-10-05):** the trailer-style hook montage and the show-name and speaker-introduction cards for the *full episode* (PRO_EDIT_SPEC.md PE6 and PE7). The clip opener above is a different, smaller thing and stays.
 - **Builds on:** `render.py` filter graph, brand kit (epic I), the transcript's turn before a range.
 - **Risk:** suggesting the question needs care when the interviewer rambles; always editable, never auto-published.
 - **Done when:** exporting a clip with the opener takes no typing beyond confirming names, and the opener never covers the captions.
@@ -527,7 +533,7 @@ north star in STATUS.md: **episodes a host would publish without asking for help
 ### L. Audio polish
 
 - **Problem:** loudness varies between clips; background noise.
-- **Scope:** *Loudness to a target (S, do with E).* *Noise reduction (M, only with evidence, using a model that runs locally).*
+- **Scope:** *Loudness to a target (S, now part of PE2 in the Pro-edit track).* *Noise reduction (M, only with evidence, using a model that runs locally).*
 - **Out:** music beds, ducking.
 
 ### M. Search across episodes
@@ -549,68 +555,96 @@ Each needs evidence first: direct upload to YouTube and LinkedIn (leaves the mac
 
 ---
 
-## 8. Sequencing: horizons, gates and capacity
+## 8. Sequencing: priority order, gates and capacity
 
-**Capacity rule.** 80% new work and 20% upkeep per horizon. If upkeep passes 40%, new
-work stops and the debt is paid first. Upkeep named for these horizons: the `App.tsx`
-refactor, playback rate, Windows testing, the real-footage set, the fixes real footage
-turns up. Today's rough fix share is about 38%, so H0 deliberately builds very little.
+**Capacity rule.** 80% new work and 20% upkeep per phase. If upkeep passes 40%, new work stops
+and the debt is paid first. Upkeep named here: the `App.tsx` refactor, playback rate, Windows
+testing, the real-footage set, the fixes real footage turns up. The rough fix share in recent
+commits is about 38%, so the Now phase deliberately builds very little.
 
-### H0: now to the host test (about 2 weeks)
+### Priority order (updated 2026-10-05)
+
+Why this order: the Professional edit changes the main product, the full episode, for every user,
+and it is the largest gap measured ([PRO_EDIT_SPEC.md](PRO_EDIT_SPEC.md)). The Library fixes a
+hole you reported and everything after it needs it. Clips and callouts build on the engines the
+first two create.
+
+| # | Item | Epic | Size | Phase |
+|---|---|---|---|---|
+| 1 | Reference and scorecard | PE0 | S to M | Now |
+| 2 | "Home" from every screen | A, slice 1 | S | Now |
+| 3 | Professional cutting prototype, rendered through today's export and scored | PE1 prototype | M | Now |
+| 4 | Host-test additions: the open questions and a blind comparison | n/a | S | Now |
+| 5 | Professional cutting model in the app | PE1 | L | Next |
+| 6 | Pause cap, loudness target and fades as defaults | PE2 | S to M | Next |
+| 7 | Professional as the default for new episodes; scorecard bar, rhythm panel, review lane | PE3 | M to L | Next |
+| 8 | Upkeep: playback rate while cropped, a raw and edited test set, telemetry events | N | M | Next, in the 20% |
+| 9 | Library (full), add-with-intent, job queue | A, B, C | L | Then |
+| 10 | The cut engine for word ranges | D | L | Then |
+| 11 | Clips, caption styles, clip opener and brand mark | E, F, G | XL | Then |
+| 12 | Callout engine, with the basics of the brand kit | PE4, I (part) | L | Then |
+| 13 | Covers, chapters and transcript files, outro clip | H, J, PE5 | M | Later |
+| 14 | Show, variants and batch, search | I, K, M | L | Later |
+| 15 | Trailer-style hook montage, show name and speaker introductions, portrait cut-outs | PE6, PE7, PE8 | L to XL | **Parked by decision, 2026-10-05** |
+
+Item 7 is where the default flips. Until items 5 and 7 ship there is nothing to flip to, so new
+episodes keep Light until then. Saved episodes keep the style they were saved with.
+
+### Now: the host-test window (about 2 weeks)
 
 | Do | Size | Why |
 |---|---|---|
+| Reference file and scorecard script; baseline for today's Cutroom (the Practo episode is already measured: 0.31 cuts a minute against the agency's 6.9) | S to M | You can't improve what you can't score |
 | "Library" and logo link to Home from every screen | S | Your reported gap; no new screen needed |
-| Add questions to the host test (below) | S | Evidence before building |
-| Spike: pick words → export a captioned vertical clip | M | Proves the engine path with throwaway UI; tells us how big E and D really are |
-| Finish and merge the branch in flight | n/a | Don't start H1 with an unmerged base |
+| Professional prototype: a script that writes shots, rendered through today's export, scored on the Practo episode and one more recording | M | Shows what Professional feels like before the app work, and gives the host test something to compare |
+| Add to the host test | S | Evidence before building |
+| Finish and merge the branch in flight | n/a | Don't start the next phase on an unmerged base |
 
 **Add to the host test.** After they have an edited episode, ask, without showing
 anything: *What do you post after an episode, and where? How do you make it? How
 long does it take?* Then: *If this could also give you one piece of that, which?*
-Keep it open; do not offer a list.
+Keep it open; do not offer a list. Then show two edits of the same episode side by side, today's
+and the prototype, without saying which is which, and ask which they would publish and why.
 
-**Gate G1:** at least one host names something they make after the episode that
-Cutroom could produce from what it already knows. If hosts name only the full
-video, H1 still goes (Home and the queue are needed anyway) but H2 waits.
+**Gate G1 (at the host test):** at least one host names something they make after the episode that
+Cutroom could produce from what it already knows. That sets the order inside Then (clips first, or
+covers and packaging first). If hosts name only the full video, Then still starts with the
+Library and the queue.
 
-### H1: a place to come back to (after G1)
+### Next: Professional by default
 
-A (full) · B · C · D · parts of N (playback rate, test set, telemetry).
-Result: Library, add-with-intent, background queue, a clean cut engine, and an
-episode that holds clips as documents (saved in the `.cutroom` file, version 2 with
-a migration and a refusal path for newer files, as today).
+Items 5 to 8. **Gate G0 before item 7 ships:** the scorecard bands hold on the Practo episode and
+two other recordings, and the founder has reviewed three stretches of the output. The blind
+comparison tunes the settings; it does not decide whether Professional is the default.
 
-**Gate G2:** the spike and D together show a clip can be cut cleanly on real footage
-from at least two different recordings, not only the Practo episode.
+### Then: a place to come back to, and clips
 
-### H2: clips and covers
+Items 9 to 12. Result: Library, add-with-intent, background queue, a clean cut engine, clips as
+documents in the `.cutroom` file (version 2 with a migration and a refusal path for newer files),
+then callouts.
 
-E · F · G · H · J (chapters and transcript files) · L (loudness only).
-Result: pick a moment, export it to a destination preset with captions, context opener
-and brand mark; make a cover; get chapters.
+**Gate G2 (at item 10):** a clip can be cut cleanly on real footage from at least two different
+recordings, not only the Practo episode.
 
-**Gate G3:** at least three hosts publish a piece made in Cutroom, unassisted, or at
+**Gate G3 (after item 11):** at least three hosts publish a piece made in Cutroom, unassisted, or at
 least say they would. Without this, stop and look at the clips for what is wrong.
 
-### H3: the show
+### Later and parked
 
-I (brand kit, regular cast) · K (variants, batch) · M (search) · more of G (name tags, end cards).
-This is where the second episode becomes much faster than the first.
-
-### H4+: conditional (epic O)
-
-Chosen by what hosts ask for, one at a time, with a spike each.
+Items 13 and 14 follow the evidence. Item 15 is parked by the founder's decision on 2026-10-05:
+editors in general want a trailer in front of the episode, followed by the show name and an
+introduction of the speakers, but the core edit comes first. The spec is kept
+(PRO_EDIT_SPEC.md R13 and R14). Epic O items stay conditional, one at a time, each with a spike.
 
 ### The first two weeks, day by day
 
 | Days | Work |
 |---|---|
 | 1 to 2 | "Library" link and logo go Home; edit saved first; test that going Home and back keeps an edit |
-| 3 | Write the host-test additions; decide the sample episode question |
-| 4 to 9 | The spike: word range → clean cut → captioned 9:16 export through the existing render path |
-| 10 | Review the spike; re-size epics D and E with what was learned; update this doc |
-| 11 to 14 | Host test; record what they name |
+| 3 to 4 | Scorecard script and the baseline for today's Cutroom |
+| 5 to 10 | The Professional prototype: rhythm clock, synthesized zooms, pauses; write shots, render through today's export |
+| 11 | Score the prototype on a second recording; fix what the scorecard shows |
+| 12 to 14 | Host test: open questions, then the blind comparison |
 
 ---
 
@@ -627,6 +661,7 @@ Chosen by what hosts ask for, one at a time, with a spike each.
 | Multi-camera | **Stays cut** | Single camera is the positioning (STATUS) |
 | Voice ducking | **Stays cut** | Research problem, nobody asked |
 | Intro/outro bumpers, sponsor reads | **Parked** | No problem evidence yet (STATUS parks them) |
+| Trailer-style hook montage, show name and speaker introductions, portrait cut-outs | **Parked by decision (2026-10-05)** | Editors in general want them; the founder put the core edit first. Spec kept in PRO_EDIT_SPEC.md |
 | Direct publishing | **Parked** | Needs a consent design and evidence |
 | Title and post writing | **Parked** | Needs the local-model decision |
 | Audiograms | **Parked** | Possibly a large audience, but audio-only is a different positioning; ask hosts |
@@ -649,7 +684,7 @@ Chosen by what hosts ask for, one at a time, with a spike each.
 - Save everything made, and let old episodes use new features without reprocessing.
 - Keep copy plain: "Find moments", not "AI clips"; reasons, not scores.
 - Update STATUS, FEATURES and PRIVACY with each change.
-- Reserve 20% of every horizon for upkeep, and stop new work at 40%.
+- Reserve 20% of every phase for upkeep, and stop new work at 40%.
 
 **Don't**
 
@@ -660,7 +695,7 @@ Chosen by what hosts ask for, one at a time, with a spike each.
   if a later feature ever needs to.
 - Don't add accounts, sync or a hosted version to "support" the library.
 - Don't invent a number to rank moments or covers.
-- Don't start brand kit, overlays, audio or bumpers before the host test says they matter.
+- Don't start the full brand kit, overlays or bumpers before the Professional edit ships and the host test says they matter.
 - Don't ship a new screen without a way Home.
 - Don't add an icon set, emoji, a second accent colour or "AI" and "magic" wording to
   the app. The design rules stand.
@@ -672,14 +707,15 @@ Chosen by what hosts ask for, one at a time, with a spike each.
 
 ## 11. Scope summary
 
-### Functional scope by horizon
+### Functional scope by phase
 
-| Horizon | In | Out |
+| Phase | In | Out |
 |---|---|---|
-| H0 | Home link from every screen; host-test questions; a spike | A new Library screen; any clip UI |
-| H1 | Library with status and resume; per-episode routes and tabs; add-with-intent (edit, find clips, transcript only); queue and background renders; the cut engine; project file v2 with migration; playback-rate fix | Clips UI; brand kit; overlays |
-| H2 | Clips (range picker, composer, reframe, find moments, presets); caption styles and SRT/VTT; context opener, brand mark (logo set per clip), end card; cover studio; chapters; loudness | Regular cast memory; variants grid; name tags |
-| H3 | Show and brand kit; regular cast; variants and batch; name tags; search | Anything in epic O |
+| Now | Reference and scorecard; Home link from every screen; the Professional prototype; host-test questions and a blind comparison | A new Library screen; any clip UI |
+| Next | Professional cutting model, pause cap, loudness and fades as defaults; Professional as the default for new episodes; scorecard bar, rhythm panel, review lane; playback-rate fix, test set, telemetry | Library; clips; callouts |
+| Then | Library with status and resume; per-episode routes and tabs; add-with-intent; queue and background renders; the cut engine; project file v2 with migration; clips (range picker, composer, reframe, find moments, presets); caption styles and SRT/VTT; clip opener and brand mark; callouts | Regular cast memory; variants grid; hook montage; speaker introductions |
+| Later | Covers; chapters and transcript files; outro clip; Show and brand kit; regular cast; variants and batch; search | Anything in epic O |
+| Parked | Trailer-style hook montage; show name and speaker introductions; portrait cut-outs | n/a |
 
 ### Product scope
 
@@ -754,9 +790,9 @@ opener), `cover_exported`. No text of any kind, as today.
 |---|---|---|
 | Building for one person | Evidence is the founder's own work on an already-edited episode | Gate on the host test; run the spike on a second, raw recording |
 | Scope creep into a general editor | "One-stop shop" is easy to stretch | Section 4's scope line, applied to every feature |
-| Sequencing against the host test | STATUS.md says validate before building much further | H0 is deliberately small; H1 starts at G1 |
+| Sequencing against the host test | STATUS.md says validate before building much further | The Now phase is deliberately small; the app work in Next follows the founder's decision to make Professional the default, and the host test tunes it |
 | Fix share near 40% | New work could stall | 20% reserved; list the upkeep; stop at 40% |
-| Playback rate while cropped | Clip editing needs smooth scrubbing | Fix in H1 before the clip editor |
+| Playback rate while cropped | Professional edits and clip editing need smooth scrubbing | Fix in Next (item 8), before the Professional default ships |
 | Source footage that is already edited | Hard cuts and on-screen text appear in some recordings | Decide: detect cuts, or ask the person; test both |
 | Captions through libass | Rich styles depend on the bundled ffmpeg | Confirm on both platforms before epic F |
 | Remembering faces | Biometric-like data kept between sessions | Local, per-person delete, documented, opt in |
@@ -764,17 +800,22 @@ opener), `cover_exported`. No text of any kind, as today.
 | Unsigned Mac updates | New features reach people slowly | In-app note on new versions; revisit signing only after the host test |
 | Logos and brand marks | Users supply assets they may not own | The app uses what the person provides; no bundled third-party logos |
 
-**Decisions needed from you**
+**Decisions recorded (2026-10-05)**
+
+1. Professional is the default style for every new episode.
+2. The hook montage and speaker introductions are deprioritised, not cut.
+3. The closer shots in the reference edit were zooms of one clip, so one recording is enough.
+4. Social clips come after the Professional edit and the Library, not now (they follow from the order in section 8).
+
+**Still open**
 
 1. **Reopen the scope sentence in PRODUCT.md?** Section 4's line replaces "not a general
    video editor" as the working test. Yes or no.
-2. **Un-park social clips now, or after the host test?** I recommend building only the
-   spike now, and the rest after G1.
-3. **A local text model, yes or no?** It would unlock titles, post drafts and show notes.
-   It adds a large download and a quality bar. I'd decide after H2, with evidence.
-4. **Sample episode in the app:** do you have footage you may bundle? It shortens the
+2. **A local text model, yes or no?** It would unlock titles, post drafts and show notes.
+   It adds a large download and a quality bar. I'd decide after clips ship, with evidence.
+3. **Sample episode in the app:** do you have footage you may bundle? It shortens the
    path to a first result.
-5. **"Show" or "Project"** as the word for the group of episodes? Show is clearer for podcasters.
+4. **"Show" or "Project"** as the word for the group of episodes? Show is clearer for podcasters.
 
 **Questions I need answered to size this properly**
 
@@ -792,10 +833,10 @@ Not done yet. Each follows only after you say yes.
 | Doc | Change |
 |---|---|
 | [PRODUCT.md](PRODUCT.md) | Rewrite "what this deliberately is not": replace "not a general video editor" and "a general media library isn't" with the scope line and the deliverables idea |
-| [STATUS.md](STATUS.md) | Add the horizons and gates to "What's left"; unpark "Automatic social clips" in stages; replace "text annotations" with epic G |
+| [STATUS.md](STATUS.md) | Add the priority order, phases and gates to "What's left"; unpark "Automatic social clips" in stages; replace "text annotations" with epic G |
 | [FEATURES.md](FEATURES.md) | #11 becomes overlays (G); #14 becomes clips (E); add Library, queue, covers, packaging, brand kit |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | New routes, the deliverable model, project file v2, endpoints |
 | [PRIVACY.md](../PRIVACY.md) | New events; remembered faces |
 | [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) | Library, tabs, activity panel and clip editor, built from the existing primitives |
 | [EDGE_CASES.md](EDGE_CASES.md) | Cut-point rules from section 3.1 (snap to silence, neighbour-word guard, phantom words) |
-| [docs/README.md](README.md) | Link this doc in the "Current" table |
+| [docs/README.md](README.md) | Link this doc and PRO_EDIT_SPEC.md in the "Current" table |
