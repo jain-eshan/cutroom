@@ -296,6 +296,17 @@ ordering; [ARCHITECTURE.md](ARCHITECTURE.md)'s Roadmap mirrors it.
   (FEATURES.md #19). Releases now carry SHA-256s in their notes and a
   `SHA256SUMS.txt`, and the README says how to check one. Both borrowed from
   Wavefield, which ships unsigned too.
+- **v0.4.0, prepared 2026-11-24; not tagged yet.** Carries the 37 commits
+  since v0.3.2, so the download matches the launch film. Release notes are
+  in [releases/v0.4.0.md](releases/v0.4.0.md). The bundled ffmpeg can burn
+  captions on both platforms: the Mac arm64 binary lists the `subtitles`
+  and `ass` filters when run, and the Windows x64 one (gyan.dev build, via
+  ffmpeg-static b6.1.1) was built with `--enable-libass`, read from its
+  configure string, not run. The `draft` job creates an empty body and
+  `verify` appends the checksums, so before publishing, put the notes above
+  them: `gh release view v0.4.0 --json body -q .body > sums.md`, then
+  `cat docs/releases/v0.4.0.md sums.md > body.md` and
+  `gh release edit v0.4.0 --notes-file body.md`.
 - **The host test still hasn't happened.** A host is lined up within two weeks.
 
 ### How progress is measured
