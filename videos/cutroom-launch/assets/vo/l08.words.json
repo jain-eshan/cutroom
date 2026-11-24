@@ -1,0 +1,98 @@
+[
+  {
+    "text": "Then",
+    "start": 0.06,
+    "end": 0.26,
+    "id": "w0"
+  },
+  {
+    "text": "export",
+    "start": 0.32,
+    "end": 0.64,
+    "id": "w1"
+  },
+  {
+    "text": "the",
+    "start": 0.72,
+    "end": 0.93,
+    "id": "w2"
+  },
+  {
+    "text": "full",
+    "start": 0.93,
+    "end": 1.22,
+    "id": "w3"
+  },
+  {
+    "text": "resolution",
+    "start": 1.22,
+    "end": 1.94,
+    "id": "w4"
+  },
+  {
+    "text": "video",
+    "start": 1.94,
+    "end": 1.96,
+    "id": "w5"
+  },
+  {
+    "text": "with",
+    "start": 2.36,
+    "end": 2.57,
+    "id": "w6"
+  },
+  {
+    "text": "a",
+    "start": 2.57,
+    "end": 2.65,
+    "id": "w7"
+  },
+  {
+    "text": "subtitle",
+    "start": 2.65,
+    "end": 3.13,
+    "id": "w8"
+  },
+  {
+    "text": "file",
+    "start": 3.26,
+    "end": 3.61,
+    "id": "w9"
+  },
+  {
+    "text": "and",
+    "start": 3.81,
+    "end": 4.07,
+    "id": "w10"
+  },
+  {
+    "text": "an",
+    "start": 4.07,
+    "end": 4.25,
+    "id": "w11"
+  },
+  {
+    "text": "mp3",
+    "start": 4.31,
+    "end": 4.75,
+    "id": "w12"
+  },
+  {
+    "text": "for",
+    "start": 4.85,
+    "end": 4.88,
+    "id": "w13"
+  },
+  {
+    "text": "your",
+    "start": 4.88,
+    "end": 5.03,
+    "id": "w14"
+  },
+  {
+    "text": "feed.",
+    "start": 5.03,
+    "end": 5.48,
+    "id": "w15"
+  }
+]

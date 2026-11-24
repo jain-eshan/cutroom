@@ -1,0 +1,86 @@
+[
+  {
+    "text": "Now",
+    "start": 0.03,
+    "end": 0.21,
+    "id": "w0"
+  },
+  {
+    "text": "someone",
+    "start": 0.21,
+    "end": 0.7,
+    "id": "w1"
+  },
+  {
+    "text": "has",
+    "start": 0.7,
+    "end": 0.85,
+    "id": "w2"
+  },
+  {
+    "text": "to",
+    "start": 0.92,
+    "end": 1.05,
+    "id": "w3"
+  },
+  {
+    "text": "cut",
+    "start": 1.05,
+    "end": 1.26,
+    "id": "w4"
+  },
+  {
+    "text": "it",
+    "start": 1.26,
+    "end": 1.35,
+    "id": "w5"
+  },
+  {
+    "text": "by",
+    "start": 1.41,
+    "end": 1.54,
+    "id": "w6"
+  },
+  {
+    "text": "hand",
+    "start": 1.54,
+    "end": 1.7,
+    "id": "w7"
+  },
+  {
+    "text": "to",
+    "start": 1.87,
+    "end": 1.98,
+    "id": "w8"
+  },
+  {
+    "text": "whoever's",
+    "start": 1.98,
+    "end": 2.64,
+    "id": "w9"
+  },
+  {
+    "text": "talking.",
+    "start": 2.64,
+    "end": 3.38,
+    "id": "w10"
+  },
+  {
+    "text": "That",
+    "start": 3.43,
+    "end": 3.6,
+    "id": "w11"
+  },
+  {
+    "text": "takes",
+    "start": 3.6,
+    "end": 3.85,
+    "id": "w12"
+  },
+  {
+    "text": "hours.",
+    "start": 3.85,
+    "end": 4.25,
+    "id": "w13"
+  }
+]

@@ -1,0 +1,80 @@
+[
+  {
+    "text": "It",
+    "start": 0.04,
+    "end": 0.13,
+    "id": "w0"
+  },
+  {
+    "text": "all",
+    "start": 0.16,
+    "end": 0.37,
+    "id": "w1"
+  },
+  {
+    "text": "runs",
+    "start": 0.39,
+    "end": 0.64,
+    "id": "w2"
+  },
+  {
+    "text": "on",
+    "start": 0.66,
+    "end": 0.82,
+    "id": "w3"
+  },
+  {
+    "text": "your",
+    "start": 0.82,
+    "end": 1.08,
+    "id": "w4"
+  },
+  {
+    "text": "computer,",
+    "start": 1.13,
+    "end": 1.78,
+    "id": "w5"
+  },
+  {
+    "text": "nothing",
+    "start": 1.8,
+    "end": 2.3,
+    "id": "w6"
+  },
+  {
+    "text": "is",
+    "start": 2.3,
+    "end": 2.46,
+    "id": "w7"
+  },
+  {
+    "text": "uploaded",
+    "start": 2.46,
+    "end": 2.91,
+    "id": "w8"
+  },
+  {
+    "text": "and",
+    "start": 3.13,
+    "end": 3.21,
+    "id": "w9"
+  },
+  {
+    "text": "there's",
+    "start": 3.21,
+    "end": 3.5,
+    "id": "w10"
+  },
+  {
+    "text": "no",
+    "start": 3.5,
+    "end": 3.6,
+    "id": "w11"
+  },
+  {
+    "text": "account.",
+    "start": 3.6,
+    "end": 4.18,
+    "id": "w12"
+  }
+]

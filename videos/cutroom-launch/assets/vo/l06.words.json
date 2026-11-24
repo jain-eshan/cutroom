@@ -1,0 +1,104 @@
+[
+  {
+    "text": "It",
+    "start": 0.03,
+    "end": 0.13,
+    "id": "w0"
+  },
+  {
+    "text": "works",
+    "start": 0.13,
+    "end": 0.49,
+    "id": "w1"
+  },
+  {
+    "text": "out",
+    "start": 0.49,
+    "end": 0.7,
+    "id": "w2"
+  },
+  {
+    "text": "who's",
+    "start": 0.7,
+    "end": 0.98,
+    "id": "w3"
+  },
+  {
+    "text": "talking,",
+    "start": 1.04,
+    "end": 1.65,
+    "id": "w4"
+  },
+  {
+    "text": "from",
+    "start": 1.65,
+    "end": 1.83,
+    "id": "w5"
+  },
+  {
+    "text": "their",
+    "start": 1.83,
+    "end": 2.06,
+    "id": "w6"
+  },
+  {
+    "text": "voice",
+    "start": 2.06,
+    "end": 2.29,
+    "id": "w7"
+  },
+  {
+    "text": "and",
+    "start": 2.32,
+    "end": 2.5,
+    "id": "w8"
+  },
+  {
+    "text": "their",
+    "start": 2.5,
+    "end": 2.84,
+    "id": "w9"
+  },
+  {
+    "text": "lips,",
+    "start": 2.84,
+    "end": 3.16,
+    "id": "w10"
+  },
+  {
+    "text": "and",
+    "start": 3.16,
+    "end": 3.22,
+    "id": "w11"
+  },
+  {
+    "text": "cuts",
+    "start": 3.26,
+    "end": 3.41,
+    "id": "w12"
+  },
+  {
+    "text": "in",
+    "start": 3.52,
+    "end": 3.63,
+    "id": "w13"
+  },
+  {
+    "text": "close",
+    "start": 3.63,
+    "end": 3.95,
+    "id": "w14"
+  },
+  {
+    "text": "on",
+    "start": 3.95,
+    "end": 4.12,
+    "id": "w15"
+  },
+  {
+    "text": "them.",
+    "start": 4.12,
+    "end": 4.33,
+    "id": "w16"
+  }
+]

@@ -307,6 +307,14 @@ ordering; [ARCHITECTURE.md](ARCHITECTURE.md)'s Roadmap mirrors it.
   them: `gh release view v0.4.0 --json body -q .body > sums.md`, then
   `cat docs/releases/v0.4.0.md sums.md > body.md` and
   `gh release edit v0.4.0 --notes-file body.md`.
+- **Launch film and Product Hunt, 2026-11-24.** A 61-second demo cut from
+  real screen recordings of `main` processing and editing The Founders'
+  Podcast, Episode 1 (everyone in it agreed to publish), at
+  [youtu.be/Y2J9pnHOykg](https://youtu.be/Y2J9pnHOykg). Sources and rebuild
+  steps are in `videos/cutroom-launch/`. The Product Hunt launch is
+  scheduled for 2026-11-26 (Pacific) and links to the latest release, so
+  v0.4.0 needs to be tagged and published before then: v0.3.2 lacks most of
+  what the film shows.
 - **The host test still hasn't happened.** A host is lined up within two weeks.
 
 ### How progress is measured

@@ -21,6 +21,8 @@ decision to change.
 
 ![The Cutroom editor: the transcript with names on the left, the framed video preview on the right, and the framing timeline along the bottom.](docs/images/editor.jpg)
 
+Watch the 61-second demo: [youtu.be/Y2J9pnHOykg](https://youtu.be/Y2J9pnHOykg)
+
 ## Contents
 
 - [Why it exists](#why-it-exists)
@@ -31,6 +33,7 @@ decision to change.
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Troubleshooting](#troubleshooting)
 - [How it works](#how-it-works)
+- [Demo video](#demo-video)
 - [Project layout](#project-layout)
 - [Development](#development)
 - [Contributing](#contributing)
@@ -353,6 +356,16 @@ For the full design, every dependency and why it's there, see
 tracking and lip-sync work in detail, see
 [server/README.md](server/README.md).
 
+## Demo video
+
+The [61-second demo](https://youtu.be/Y2J9pnHOykg) is a [HyperFrames](https://hyperframes.heygen.com)
+project in `videos/cutroom-launch/`, cut from real screen recordings of Cutroom
+processing and editing The Founders' Podcast, Episode 1, which everyone in it
+agreed to publish. The five seconds of finished video in it come from Cutroom's
+own renderer, using the shot list Cutroom suggested, with no manual edits.
+`videos/cutroom-launch/README.md` has the story, the script and the rebuild
+steps. The recordings, narration audio, music and renders are not in git.
+
 ## Project layout
 
 ```
@@ -362,6 +375,7 @@ server/         The processing service (Python 3.12, FastAPI, uv)
                 fuse, framing, render, captions, trim
   tests/        pytest suite
 site/           The website (a separate small Vite app)
+videos/         The launch demo video's sources (HyperFrames)
 docs/           Status, features, edge cases, architecture, design handoff
 .github/        CI, issue forms and the pull request template
 ```

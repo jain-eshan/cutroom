@@ -1,0 +1,74 @@
+[
+  {
+    "text": "Cutroom",
+    "start": 0.07,
+    "end": 0.55,
+    "id": "w0"
+  },
+  {
+    "text": "is",
+    "start": 0.55,
+    "end": 0.63,
+    "id": "w1"
+  },
+  {
+    "text": "free",
+    "start": 0.78,
+    "end": 1.04,
+    "id": "w2"
+  },
+  {
+    "text": "and",
+    "start": 1.04,
+    "end": 1.28,
+    "id": "w3"
+  },
+  {
+    "text": "open",
+    "start": 1.28,
+    "end": 1.6,
+    "id": "w4"
+  },
+  {
+    "text": "source.",
+    "start": 1.6,
+    "end": 2.34,
+    "id": "w5"
+  },
+  {
+    "text": "Try",
+    "start": 2.37,
+    "end": 2.49,
+    "id": "w6"
+  },
+  {
+    "text": "it",
+    "start": 2.56,
+    "end": 2.62,
+    "id": "w7"
+  },
+  {
+    "text": "on",
+    "start": 2.62,
+    "end": 2.73,
+    "id": "w8"
+  },
+  {
+    "text": "your",
+    "start": 2.73,
+    "end": 2.96,
+    "id": "w9"
+  },
+  {
+    "text": "next",
+    "start": 2.96,
+    "end": 3.19,
+    "id": "w10"
+  },
+  {
+    "text": "episode.",
+    "start": 3.19,
+    "end": 3.79,
+    "id": "w11"
+  }
+]

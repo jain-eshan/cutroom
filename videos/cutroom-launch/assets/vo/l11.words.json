@@ -1,0 +1,38 @@
+[
+  {
+    "text": "Cutroom,",
+    "start": 0.03,
+    "end": 0.57,
+    "id": "w0"
+  },
+  {
+    "text": "podcast",
+    "start": 0.75,
+    "end": 1.08,
+    "id": "w1"
+  },
+  {
+    "text": "video",
+    "start": 1.08,
+    "end": 1.42,
+    "id": "w2"
+  },
+  {
+    "text": "that",
+    "start": 1.42,
+    "end": 1.63,
+    "id": "w3"
+  },
+  {
+    "text": "cuts",
+    "start": 1.7,
+    "end": 1.96,
+    "id": "w4"
+  },
+  {
+    "text": "itself.",
+    "start": 1.96,
+    "end": 2.44,
+    "id": "w5"
+  }
+]

@@ -1,0 +1,44 @@
+[
+  {
+    "text": "Meet",
+    "start": 0.02,
+    "end": 0.02,
+    "id": "w0"
+  },
+  {
+    "text": "KUTTROOM,",
+    "start": 0.02,
+    "end": 0.6,
+    "id": "w1"
+  },
+  {
+    "text": "podcast",
+    "start": 0.6,
+    "end": 1.19,
+    "id": "w2"
+  },
+  {
+    "text": "video",
+    "start": 1.19,
+    "end": 1.6,
+    "id": "w3"
+  },
+  {
+    "text": "that",
+    "start": 1.65,
+    "end": 1.94,
+    "id": "w4"
+  },
+  {
+    "text": "cuts",
+    "start": 1.94,
+    "end": 2.26,
+    "id": "w5"
+  },
+  {
+    "text": "itself.",
+    "start": 2.33,
+    "end": 2.87,
+    "id": "w6"
+  }
+]

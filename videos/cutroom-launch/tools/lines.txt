@@ -1,0 +1,11 @@
+l01|You recorded a great conversation. One camera, everyone in the frame.
+l02|Now someone has to cut it by hand, to whoever's talking. That takes hours.
+l03|And auto-editors won't help. They expect a microphone and a camera for every person.
+l04|Meet Cutroom. Podcast video that cuts itself.
+l05|Drop in your recording. Cutroom writes the transcript, and finds each person's face.
+l06|It works out who's talking, from their voice and their lips, and cuts in close on them.
+l07|Every cut is yours to change. Pick who's in the shot, drag a cut, or put back a pause it trimmed.
+l08|Then export the full-resolution video, with a subtitle file and an MP3 for your feed.
+l09|It all runs on your computer. Nothing is uploaded, and there's no account.
+l10|Cutroom is free and open source. Try it on your next episode.
+l11|Cutroom. Podcast video that cuts itself.
