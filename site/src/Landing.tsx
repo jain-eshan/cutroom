@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { Logo } from "@/components/Logo";
 import { track } from "./analytics";
-import { AutoFramingLoop, FramingDemo } from "./Scene";
 import { Waitlist } from "./Waitlist";
 
 const REPO = "https://github.com/jain-eshan/cutroom";
 const doc = (path: string) => `${REPO}/blob/main/${path}`;
 
 // Button recipes from the design system's site kit. The accent is the page's
-// one accent action (joining the waitlist, in the hero); everything else is
+// one accent action (downloading for Mac, in the hero); everything else is
 // the dark or the quiet button.
 const BTN =
 	"inline-flex items-center justify-center rounded-marketing px-[22px] py-[15px] text-[14px] leading-none font-medium whitespace-nowrap transition-[background-color,opacity] duration-[90ms] ease-linear";
@@ -120,21 +119,53 @@ function Hero() {
 					speaking, and cuts in close on them. Then it hands you every decision to change.
 				</p>
 				<div className="mt-6 flex flex-col justify-center gap-[11px] sm:flex-row">
-					<a href="#waitlist" className={PRIMARY}>
-						Join the waitlist
-					</a>
-					<a href="#developer-preview" className={QUIET}>
-						Run the developer preview
-					</a>
+					<Out
+						href={`${REPO}/releases/latest/download/Cutroom-arm64.dmg`}
+						className={PRIMARY}
+						onClick={() => track({ name: "download_clicked", platform: "mac" })}
+					>
+						Download for Mac
+					</Out>
+					<Out
+						href={`${REPO}/releases/latest/download/Cutroom-Setup.exe`}
+						className={QUIET}
+						onClick={() => track({ name: "download_clicked", platform: "windows" })}
+					>
+						Download for Windows
+					</Out>
 				</div>
 				<p className="mt-5 text-[12.5px] leading-[1.5] text-text3">
-					Free forever · MIT licence · your recording never leaves your machine
+					Free forever · MIT licence · your recording never leaves your machine ·{" "}
+					<a href="#download" className={LINK}>
+						first-launch steps
+					</a>{" "}
+					·{" "}
+					<a href="#waitlist" className={LINK}>
+						join the waitlist
+					</a>
 				</p>
-				{/* Sized so the whole demo, timeline included, fits on screen under the
-				    nav on a laptop, rather than filling a large monitor. */}
-				<div className="mx-auto mt-[44px] w-full max-w-[min(840px,calc((100svh_-_280px)*16/9))]">
-					<FramingDemo />
-				</div>
+				{/* Real footage: Cutroom editing a 53-minute, one-camera episode that
+				    everyone in it agreed to publish (see site/README.md, "The hero demo").
+				    Sized so it fits under the nav on a laptop. */}
+				<figure className="mx-auto mt-[44px] w-full max-w-[min(840px,calc((100svh_-_300px)*1240/862))]">
+					<video
+						className="aspect-[1240/862] w-full rounded-panel border border-line bg-panel"
+						src="/demo/cutroom-demo.mp4"
+						poster="/demo/cutroom-demo-poster.webp"
+						autoPlay
+						muted
+						loop
+						playsInline
+						preload="metadata"
+						aria-label="Cutroom matching a voice to a face, then cutting in close on whoever is talking in a real four-person episode"
+					/>
+					<figcaption className="mt-3 text-[12.5px] leading-[1.5] text-text3">
+						A real 53-minute, four-person episode, shot on one camera.{" "}
+						<Out href="https://youtu.be/Y2J9pnHOykg" className={LINK}>
+							Watch the 61-second demo with sound
+						</Out>
+					</figcaption>
+				</figure>
 			</div>
 		</section>
 	);
@@ -180,7 +211,19 @@ function Features() {
 		{
 			title: "It cuts to whoever's talking",
 			body: "Faces are found and recognised across the whole episode, and each voice is matched to a face by lip movement. Close-ups are framed the way professional podcast edits frame a seated person, and when two people talk over each other, both go on screen.",
-			clip: <AutoFramingLoop />,
+			clip: (
+				<video
+					className="h-full w-full object-cover"
+					src="/demo/cutroom-cut.mp4"
+					poster="/demo/cutroom-cut-poster.webp"
+					autoPlay
+					muted
+					loop
+					playsInline
+					preload="metadata"
+					aria-label="Cutroom's own edit holding on a listener, then cutting in close on the person who starts talking"
+				/>
+			),
 		},
 		{
 			title: "Every cut is yours to move",

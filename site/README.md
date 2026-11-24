@@ -35,7 +35,7 @@ The output lands in `site/dist/`.
 |---|---|
 | `index.html` | Page title, description and social preview tags. |
 | `src/Landing.tsx` | Every section of the page, top to bottom. Copy lives here. |
-| `src/Scene.tsx` | The illustrated podcast set and the two demos built from it: the framing demo in the hero (`FramingDemo`) and the small auto-framing loop in "It cuts to whoever's talking" (`AutoFramingLoop`). Crops use the same proportions as `server/pipeline/framing.py`. See "The hero demo" below before changing or removing it. |
+| `public/demo/` | The real footage in the hero and in "It cuts to whoever's talking", cut from the launch film in `videos/cutroom-launch/` (see "The hero demo" below). |
 | `src/site.css` | Pulls in the app's tokens, plus the two marketing-only values the app doesn't need: the 10px marketing radius and the softer hero shadow. |
 | `src/Waitlist.tsx` | The waitlist, an embedded [Tally](https://tally.so) form. |
 | `public/shots/` | Screenshots of the app used on the page. |
@@ -61,29 +61,26 @@ redeploys it.
 
 ## The hero demo
 
-The hero and the "It cuts to whoever's talking" block show an animated
-illustration of a three-person podcast set being cut between wide shots,
-close-ups and a two-person shot, with a timeline underneath. It is a
-cartoon, not footage, and the page says so under the demo.
+The hero shows real footage: Cutroom matching a voice to a face and then
+cutting in close on whoever is talking, in The Founders' Podcast, Episode 1
+(53 minutes, four people, one camera), which everyone in it agreed to
+publish. "It cuts to whoever's talking" shows seven seconds of Cutroom's own
+render of the same episode, using the shots it suggested. Both are silent
+loops in `public/demo/`, cut with ffmpeg from the launch film and its source
+in `videos/cutroom-launch/`; the caption links the full film with sound
+(https://youtu.be/Y2J9pnHOykg).
 
-That is a **deliberate, temporary exception** to the design system's "no
-illustrations" rule. History, so nobody has to rediscover it:
+History, so nobody has to rediscover it:
 
-- 2026-09-15: built as the stand-in for a real demo clip, because a real
-  clip needs everyone in it to agree to be published.
+- 2026-09-15: an animated illustration (`Scene.tsx`) stood in for a real
+  demo clip, because a real clip needs everyone in it to agree to be
+  published.
 - 2026-09-19: removed by the move onto the design system's site kit, which
-  has no illustrations and uses striped placeholders until footage exists.
-  That left the two most visible spots on the live page as empty striped
-  boxes captioned "DEMO LOOP · 30 S" and "LOOP · AUTO-FRAMING".
-- 2026-09-20: put back, at the founder's call. The frames around it (the
-  card, chips, timeline labels) use the current tokens; only the artwork
-  itself is off-system.
-
-**When to remove it:** as soon as there is real footage everyone in it has
-agreed to publish. Cut it through Cutroom, record the editor playing it, and
-replace `FramingDemo` and `AutoFramingLoop` with that. Then delete
-`Scene.tsx`, drop this exception from `docs/DESIGN_SYSTEM.md`, and restore the
-"no illustrations" bullet below to its plain form.
+  has no illustrations, leaving two empty striped boxes on the live page.
+- 2026-09-20: put back, at the founder's call, as a temporary exception to
+  the "no illustrations" rule.
+- 2026-11-24: replaced by real footage for the v0.4.0 launch, and
+  `Scene.tsx` deleted. The hero's accent button became "Download for Mac".
 
 The screenshots in `public/shots/` are the real app on sample data, with the
 same illustrated set as the picture so the page tells one story. They were
@@ -102,14 +99,11 @@ The page follows the design system's `readme.md` (summarised in
 [docs/design/handoff/README.md](../docs/design/handoff/README.md)):
 
 - Light theme only. The app follows the OS; the website doesn't.
-- One amber accent button per screen. On this page that's "Join the
-  waitlist" in the hero. Downloads use the dark button, everything else the
-  quiet one.
-- No illustrations, icons, blur or gradients, with one temporary exception:
-  the illustrated demo in `Scene.tsx` (see "The hero demo" below). Everything
-  else on the page follows the rule. Where footage would go and there is
-  none, the design's answer is the 135° striped placeholder with a mono
-  caption saying what goes there.
+- One amber accent button per screen. On this page that's "Download for
+  Mac" in the hero. The other downloads use the dark or quiet button.
+- No illustrations, icons, blur or gradients. Where footage would go and
+  there is none, the design's answer is the 135° striped placeholder with a
+  mono caption saying what goes there.
 - Headline 48px on phones, 52px from 640px up, at −0.035em. Section titles
   25px. Marketing surfaces use the 10px radius.
 - Monospace only for things a machine measured: the numbers row, commands,
