@@ -1,0 +1,11 @@
+# Generated or third-party media: rebuild with tools/build.py and a HyperFrames render
+raw/
+renders/
+ph/
+assets/clips/
+assets/stills/
+assets/audio/
+assets/music/
+assets/vo/*.wav
+assets/vo/l??.json
+.hyperframes/

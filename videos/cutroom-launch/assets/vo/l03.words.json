@@ -1,0 +1,92 @@
+[
+  {
+    "text": "and",
+    "start": 0.05,
+    "end": 0.25,
+    "id": "w0"
+  },
+  {
+    "text": "auto",
+    "start": 0.25,
+    "end": 0.58,
+    "id": "w1"
+  },
+  {
+    "text": "editors",
+    "start": 0.58,
+    "end": 1.13,
+    "id": "w2"
+  },
+  {
+    "text": "won't",
+    "start": 1.13,
+    "end": 1.48,
+    "id": "w3"
+  },
+  {
+    "text": "help.",
+    "start": 1.48,
+    "end": 1.97,
+    "id": "w4"
+  },
+  {
+    "text": "They",
+    "start": 1.97,
+    "end": 2.18,
+    "id": "w5"
+  },
+  {
+    "text": "expect",
+    "start": 2.18,
+    "end": 2.54,
+    "id": "w6"
+  },
+  {
+    "text": "a",
+    "start": 2.57,
+    "end": 2.63,
+    "id": "w7"
+  },
+  {
+    "text": "microphone",
+    "start": 2.63,
+    "end": 3.28,
+    "id": "w8"
+  },
+  {
+    "text": "and",
+    "start": 3.38,
+    "end": 3.4,
+    "id": "w9"
+  },
+  {
+    "text": "a",
+    "start": 3.54,
+    "end": 3.55,
+    "id": "w10"
+  },
+  {
+    "text": "camera",
+    "start": 3.87,
+    "end": 3.92,
+    "id": "w11"
+  },
+  {
+    "text": "for",
+    "start": 3.92,
+    "end": 4.08,
+    "id": "w12"
+  },
+  {
+    "text": "every",
+    "start": 4.1,
+    "end": 4.41,
+    "id": "w13"
+  },
+  {
+    "text": "person.",
+    "start": 4.41,
+    "end": 4.99,
+    "id": "w14"
+  }
+]

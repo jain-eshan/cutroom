@@ -1,0 +1,80 @@
+[
+  {
+    "text": "Drop",
+    "start": 0.08,
+    "end": 0.29,
+    "id": "w0"
+  },
+  {
+    "text": "in",
+    "start": 0.29,
+    "end": 0.43,
+    "id": "w1"
+  },
+  {
+    "text": "your",
+    "start": 0.43,
+    "end": 0.69,
+    "id": "w2"
+  },
+  {
+    "text": "recording,",
+    "start": 0.75,
+    "end": 1.56,
+    "id": "w3"
+  },
+  {
+    "text": "Cutroom",
+    "start": 1.6,
+    "end": 2,
+    "id": "w4"
+  },
+  {
+    "text": "writes",
+    "start": 2,
+    "end": 2.38,
+    "id": "w5"
+  },
+  {
+    "text": "the",
+    "start": 2.38,
+    "end": 2.57,
+    "id": "w6"
+  },
+  {
+    "text": "transcript,",
+    "start": 2.57,
+    "end": 3.33,
+    "id": "w7"
+  },
+  {
+    "text": "and",
+    "start": 3.33,
+    "end": 3.39,
+    "id": "w8"
+  },
+  {
+    "text": "finds",
+    "start": 3.46,
+    "end": 3.67,
+    "id": "w9"
+  },
+  {
+    "text": "each",
+    "start": 3.67,
+    "end": 3.88,
+    "id": "w10"
+  },
+  {
+    "text": "person's",
+    "start": 3.88,
+    "end": 4.3,
+    "id": "w11"
+  },
+  {
+    "text": "face.",
+    "start": 4.32,
+    "end": 4.77,
+    "id": "w12"
+  }
+]

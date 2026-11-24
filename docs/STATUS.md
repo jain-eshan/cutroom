@@ -296,7 +296,7 @@ ordering; [ARCHITECTURE.md](ARCHITECTURE.md)'s Roadmap mirrors it.
   (FEATURES.md #19). Releases now carry SHA-256s in their notes and a
   `SHA256SUMS.txt`, and the README says how to check one. Both borrowed from
   Wavefield, which ships unsigned too.
-- **v0.4.0, prepared 2026-11-24; not tagged yet.** Carries the 37 commits
+- **v0.4.0, published 2026-11-24.** Carries the 37 commits
   since v0.3.2, so the download matches the launch film. Release notes are
   in [releases/v0.4.0.md](releases/v0.4.0.md). The bundled ffmpeg can burn
   captions on both platforms: the Mac arm64 binary lists the `subtitles`
@@ -307,6 +307,13 @@ ordering; [ARCHITECTURE.md](ARCHITECTURE.md)'s Roadmap mirrors it.
   them: `gh release view v0.4.0 --json body -q .body > sums.md`, then
   `cat docs/releases/v0.4.0.md sums.md > body.md` and
   `gh release edit v0.4.0 --notes-file body.md`.
+- **Launch film and Product Hunt, 2026-11-24.** A 61-second demo cut from
+  real screen recordings of `main` processing and editing The Founders'
+  Podcast, Episode 1 (everyone in it agreed to publish), at
+  [youtu.be/Y2J9pnHOykg](https://youtu.be/Y2J9pnHOykg). Sources and rebuild
+  steps are in `videos/cutroom-launch/`. The Product Hunt launch is
+  scheduled for 2026-11-26 (Pacific) and links to the latest release,
+  which is v0.4.0, so the download matches the film.
 - **The host test still hasn't happened.** A host is lined up within two weeks.
 
 ### How progress is measured

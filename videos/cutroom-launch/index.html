@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Cutroom launch</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Instrument Serif"; font-style: normal; font-weight: 400; src: url("assets/fonts/InstrumentSerif.ttf") format("truetype"); font-display: block; }
+      @font-face { font-family: "Instrument Serif"; font-style: italic; font-weight: 400; src: url("assets/fonts/InstrumentSerif-Italic.woff2") format("woff2"); font-display: block; }
+      @font-face { font-family: "Instrument Sans"; font-style: normal; font-weight: 400 700; src: url("assets/fonts/InstrumentSans.woff2") format("woff2"); font-display: block; }
+      @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400 700; src: url("assets/fonts/JetBrainsMono.woff2") format("woff2"); font-display: block; }
+      :root { --bg: #0d0b08; --panel: #120f0c; --raised: #1d1a17; --line: #2c2824; --ink: #f0eeeb; --ink2: #c1bdb7; --ink3: #95928b; --acc: #f88a3d; --s1: #f88a3d; --s2: #21bfa0; --s3: #9690f1; --s4: #e17eb9; --ok: #57bc80; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+      #root { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font-family: "Instrument Sans", sans-serif; }
+      .layer { position: absolute; inset: 0; }
+      .serif { font-family: "Instrument Serif", serif; font-weight: 400; }
+      .mono { font-family: "JetBrains Mono", monospace; }
+      .center { position: absolute; left: 0; right: 0; text-align: center; }
+      .o { opacity: 0; }
+      .w { display: inline-block; opacity: 0; }
+      em { font-family: "Instrument Serif", serif; font-style: italic; color: var(--acc); font-weight: 400; }
+      #bg { background: radial-gradient(1100px 700px at 15% 8%, rgba(248,138,61,0.16), transparent 70%), radial-gradient(900px 800px at 92% 95%, rgba(150,144,241,0.10), transparent 70%), var(--bg); }
+      #grain { position: absolute; inset: 0; background-image: radial-gradient(rgba(240,238,235,0.05) 1.4px, transparent 1.4px); background-size: 32px 32px; }
+
+      /* hook */
+      #h-frame { position: absolute; left: 400px; top: 110px; width: 1120px; height: 630px; border-radius: 22px; overflow: hidden; background: #000; box-shadow: 0 40px 110px rgba(0,0,0,0.6), 0 0 0 1px rgba(240,238,235,0.08); opacity: 0; }
+      #h-frame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+      #h-rec { position: absolute; left: 26px; top: 22px; display: flex; gap: 10px; align-items: center; font-size: 20px; font-weight: 600; letter-spacing: 0.14em; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+      #h-rec i { width: 14px; height: 14px; border-radius: 50%; background: #ff4b3e; display: block; }
+      #h-t1 { top: 790px; font-size: 88px; line-height: 1.1; letter-spacing: -0.02em; font-weight: 600; }
+      #h-t1 .w2 { display: inline-block; opacity: 0; }
+
+      #cut { position: absolute; left: 160px; top: 600px; width: 1600px; opacity: 0; }
+      .lane { position: relative; height: 54px; margin-bottom: 12px; border-radius: 10px; background: var(--raised); overflow: hidden; }
+      .lane b { position: absolute; left: 18px; top: 14px; font-size: 20px; font-weight: 600; color: var(--ink2); z-index: 2; }
+      .seg { position: absolute; top: 9px; height: 36px; border-radius: 7px; opacity: 0; }
+      .mark { position: absolute; top: -14px; width: 3px; height: 290px; background: var(--ink); border-radius: 2px; opacity: 0; }
+      #cut-head { position: absolute; left: 0; top: -80px; font-size: 26px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink3); }
+      #h-t2 { top: 120px; font-size: 92px; line-height: 1.08; letter-spacing: -0.02em; font-weight: 600; }
+
+      #need { position: absolute; left: 230px; top: 330px; width: 760px; height: 560px; border-radius: 26px; background: var(--panel); border: 1px solid var(--line); padding: 44px; opacity: 0; }
+      #have { position: absolute; left: 1050px; top: 330px; width: 640px; height: 560px; border-radius: 26px; background: var(--panel); border: 2px solid var(--acc); padding: 44px; opacity: 0; }
+      .k { font-size: 22px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink3); margin-bottom: 30px; }
+      #have .k { color: var(--acc); }
+      .row { display: flex; align-items: center; gap: 22px; height: 92px; border-bottom: 1px solid var(--line); font-size: 32px; font-weight: 500; opacity: 0; }
+      .row:last-child { border-bottom: 0; }
+      .dot { width: 34px; height: 34px; border-radius: 50%; }
+      .chip { height: 50px; padding: 0 20px; border-radius: 12px; background: var(--raised); display: flex; align-items: center; gap: 10px; font-size: 24px; color: var(--ink2); }
+      .big { font-size: 64px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; margin-top: 18px; opacity: 0; }
+      .big small { display: block; font-size: 30px; font-weight: 500; color: var(--ink2); margin-top: 18px; letter-spacing: 0; line-height: 1.35; }
+      #h-t3 { top: 150px; font-size: 80px; line-height: 1.08; letter-spacing: -0.02em; font-weight: 600; }
+      #x { position: absolute; left: 230px; top: 600px; width: 760px; height: 6px; background: var(--acc); border-radius: 4px; transform-origin: left center; opacity: 0; }
+
+      #m-logo { position: absolute; left: 860px; top: 250px; width: 200px; height: 200px; color: var(--ink); opacity: 0; }
+      #m-name { top: 480px; font-size: 150px; font-weight: 600; letter-spacing: -0.04em; }
+      #m-tag { top: 680px; font-size: 76px; }
+
+      /* demo */
+      #device { position: absolute; left: 602px; top: 92px; width: 1268px; height: 890px; border-radius: 30px; background: #24201c; padding: 14px; box-shadow: 0 50px 120px rgba(0,0,0,0.6), 0 0 0 1px rgba(240,238,235,0.06); opacity: 0; }
+      #screen { position: relative; width: 1240px; height: 862px; border-radius: 18px; overflow: hidden; background: var(--bg); }
+      #screen video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+      #panel { position: absolute; left: 72px; top: 92px; width: 490px; height: 890px; opacity: 0; }
+      .step { position: absolute; left: 0; top: 0; width: 490px; opacity: 0; }
+      .num { display: inline-flex; height: 44px; padding: 0 20px; border-radius: 30px; background: var(--acc); color: #1d140d; font-weight: 700; font-size: 18px; letter-spacing: 0.16em; text-transform: uppercase; align-items: center; }
+      .ttl { font-size: 58px; line-height: 1.04; margin-top: 22px; font-weight: 600; letter-spacing: -0.025em; }
+      .how { font-size: 25px; line-height: 1.4; color: var(--ink2); margin-top: 20px; }
+      #cap { position: absolute; left: 0; top: 560px; width: 490px; }
+      .cg { position: absolute; left: 0; top: 0; width: 490px; font-size: 29px; line-height: 1.32; font-weight: 500; color: var(--ink); opacity: 0; }
+      .cg::before { content: ""; position: absolute; left: -24px; top: 8px; width: 4px; height: calc(100% - 12px); border-radius: 2px; background: var(--acc); }
+
+      /* result */
+      #res { position: absolute; left: 260px; top: 70px; width: 1400px; height: 788px; border-radius: 24px; overflow: hidden; background: #000; box-shadow: 0 50px 120px rgba(0,0,0,0.65), 0 0 0 2px rgba(248,138,61,0.55); opacity: 0; }
+      #res video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+      #res-lab { top: 900px; font-size: 26px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: var(--acc); }
+      #res-cap { top: 950px; font-size: 40px; font-weight: 500; color: var(--ink); }
+
+      /* trust + end */
+      #stat { top: 180px; font-size: 64px; font-weight: 600; letter-spacing: -0.02em; }
+      #stat b { font-size: 150px; display: block; line-height: 1; margin-bottom: 18px; letter-spacing: -0.04em; }
+      #stat b em { font-size: 170px; }
+      #badges { position: absolute; left: 0; right: 0; top: 640px; display: flex; justify-content: center; gap: 30px; }
+      .badge { height: 104px; padding: 0 42px; border-radius: 60px; background: var(--raised); border: 1px solid var(--line); display: flex; align-items: center; font-size: 42px; font-weight: 600; opacity: 0; white-space: nowrap; }
+      .badge.hot { background: var(--acc); color: #1d140d; border-color: var(--acc); }
+      #e-open { top: 300px; font-size: 150px; font-weight: 600; letter-spacing: -0.04em; }
+      #e-gh { top: 500px; }
+      #e-gh span { display: inline-block; padding: 14px 34px; border-radius: 50px; background: var(--raised); border: 1px solid var(--line); color: var(--ink); font-size: 36px; }
+      #e-try { top: 640px; font-size: 70px; }
+      #e-logo { position: absolute; left: 885px; top: 150px; width: 150px; height: 150px; color: var(--ink); opacity: 0; }
+      #e-name { top: 330px; font-size: 130px; font-weight: 600; letter-spacing: -0.04em; }
+      #e-tag { top: 500px; font-size: 64px; }
+      #e-url { top: 630px; }
+      #e-url span { display: inline-block; padding: 14px 44px; border-radius: 60px; background: var(--acc); color: #1d140d; font-size: 50px; font-weight: 700; }
+      #e-sub { top: 760px; font-size: 28px; color: var(--ink2); }
+      #e-by { top: 950px; font-size: 22px; letter-spacing: 0.26em; text-transform: uppercase; color: var(--ink3); font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="61.5">
+      <div class="layer" id="bg"><div id="grain"></div></div>
+
+      <div class="layer" id="hook">
+        <div id="h-frame">
+          <video id="v-w1" src="assets/clips/w1.mp4" muted playsinline data-start="0.2" data-duration="5.000" data-track-index="1"></video>
+          <div id="h-rec"><i></i>REC · ONE CAMERA</div>
+        </div>
+        <div class="center" id="h-t1"><span class="w2">One camera.</span> <span class="w2"><em>Everyone</em> in the frame.</span></div>
+
+        <div class="center o" id="h-t2">Now someone cuts it <em>by hand.</em></div>
+        <div id="cut">
+          <div id="cut-head">53 minutes of footage · every cut placed by hand</div>
+          <div class="lane"><b>Person 1</b></div>
+          <div class="lane"><b>Person 2</b></div>
+          <div class="lane"><b>Person 3</b></div>
+          <div class="lane"><b>Person 4</b></div>
+        </div>
+
+        <div class="center o" id="h-t3">Auto-editors won't help.</div>
+        <div id="need">
+          <div class="k">What they expect</div>
+          <div class="row"><div class="dot" style="background:var(--s1)"></div>Person 1<div style="flex:1"></div><div class="chip">Mic</div><div class="chip">Camera</div></div>
+          <div class="row"><div class="dot" style="background:var(--s2)"></div>Person 2<div style="flex:1"></div><div class="chip">Mic</div><div class="chip">Camera</div></div>
+          <div class="row"><div class="dot" style="background:var(--s3)"></div>Person 3<div style="flex:1"></div><div class="chip">Mic</div><div class="chip">Camera</div></div>
+          <div class="row"><div class="dot" style="background:var(--s4)"></div>Person 4<div style="flex:1"></div><div class="chip">Mic</div><div class="chip">Camera</div></div>
+        </div>
+        <div id="x"></div>
+        <div id="have">
+          <div class="k">What you have</div>
+          <div class="big" id="have1">One camera.<small>Everyone in one shot.</small></div>
+          <div class="big" id="have2">One mixed track.<small>Every voice on the same audio.</small></div>
+        </div>
+
+        <svg id="m-logo" viewBox="0 0 72 72" fill="none" aria-label="Cutroom"><defs><clipPath id="c1"><rect x="4" y="4" width="64" height="64" rx="13" /></clipPath></defs><g clip-path="url(#c1)"><g transform="rotate(34 5 10.5)"><rect x="5" y="8.5" width="20" height="4" rx="2" fill="currentColor" /><rect x="27" y="5" width="7" height="11" rx="3.5" fill="#f88a3d" /></g><g transform="rotate(-22 68 26)"><rect x="48" y="22" width="5" height="8" rx="2.5" fill="#f88a3d" /><rect x="55" y="24.5" width="13" height="3" rx="1.5" fill="currentColor" /></g><circle cx="24" cy="41" r="6" fill="currentColor" /><path d="M13 58V53a11 11 0 0 1 22 0v5Z" fill="currentColor" /><circle cx="53.5" cy="45.5" r="4.5" fill="currentColor" /><path d="M45 58v-3.5a8.5 8.5 0 0 1 17 0V58Z" fill="currentColor" /><rect x="4" y="58" width="64" height="10" fill="currentColor" /></g><rect x="2" y="2" width="68" height="68" rx="15" stroke="currentColor" stroke-width="4" /></svg>
+        <div class="center o" id="m-name">Cutroom</div>
+        <div class="center serif o" id="m-tag">Podcast video that <em>cuts itself.</em></div>
+      </div>
+
+      <div class="layer" id="demo">
+        <div id="panel">
+          <div class="step" id="st1"><div class="num">Step 1 of 4</div><div class="ttl">Drop in your recording.</div><div class="how">One camera, two to four people, one mixed audio track. Cutroom writes the transcript and finds each face.</div></div>
+          <div class="step" id="st2"><div class="num">Step 2 of 4</div><div class="ttl">It cuts to whoever's talking.</div><div class="how">It matches each voice to a face by lip movement, then frames the shot on them.</div></div>
+          <div class="step" id="st3"><div class="num">Step 3 of 4</div><div class="ttl">Every cut is yours to change.</div><div class="how">Pick who's in the shot, drag a cut, or put back a pause it trimmed.</div></div>
+          <div class="step" id="st4"><div class="num">Step 4 of 4</div><div class="ttl">Export the finished video.</div><div class="how">MP4 at full resolution, plus a subtitle file and an MP3 for your podcast feed.</div></div>
+          <div id="cap"></div>
+        </div>
+        <div id="device"><div id="screen"><!-- CLIPS -->
+          <video id="v-d1" src="assets/clips/d1.mp4" muted playsinline data-start="18.6" data-duration="2.800" data-track-index="1"></video>
+          <video id="v-d2" src="assets/clips/d2.mp4" muted playsinline data-start="21.4" data-duration="2.800" data-track-index="1"></video>
+          <video id="v-c1" src="assets/clips/c1.mp4" muted playsinline data-start="24.2" data-duration="1.800" data-track-index="1"></video>
+          <video id="v-e1" src="assets/clips/e1.mp4" muted playsinline data-start="26.0" data-duration="3.438" data-track-index="1"></video>
+          <video id="v-s3" src="assets/clips/s3.mp4" muted playsinline data-start="29.44" data-duration="6.400" data-track-index="1"></video>
+          <video id="v-p1" src="assets/clips/p1.mp4" muted playsinline data-start="35.84" data-duration="6.187" data-track-index="1"></video>
+        </div></div>
+      </div>
+
+      <div class="layer" id="result">
+        <div id="res"><video id="v-res" src="assets/clips/res.mp4" muted playsinline data-start="42.2" data-duration="5.600" data-track-index="2"></video></div>
+        <div class="center o" id="res-lab">Straight out of Cutroom · no manual edits</div>
+        <div class="center o" id="res-cap"></div>
+      </div>
+
+      <div class="layer" id="close">
+        <div class="center o" id="stat"><b>53 min → <em>15 min</em></b>A four-person episode, cut on a laptop.</div>
+        <div id="badges"><div class="badge" id="bd1">Runs on your computer</div><div class="badge" id="bd2">Nothing uploaded</div><div class="badge" id="bd3">No account</div><div class="badge hot" id="bd4">Free</div></div>
+        <div class="center o" id="e-open">Open source.</div>
+        <div class="center o mono" id="e-gh"><span>github.com/jain-eshan/cutroom</span></div>
+        <div class="center serif o" id="e-try">Try it on your next episode.</div>
+        <svg id="e-logo" viewBox="0 0 72 72" fill="none" aria-label="Cutroom"><defs><clipPath id="c2"><rect x="4" y="4" width="64" height="64" rx="13" /></clipPath></defs><g clip-path="url(#c2)"><g transform="rotate(34 5 10.5)"><rect x="5" y="8.5" width="20" height="4" rx="2" fill="currentColor" /><rect x="27" y="5" width="7" height="11" rx="3.5" fill="#f88a3d" /></g><g transform="rotate(-22 68 26)"><rect x="48" y="22" width="5" height="8" rx="2.5" fill="#f88a3d" /><rect x="55" y="24.5" width="13" height="3" rx="1.5" fill="currentColor" /></g><circle cx="24" cy="41" r="6" fill="currentColor" /><path d="M13 58V53a11 11 0 0 1 22 0v5Z" fill="currentColor" /><circle cx="53.5" cy="45.5" r="4.5" fill="currentColor" /><path d="M45 58v-3.5a8.5 8.5 0 0 1 17 0V58Z" fill="currentColor" /><rect x="4" y="58" width="64" height="10" fill="currentColor" /></g><rect x="2" y="2" width="68" height="68" rx="15" stroke="currentColor" stroke-width="4" /></svg>
+        <div class="center o" id="e-name">Cutroom</div>
+        <div class="center serif o" id="e-tag">Podcast video that <em>cuts itself.</em></div>
+        <div class="center o" id="e-url"><span>cutroom.in</span></div>
+        <div class="center o" id="e-sub">Developer preview · Mac and Windows · free and open source</div>
+        <div class="center o" id="e-by">Designed and built by Eshan Jain</div>
+      </div>
+
+      <audio id="mix" src="assets/audio/mix.wav" data-start="0" data-duration="61.5" data-track-index="5" data-volume="1"></audio>
+    </div>
+
+    <script>
+      const TL = {"vo": {"l01": 0.3, "l02": 5.0, "l03": 9.8, "l04": 15.3, "l05": 18.9, "l06": 24.4, "l07": 29.6, "l08": 36.0, "l09": 48.2, "l10": 53.0, "l11": 57.4}, "words": [["You", 0.34, "l01"], ["recorded", 0.5, "l01"], ["a", 1.04, "l01"], ["great", 1.1, "l01"], ["conversation.", 1.43, "l01"], ["One", 2.52, "l01"], ["camera,", 2.76, "l01"], ["everyone", 3.36, "l01"], ["in", 3.77, "l01"], ["the", 3.86, "l01"], ["frame.", 4.01, "l01"], ["Now", 5.03, "l02"], ["someone", 5.21, "l02"], ["has", 5.7, "l02"], ["to", 5.92, "l02"], ["cut", 6.05, "l02"], ["it", 6.26, "l02"], ["by", 6.41, "l02"], ["hand,", 6.54, "l02"], ["to", 6.87, "l02"], ["whoever's", 6.98, "l02"], ["talking.", 7.64, "l02"], ["That", 8.43, "l02"], ["takes", 8.6, "l02"], ["hours.", 8.85, "l02"], ["And", 9.85, "l03"], ["auto-editors", 10.03, "l03"], ["won't", 10.93, "l03"], ["help.", 11.28, "l03"], ["They", 11.77, "l03"], ["expect", 11.98, "l03"], ["a", 12.37, "l03"], ["microphone", 12.43, "l03"], ["and", 13.18, "l03"], ["a", 13.34, "l03"], ["camera", 13.67, "l03"], ["for", 13.72, "l03"], ["every", 13.9, "l03"], ["person.", 14.21, "l03"], ["Meet", 15.32, "l04"], ["Cutroom.", 15.5, "l04"], ["Podcast", 15.9, "l04"], ["video", 16.49, "l04"], ["that", 16.95, "l04"], ["cuts", 17.24, "l04"], ["itself.", 17.63, "l04"], ["Drop", 18.98, "l05"], ["in", 19.19, "l05"], ["your", 19.33, "l05"], ["recording.", 19.65, "l05"], ["Cutroom", 20.5, "l05"], ["writes", 20.9, "l05"], ["the", 21.28, "l05"], ["transcript,", 21.47, "l05"], ["and", 22.23, "l05"], ["finds", 22.36, "l05"], ["each", 22.57, "l05"], ["person's", 22.78, "l05"], ["face.", 23.22, "l05"], ["It", 24.43, "l06"], ["works", 24.53, "l06"], ["out", 24.89, "l06"], ["who's", 25.1, "l06"], ["talking,", 25.44, "l06"], ["from", 26.05, "l06"], ["their", 26.23, "l06"], ["voice", 26.46, "l06"], ["and", 26.72, "l06"], ["their", 26.9, "l06"], ["lips,", 27.24, "l06"], ["and", 27.56, "l06"], ["cuts", 27.66, "l06"], ["in", 27.92, "l06"], ["close", 28.03, "l06"], ["on", 28.35, "l06"], ["them.", 28.52, "l06"], ["Every", 29.63, "l07"], ["cut", 30.05, "l07"], ["is", 30.34, "l07"], ["yours", 30.5, "l07"], ["to", 30.95, "l07"], ["change.", 31.13, "l07"], ["Pick", 31.75, "l07"], ["who's", 31.96, "l07"], ["in", 32.25, "l07"], ["the", 32.37, "l07"], ["shot,", 32.55, "l07"], ["drag", 32.92, "l07"], ["a", 33.31, "l07"], ["cut,", 33.72, "l07"], ["or", 33.77, "l07"], ["put", 33.85, "l07"], ["back", 34.0, "l07"], ["a", 34.23, "l07"], ["pause", 34.35, "l07"], ["it", 34.55, "l07"], ["trimmed.", 34.66, "l07"], ["Then", 36.06, "l08"], ["export", 36.32, "l08"], ["the", 36.72, "l08"], ["full-resolution", 36.9, "l08"], ["video,", 37.94, "l08"], ["with", 38.36, "l08"], ["a", 38.57, "l08"], ["subtitle", 38.65, "l08"], ["file", 39.26, "l08"], ["and", 39.81, "l08"], ["an", 40.07, "l08"], ["MP3", 40.31, "l08"], ["for", 40.85, "l08"], ["your", 40.88, "l08"], ["feed.", 41.03, "l08"], ["It", 48.24, "l09"], ["all", 48.36, "l09"], ["runs", 48.59, "l09"], ["on", 48.86, "l09"], ["your", 49.02, "l09"], ["computer.", 49.33, "l09"], ["Nothing", 50.0, "l09"], ["is", 50.5, "l09"], ["uploaded,", 50.66, "l09"], ["and", 51.33, "l09"], ["there's", 51.41, "l09"], ["no", 51.7, "l09"], ["account.", 51.8, "l09"], ["Cutroom", 53.07, "l10"], ["is", 53.55, "l10"], ["free", 53.78, "l10"], ["and", 54.04, "l10"], ["open", 54.28, "l10"], ["source.", 54.6, "l10"], ["Try", 55.37, "l10"], ["it", 55.56, "l10"], ["on", 55.62, "l10"], ["your", 55.73, "l10"], ["next", 55.96, "l10"], ["episode.", 56.19, "l10"], ["Cutroom.", 57.43, "l11"], ["Podcast", 58.15, "l11"], ["video", 58.48, "l11"], ["that", 58.82, "l11"], ["cuts", 59.1, "l11"], ["itself.", 59.36, "l11"]], "demo": [18.6, 42.0], "steps": [[18.6, 24.2], [24.2, 29.4], [29.4, 35.8], [35.8, 42.0]], "result": [42.2, 47.8], "rcap": [["“…health tech ecosystem,”", 42.2, 43.5], ["“I think like right now there would be a lot of people…”", 43.75, 46.35], ["“…who would want to get started.”", 46.4, 47.7]], "badges": [48.9, 50.0, 51.4, 52.2], "end": 61.5}; // TL
+      const tl = gsap.timeline({ paused: true });
+      const pop = (sel, at, d = 0.4, from = { y: 30, scale: 0.94 }) => tl.fromTo(sel, { opacity: 0, ...from }, { opacity: 1, y: 0, x: 0, scale: 1, duration: d, ease: "back.out(1.7)", immediateRender: false }, at);
+      const out = (sel, at, d = 0.25) => tl.to(sel, { opacity: 0, duration: d, ease: "power2.in" }, at);
+      const V = TL.vo; // start time of each narration line
+      const wordsOf = (id) => TL.words.filter((w) => w[2] === id);
+
+      // ---------- 1. Hook ----------
+      tl.fromTo("#h-frame", { opacity: 0, scale: 0.96 }, { opacity: 1, scale: 1, duration: 0.6, ease: "power3.out", immediateRender: false }, 0.1);
+      const w1 = wordsOf("l01");
+      const t1 = document.querySelectorAll("#h-t1 .w2");
+      tl.fromTo(t1[0], { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.35, ease: "back.out(2)", immediateRender: false }, w1[4][1]);
+      tl.fromTo(t1[1], { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.35, ease: "back.out(2)", immediateRender: false }, w1[6][1]);
+      const B = V.l02 - 0.35;
+      out(["#h-t1"], B, 0.2);
+      tl.to("#h-frame", { opacity: 0, scale: 0.9, y: -40, duration: 0.35, ease: "power2.in" }, B);
+      pop("#h-t2", B + 0.2, 0.4);
+      tl.fromTo("#cut", { opacity: 0, y: 60 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out", immediateRender: false }, B + 0.3);
+      // the hand edit: turns appear lane by lane, a cut lands on each change, the clock keeps running
+      const lanes = document.querySelectorAll("#cut .lane"); const cut = document.getElementById("cut");
+      const cols = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
+      const order = [0, 1, 1, 0, 2, 1, 3, 1, 0, 1, 2, 1, 3, 0, 1, 1, 2, 3, 1, 0];
+      let x = 0;
+      order.forEach((ln, i) => {
+        const wdt = 50 + ((i * 53) % 70);
+        const s = document.createElement("div"); s.className = "seg"; s.style.left = (150 + x) + "px"; s.style.width = wdt + "px"; s.style.background = cols[ln]; lanes[ln].appendChild(s);
+        const m = document.createElement("div"); m.className = "mark"; m.style.left = (150 + x) + "px"; cut.appendChild(m);
+        const at = B + 0.6 + i * 0.17;
+        tl.fromTo(s, { opacity: 0, scaleX: 0 }, { opacity: 0.9, scaleX: 1, transformOrigin: "left center", duration: 0.15, immediateRender: false }, at);
+        tl.fromTo(m, { opacity: 0, y: -20 }, { opacity: 0.8, y: 0, duration: 0.12, immediateRender: false }, at + 0.05);
+        x += wdt + 10;
+      });
+      const C = V.l03 - 0.3;
+      out(["#h-t2", "#cut"], C, 0.25);
+      pop("#h-t3", C + 0.15, 0.4);
+      pop("#need", C + 0.35, 0.45, { y: 50 });
+      document.querySelectorAll("#need .row").forEach((r, i) => pop(r, C + 0.6 + i * 0.12, 0.3, { y: 16 }));
+      const w3 = wordsOf("l03");
+      const hv = w3.find((w) => /microphone/.test(w[0])) || w3[8];
+      tl.fromTo("#x", { opacity: 0, scaleX: 0, rotation: -14 }, { opacity: 1, scaleX: 1, rotation: -14, duration: 0.35, ease: "power3.out", immediateRender: false }, hv[1] + 0.9);
+      tl.to("#need", { opacity: 0.45, duration: 0.3 }, hv[1] + 0.9);
+      pop("#have", hv[1] + 1.0, 0.45, { y: 50 });
+      pop("#have1", hv[1] + 1.2, 0.35, { y: 20 });
+      pop("#have2", hv[1] + 1.6, 0.35, { y: 20 });
+      const D = V.l04 - 0.3;
+      out(["#h-t3", "#need", "#have", "#x"], D, 0.25);
+      tl.fromTo("#m-logo", { opacity: 0, scale: 0.6, rotation: -8 }, { opacity: 1, scale: 1, rotation: 0, duration: 0.6, ease: "back.out(1.8)", immediateRender: false }, D + 0.2);
+      pop("#m-name", wordsOf("l04")[1][1] - 0.05, 0.4);
+      pop("#m-tag", wordsOf("l04")[2][1], 0.4);
+      const E = TL.demo[0];
+      out(["#m-logo", "#m-name", "#m-tag"], E - 0.3, 0.25);
+
+      // ---------- 2. Demo ----------
+      tl.fromTo("#device", { opacity: 0, x: 300 }, { opacity: 1, x: 0, duration: 0.5, ease: "power3.out", immediateRender: false }, E);
+      tl.fromTo("#panel", { opacity: 0, x: -60 }, { opacity: 1, x: 0, duration: 0.5, ease: "power3.out", immediateRender: false }, E + 0.05);
+      TL.steps.forEach(([a, b], i) => { pop("#st" + (i + 1), a + 0.05, 0.4, { y: 24 }); out("#st" + (i + 1), b - 0.2, 0.2); });
+      const F = TL.demo[1];
+      // captions: one sentence at a time, words appear as they are spoken
+      const capEl = document.getElementById("cap");
+      const groups = []; let g = null;
+      TL.words.filter(([, t]) => t >= E && t < F).forEach(([w, t]) => {
+        if (!g) { g = { a: t, ws: [] }; groups.push(g); }
+        g.ws.push([w, t]);
+        if (/[.?]$/.test(w)) g = null;
+      });
+      groups.forEach((it, i) => {
+        const nx = groups[i + 1];
+        const b = nx ? Math.min(nx.a - 0.05, it.ws[it.ws.length - 1][1] + 2.4) : F - 0.1;
+        const el = document.createElement("div"); el.className = "cg"; capEl.appendChild(el);
+        it.ws.forEach(([w, t]) => {
+          const s = document.createElement("span"); s.className = "w"; s.textContent = w; el.appendChild(s); el.appendChild(document.createTextNode(" "));
+          tl.fromTo(s, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.15, ease: "power2.out", immediateRender: false }, t);
+        });
+        tl.set(el, { opacity: 1 }, it.a - 0.05);
+        tl.to(el, { opacity: 0, duration: 0.12 }, b - 0.12);
+      });
+      out(["#panel"], F - 0.25, 0.2);
+      tl.to("#device", { opacity: 0, y: 40, duration: 0.25, ease: "power2.in" }, F - 0.25);
+
+      // ---------- 3. The result, with its own sound ----------
+      const [ra, rb] = TL.result;
+      tl.fromTo("#res", { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.45, ease: "power3.out", immediateRender: false }, ra - 0.15);
+      pop("#res-lab", ra + 0.2, 0.35, { y: 16 });
+      const rc = document.getElementById("res-cap");
+      TL.rcap.forEach(([text, a, b]) => {
+        tl.call(() => { rc.textContent = text; }, null, a); tl.set(rc, { opacity: 1 }, a); tl.set(rc, { opacity: 0 }, b);
+        tl.call(() => { rc.textContent = text; }, null, a + 0.001);
+      });
+      out(["#res", "#res-lab", "#res-cap"], rb - 0.25, 0.25);
+
+      // ---------- 4. Trust ----------
+      const G = rb;
+      pop("#stat", G + 0.1, 0.45);
+      [["#bd1", 0], ["#bd2", 1], ["#bd3", 2], ["#bd4", 3]].forEach(([s, k]) => pop(s, TL.badges[k], 0.4, { y: 40, scale: 0.75 }));
+      const H = V.l10 - 0.3;
+      out(["#stat", "#bd1", "#bd2", "#bd3", "#bd4"], H, 0.2);
+
+      // ---------- 5. Close ----------
+      pop("#e-open", H + 0.2, 0.4);
+      pop("#e-gh", H + 0.7, 0.4);
+      pop("#e-try", wordsOf("l10")[6][1], 0.4);
+      const J = V.l11 - 0.35;
+      out(["#e-open", "#e-gh", "#e-try"], J, 0.2);
+      tl.fromTo("#e-logo", { opacity: 0, scale: 0.7, rotation: -8 }, { opacity: 1, scale: 1, rotation: 0, duration: 0.55, ease: "back.out(1.8)", immediateRender: false }, J + 0.15);
+      pop("#e-name", J + 0.3, 0.4);
+      pop("#e-tag", wordsOf("l11")[1][1], 0.4);
+      pop("#e-url", wordsOf("l11")[1][1] + 0.8, 0.45);
+      pop("#e-sub", wordsOf("l11")[1][1] + 1.2, 0.4);
+      pop("#e-by", wordsOf("l11")[1][1] + 1.6, 0.4);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

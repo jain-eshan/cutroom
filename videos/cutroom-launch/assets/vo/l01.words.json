@@ -1,0 +1,68 @@
+[
+  {
+    "text": "you",
+    "start": 0.04,
+    "end": 0.2,
+    "id": "w0"
+  },
+  {
+    "text": "recorded",
+    "start": 0.2,
+    "end": 0.74,
+    "id": "w1"
+  },
+  {
+    "text": "a",
+    "start": 0.74,
+    "end": 0.8,
+    "id": "w2"
+  },
+  {
+    "text": "great",
+    "start": 0.8,
+    "end": 1.13,
+    "id": "w3"
+  },
+  {
+    "text": "conversation.",
+    "start": 1.13,
+    "end": 2.18,
+    "id": "w4"
+  },
+  {
+    "text": "One",
+    "start": 2.22,
+    "end": 2.39,
+    "id": "w5"
+  },
+  {
+    "text": "camera,",
+    "start": 2.46,
+    "end": 3.06,
+    "id": "w6"
+  },
+  {
+    "text": "everyone",
+    "start": 3.06,
+    "end": 3.44,
+    "id": "w7"
+  },
+  {
+    "text": "in",
+    "start": 3.47,
+    "end": 3.56,
+    "id": "w8"
+  },
+  {
+    "text": "the",
+    "start": 3.56,
+    "end": 3.71,
+    "id": "w9"
+  },
+  {
+    "text": "frame.",
+    "start": 3.71,
+    "end": 4.13,
+    "id": "w10"
+  }
+]
