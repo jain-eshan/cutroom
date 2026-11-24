@@ -78,10 +78,6 @@ illustrations" rule. History, so nobody has to rediscover it:
 - 2026-09-20: put back, at the founder's call. The frames around it (the
   card, chips, timeline labels) use the current tokens; only the artwork
   itself is off-system.
-- 2026-11-24: real footage that everyone in it agreed to publish now exists
-  (The Founders' Podcast, Episode 1), cut into the launch film in
-  `videos/cutroom-launch/`. Swapping the illustration for it is open; the
-  site itself is unchanged.
 
 **When to remove it:** as soon as there is real footage everyone in it has
 agreed to publish. Cut it through Cutroom, record the editor playing it, and
